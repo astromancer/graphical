@@ -14,7 +14,7 @@ from matplotlib.backends.backend_qt4 import NavigationToolbar2QT as NavigationTo
 from matplotlib.figure import Figure
 from matplotlib import pyplot as plt
 
-from decor import print_args
+#from decor import print_args
 
 #######################################################################################################################
 class MultiTabNavTool(qt.QWidget):
@@ -274,14 +274,28 @@ class MplMultiTab(qt.QMainWindow):
         return action
 
 
-def main():
-    app = qt.QApplication(sys.argv)
-    ui = MplMultiTab()
-    ui.show()
-    #from IPython import embed
-    #embed()
-    #app.exec_()
+#def main():
+
 
 
 if __name__ == "__main__":
-    main()
+    import numpy as np
+    #Example use
+    
+    
+    colours = 'rgb'
+    figures, labels = [], []
+    for i in range(3):
+        fig, ax = plt.subplots()
+        ax.plot( np.random.randn(100), colours[i]        )
+        figures.append( fig )
+        labels.append( 'Tab %i'%i )
+    
+    app = qt.QApplication(sys.argv)
+    ui = MplMultiTab( figures=figures, labels=labels)
+    ui.show()
+    #from IPython import embed
+    #embed()
+    app.exec_()
+    
+    #main()
