@@ -2,7 +2,7 @@
 This script uses PyQt4 to create a gui which allows tabbed matplotlib figures. Boomshaka!
 """
 import sys
-import itertools
+from six.moves import zip_longest
 
 from PyQt4 import QtCore
 SIGNAL = QtCore.SIGNAL
@@ -122,7 +122,7 @@ class MplMultiTab(qt.QMainWindow):
     #====================================================================================================
     #@print_args()
     def create_tabs(self, figures, labels):
-        for fig, lbl in itertools.zip_longest(figures, labels):
+        for fig, lbl in zip_longest(figures, labels):
             self.add_tab(fig, lbl)
     
     #====================================================================================================
@@ -280,9 +280,8 @@ class MplMultiTab(qt.QMainWindow):
 
 if __name__ == "__main__":
     import numpy as np
+    
     #Example use
-    
-    
     colours = 'rgb'
     figures, labels = [], []
     for i in range(3):
@@ -296,6 +295,6 @@ if __name__ == "__main__":
     ui.show()
     #from IPython import embed
     #embed()
-    app.exec_()
+    sys.exit( app.exec_() )
     
     #main()
