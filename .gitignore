@@ -1,4 +1,7 @@
+*.gitignore
+*.kate-swp
+*~
+/__pycache__
 draggables.*.py
 draggables.py.bak
 draggables.test.py
-__pycache__
