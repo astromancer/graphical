@@ -55,9 +55,10 @@ class MultiTabNavTool(qt.QWidget):
 #######################################################################################################################    
 class MplMultiTab(qt.QMainWindow):
     #====================================================================================================
-    def __init__(self, parent=None, figures=[], labels=[]):
+    def __init__(self, parent=None, figures=[], labels=[], title=None):
         qt.QMainWindow.__init__(self, parent)
-        self.setWindowTitle( str(self) )
+        title = title or 'MplMultiTab'
+        self.setWindowTitle( title )
         
         self.canvases = []
         
@@ -136,6 +137,8 @@ class MplMultiTab(qt.QMainWindow):
         self.mpl_toolbar = MultiTabNavTool(self.canvases, self.tabWidget, self.main_frame)
         
         #NavigationToolbar(canvas, parent) for canvas in self.canvases
+        
+        #tabs = QtGui.QTabWidget()
         
         self.create_tabs( figures, labels )
         
