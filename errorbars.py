@@ -19,7 +19,7 @@ from recipes.list import flatten
 from PyQt4.QtCore import pyqtRemoveInputHook, pyqtRestoreInputHook
 #from decor.misc import unhookPyQt#, expose
 
-#from IPython import embed
+from IPython import embed
 #from pprint import pprint
 
 #TODO: Convenience methods (factory) for draggable artists
@@ -134,7 +134,7 @@ class ReorderedErrorbarHandler(HandlerErrorbar):
         
         #Identify the artists. just so we know what each is
         #NOTE: The order here is different to that in ErrorbarContainer, so we re-order
-        barlinecols, rest =  partition( is_line, artists )
+        barlinecols, rest = partition(is_line, artists)
         barlinecols = tuple(barlinecols)
         *caplines, legline, legline_marker = rest
         
@@ -150,6 +150,7 @@ class ReorderedErrorbarHandler(HandlerErrorbar):
 #****************************************************************************************************
 class ErrorbarPicker():
     '''Hadles picking artists in the legend'''
+    #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     parts = ('markers', 'stems', 'caps')
 
     #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -159,9 +160,18 @@ class ErrorbarPicker():
         Hack the picker to emulate true artist picking in the legend. Specific 
         implementation for errorbar plots. Pretent that the points / bars / caps
         are selected, based on the radius from the central point. Pass the 
-        "part" description str as a property to the event from where it can be used 
-        by the on_pick method.
+        "part" description str as a property to the event from where it can be
+        used by the on_pick method.
         '''
+        #print( 'Picker', )
+        #print( 'Picker', event.button )
+        
+        if event.button != 1:           #otherwise intended reset will select
+            #print('wrong button asshole!')
+            return False, {}
+        
+        #print('........')
+        
         props = {}
 
         # Convert points to pixels
@@ -194,34 +204,35 @@ class ErrorbarPicker():
 
 #****************************************************************************************************
 class DynamicLegend(ConnectionMixin):
+    #TODO: subclass Legend??
     '''
     Enables toggling marker / bar / cap visibility by selecting on the legend.
     '''
-    _default_legend = dict( fancybox=True,
-                            framealpha=0.5,
-                            handler_map = {ErrorbarContainer: ReorderedErrorbarHandler(numpoints=1)} )
-
-    labelmap = { ErrorbarContainer : '_errorbar', Line2D : '_line' }
+    #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    _default_legend = dict(fancybox=True,
+                           framealpha=0.5,
+                           handler_map={ErrorbarContainer:
+                                            ReorderedErrorbarHandler(numpoints=1)})
+    label_map = {ErrorbarContainer      :       'errorbar{}',
+                 Line2D                 :       'line{}'      }
     
-   #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     def __init__(self, ax, plots, legendkw):
         '''enable legend picking'''
         
         #initialize auto-connect
         ConnectionMixin.__init__(self, ax.figure)
         
-        #NOTE: equivalent to ax.legend(**lkw)
-        handles, labels = ax.get_legend_handles_labels()
-        
         #Auto-generate labels
-        if len(handles) == 0:
-            labels = []
-            for i, pl in enumerate(plots):
-                lbl = self.labelmap[type(pl)] + str(i)
-                
-                pl.set_label(lbl)
-                labels.append( lbl )
-        
+        #NOTE: This needs to be done to enable legend picking. if the artists
+        #are unlabeled, no legend will be created and we therefor cannot pick them!
+        i = 0
+        for plot in plots:
+            if not plot.get_label():
+                lbl = self.label_map[type(plot)].format(i)
+                plot.set_label(lbl)
+                i += 1
+
         #update default legend props with user specified props
         lkw = self._default_legend
         lkw.update(legendkw)
@@ -232,19 +243,21 @@ class DynamicLegend(ConnectionMixin):
         #embed()
         
         #self.legend = ax.legend( plots, labels, **lkw )
-        self.legend = ax.legend(**lkw )
+        self.legend = ax.legend(**lkw)
         
-        #create mapping between the picked legend artists (markers), and the 
-        #original (axes) artists
-        self.to_orig = {}
-        self.to_leg = {}
-        self.to_handle = {}
-    
-        #enable legend picking by setting the picker method
-        for handel, origart in zip(self.legend.legendHandles, plots): #get_lines()
-            self.to_orig[handel.markers] = NamedErrorbarContainer(origart)
-            self.to_leg[handel.markers] = handel
-            self.to_handle[origart[0]] = handel
+        if self.legend: #if no labels --> no legend, and we are done!
+            #create mapping between the picked legend artists (markers), and the 
+            #original (axes) artists
+            self.to_orig = {}
+            self.to_leg = {}
+            self.to_handle = {}
+        
+            #enable legend picking by setting the picker method
+            for handel, origart in zip(self.legend.legendHandles, plots): #get_lines()
+                self.to_orig[handel.markers] = NamedErrorbarContainer(origart)
+                self.to_leg[handel.markers] = handel
+                self.to_handle[origart[0]] = handel
+         
          
     #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     @mpl_connect('pick_event')
@@ -275,10 +288,10 @@ class DynamicLegend(ConnectionMixin):
             art.set_visible(vis)
         
         for art in get_part(self.to_leg, event):
-            art.set_alpha( 1.0 if vis else 0.2 )
+            art.set_alpha(1.0 if vis else 0.2)
         
         #FIXME UnboundLocalError: local variable 'vis' referenced before assignment
-        
+        #TODO: BLIT
         self.canvas.draw()
 
 
@@ -354,11 +367,12 @@ class DraggableErrorbarContainer(NamedErrorbarContainer):
     def __init__(self, container, has_xerr=False, has_yerr=False, **kws):
         ''' '''
         self.offset = kws.pop('offset', 0)
+        self.annotated = kws.pop('annotate', True)
         
         NamedErrorbarContainer.__init__(self, container, has_xerr, has_yerr, **kws)
         
         #by default the container is self-linked
-        self.linked = {self}
+        self.linked = [self]
         
         #Save copy of original transform
         markers = self[0]
@@ -372,7 +386,7 @@ class DraggableErrorbarContainer(NamedErrorbarContainer):
         ax = markers.axes
         self.text_trans = btf(ax.transAxes, ax.transData)
         ytxt = markers.get_ydata().mean()
-        self.annotation = ax.text( 1.005, ytxt, '' )
+        self.annotation = ax.text(1.005, ytxt, '')
                                     #transform=self.text_trans )
         
         #shift to the given offset (default 0)
@@ -391,8 +405,10 @@ class DraggableErrorbarContainer(NamedErrorbarContainer):
     def set_visible(self, vis):
         for art in self.get_children():
             art.set_visible(vis)
-            
-        self.annotation.set_visible(vis)
+        
+        #NOTE: can avoid this if statement by subclassing...
+        if self.annotated:
+            self.annotation.set_visible(vis)
     
     #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     def haunt(self):
@@ -402,14 +418,18 @@ class DraggableErrorbarContainer(NamedErrorbarContainer):
         container = ErrorbarContainer(ghost_artists, 
                                       self.has_xerr, self.has_yerr,
                                       label = self._label)
-        self.ghost = DraggableErrorbarContainer(container, offset=self.offset)
+        self.ghost = DraggableErrorbarContainer(container, offset=self.offset,
+                                                annotate=self.annotated)
         
         ax = self[0].axes
-        self.ghost.annotation.set_alpha( 0.2 )
         for g in self.ghost.get_children():
-            g.set_alpha( 0.2 )
-            g.set_visible( 0 )
+            g.set_alpha(0.2)
+            g.set_visible(False)
             ax.add_artist(g)
+        
+        #NOTE: can avoid this if statement by subclassing...
+        if self.annotated:
+            self.ghost.annotation.set_alpha(0.2)
         
         #.add_container( self.ghost )
     
@@ -421,9 +441,11 @@ class DraggableErrorbarContainer(NamedErrorbarContainer):
         trans = offset_trans + self._original_transform
         self.set_transform(trans)
         
-        txt = self.annotation
-        txt.set_transform(offset_trans + self.text_trans)
-        txt.set_text( self.annotation_format % offset )
+        #NOTE: can avoid this if statement by subclassing...
+        if self.annotated:
+            txt = self.annotation
+            txt.set_transform(offset_trans + self.text_trans)
+            txt.set_text(self.annotation_format % offset)
         
     #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     def draw(self, renderer, *args, **kwargs):
@@ -431,29 +453,42 @@ class DraggableErrorbarContainer(NamedErrorbarContainer):
         for art in self.get_children():
             art.draw(renderer)
         
-        self.annotation.draw(renderer)
+        #NOTE: can avoid this if statement by subclassing...
+        if self.annotated:
+            self.annotation.draw(renderer)
     
+
 #****************************************************************************************************
-class DraggableErrorbar(ConnectionMixin):  #TODO: rename! DraggableMachinery()???
+class DraggableErrorbar(ConnectionMixin):  
+    #TODO:      rename! DraggableMachinery()???
     #TODO:      Use offsetbox????
     #TODO:      BLITTING !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
     #TODO:      one-way links??
+    #FIXME:     links -- display offset text??
+    #FIXME:     right click shifts - not desired!
+    #FIXME:     ghosts for links not plotting ???
     '''
     Class which takes ErrorbarCollection objects and makes them draggable on the figure canvas.
     '''
     
     #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-    def __init__(self, plots, offsets=None, linked=[], **legendkw):
+    def __init__(self, plots, offsets=None, linked=[], 
+                 auto_legend=True, **legendkw):
         #TODO: update docstring
+        #(optionally nested) Line2D objects or ErrorbarContainers
         '''
         Parameters
         ----------
         plots : list of plot objects
-            List of (optionally nested) Line2D objects or ErrorbarContainers
+            List of ErrorbarContainers
         offsets : sequence of floats
             Initial offsets to use for Line2D objects
-        autolabel : boolean
-            Whether labels should be generated for the plot objects if plot objects are unlabeled
+        linked : sequence of linked artists (or sequence of sequences of linked artists)
+            all artists in the linked sequence will move together with all the 
+            others in the sequence when one of them is dragged.  The offset text
+            will only be displayed for the first artist in the sequence.
+        auto_legend : boolean
+            whether to create a legend or not
         
         Keywords
         --------
@@ -463,7 +498,8 @@ class DraggableErrorbar(ConnectionMixin):  #TODO: rename! DraggableMachinery()??
         self.selection          = None
         self.select_point       = None
         
-        offsets                 = offsets       or      np.zeros(len(plots))
+        if offsets is None:
+            offsets = np.zeros(len(plots))
         #self.offsets            = {}                    #map pickable artist to offset value for that artist
         self.tmp_offset         = 0                     #in case of pick without motion
         
@@ -477,40 +513,62 @@ class DraggableErrorbar(ConnectionMixin):  #TODO: rename! DraggableMachinery()??
         #initialize auto-connect
         ConnectionMixin.__init__(self, ax.figure)
         
+        #esure linked argument is a nested list
+        if len(linked) and isinstance(linked[0], ErrorbarContainer): #HACK
+            linked = [linked]   #np.atleast_2d does not work because it unpacks the ErrorbarContainer
+        else:
+            linked = list(linked)
+            
+        _friends = [f for _, *friends in linked for f in friends]
+        
         #build the draggable objects
         for plot, offset in zip(plots, offsets):
             #if isinstance(plot, ErrorbarContainer):    #NOTE: will need to check this when generalizing
-            markers, _, _  = draggable = DraggableErrorbarContainer(plot, 
-                                                                    offset=offset )
-            self.draggables[markers] = draggable   #maps Line2D to DraggableErrorbarContainer. The picker returns the markers
+            annotate = not plot in _friends             #only annotate the "first" linked artist
+            draggable = DraggableErrorbarContainer(plot, 
+                                                   offset=offset,
+                                                   annotate=annotate)
+            markers, _, _  = draggable
+            
+            #map Line2D to DraggableErrorbarContainer. The picker returns the markers.
+            self.draggables[markers] = draggable
+            
+            #create ghost artists
             draggable.haunt()
-        
+
         self.lines = list(self.draggables.keys())
         
         #establish links
-        if len(linked) and isinstance(linked[0], ErrorbarContainer):
-            linked = [linked]   #np.atleast_2d does not work because it unpacks the ErrorbarContainer
-        
         for links in linked:
-            linked = {self.draggables[m] for m, _, _ in links}   #set of linked DraggableErrorbarContainers
-            for drag in linked:
-                drag.linked = linked
-
+            link_set = [self.draggables[m] for m, _, _ in links]   #set of linked DraggableErrorbarContainers
+            for i, draggable in enumerate(link_set):
+                draggable.linked = link_set     #each linked artist carries a copy of all those artists linked to it
+                
+                    
         #enable legend picking
-        self.legend = DynamicLegend(ax, plots, legendkw)
-        self.legend.connect()
+        self.legend = None
+        if legendkw or auto_legend:
+            self.legend = DynamicLegend(ax, plots, legendkw)
+            self.legend.connect()
         
     #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     def reset(self):
         '''reset the plot positions to zero offset'''
+        #print('resetting!')
         for draggable in self.draggables.values():
             draggable.shift(0)  #NOTE: should this be the original offsets??
         
         self.canvas.draw()
+        
+        #print( repr(self.selection ))
+        #print()
     
     #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     @mpl_connect('button_press_event')
     def on_click(self, event):
+        
+        #print( 'on_click', repr(self.selection ))
+        
         '''reset plot on middle mouse'''
         if event.button == 2:
             self.reset()
@@ -521,6 +579,8 @@ class DraggableErrorbar(ConnectionMixin):  #TODO: rename! DraggableMachinery()??
     @mpl_connect('pick_event')
     def on_pick(self, event): 
         '''Pick event handler.  On '''
+        
+        #print('picked', repr(self.selection))
         
         if event.artist in self.draggables:
             ax = self.ax
@@ -541,6 +601,7 @@ class DraggableErrorbar(ConnectionMixin):  #TODO: rename! DraggableMachinery()??
                 for l, g in zip(link.get_children(), 
                                 link.ghost.get_children()):
                     g.set_visible(l.get_visible())
+                    #print( 'visible!', g, g.get_visible() )
     
     #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     def on_motion(self, event):
@@ -554,19 +615,25 @@ class DraggableErrorbar(ConnectionMixin):  #TODO: rename! DraggableMachinery()??
             self.canvas.restore_region(self.background)
             
             draggable = self.draggables[self.selection]
-            for linked in draggable.linked:
-                linked.ghost.shift(tmp_offset)
+            #print('...')
+            for link in draggable.linked:
+                link.ghost.shift(tmp_offset)
                 
-                linked.ghost.draw(self.canvas.renderer)
+                #print( [(ch.get_visible(), ch.get_alpha()) for ch in link.ghost.get_children()] )
                 
+                link.ghost.draw(self.canvas.renderer)
+            #print('...')
+            
             self.canvas.blit(self.figure.bbox)  #self.ax.bbox??
             
     #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     @mpl_connect('button_release_event')
     def on_release(self, event):
-        #print( 'release' )
-        if event.button != 1:
-            return
+        
+        #print( 'release top', repr(self.selection ))
+        
+        #if event.button != 1:
+            #return
         
         if self.selection:
             #Remove dragging method for selected artist
@@ -582,7 +649,19 @@ class DraggableErrorbar(ConnectionMixin):  #TODO: rename! DraggableMachinery()??
             self.canvas.draw()
             
         self.selection = None
-    
+        #print( 'release', repr(self.selection ))
+        #print()
+
+    #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    def set_annotation(self, TF):
+        '''enable / disable offset text annotation'''
+        for art in self.draggables.values():
+            art.annotation.set_visible(TF)
+            art.annotated = TF
+            
+            art.ghost.annotation.set_visible(TF)
+            art.ghost.annotated = TF
+            
 
 #######################################################################################################################
 #Alias
