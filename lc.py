@@ -1,22 +1,12 @@
 import itertools as itt
-from collections import defaultdict
-
-#from myio import ProcessCommunicator
-from recipes.iter import interleave#, flatiter
-#from myio import warn
 
 import numpy as np
-#import pyfits
-#from scipy.optimize import leastsq
-
+from matplotlib import rcParams
 import matplotlib.pyplot as plt
-from mpl_toolkits.axes_grid1 import make_axes_locatable 
-#from imagine import supershow
-from matplotlib.patches import Rectangle
-from draggables import DraggableErrorbar
-from matplotlib.transforms import blended_transform_factory as btf
+import colormaps as cmaps
+plt.register_cmap(name='viridis', cmap=cmaps.viridis)
 
-from .dualaxes import DateTimeDualAxes
+from recipes.array import grid_like
 
 from IPython import embed
             
@@ -29,9 +19,10 @@ def get_axlim(x, whitefrac, e=0):
     if ~np.any(e):
         e = 0
     
-    xl, xu = (x-e).min(), (x+e).max()
+    xl, xu = np.nanmin(x-e), np.nanmax(x+e)
     xd = xu - xl
-    return xl-whitefrac*xd, xu+whitefrac*xd
+    wxd = whitefrac * xd
+    return xl - wxd, xu + wxd
 
 #====================================================================================================
 def hist( x, **kws ):
@@ -82,7 +73,9 @@ def hist( x, **kws ):
 
     #Extra stats
     if 'mode' in show_stats:
+        from matplotlib.transforms import blended_transform_factory as btf
         from scipy.stats import mode
+        
         xmode, count = mode( x )
         ax.axvline(xmode, color='r', alpha=alpha, ls='--', lw=2 )
         trans = btf( ax.transData, ax.transAxes )
@@ -91,28 +84,29 @@ def hist( x, **kws ):
     
     return h, ax
     
-#====================================================================================================
-from matplotlib import rcParams
-from cycler import cycler
+#****************************************************************************************************
 class LCplot(object):
     #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     #TODO: Keyword translation!
-    allowed_kws = ('labels', 'axlabels', 'title', 'relative_time', 'colours', 
+    allowed_kws = ('labels', 'axlabels', 'title', 'relative_time', 'colours', 'colormap',
                    'show_errors',     'errorbar', 'show_masked', 'spans', 
                    'hist', 'show_hist', 'draggable', 'ax', 'whitefrac', 'twinx',
-                   'timescale', 'start')
+                   'timescale', 'start', 'offsets', 'legend_kw', 'auto_legend')
+    
     #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     whitefrac = 0.025
-    _default_spans =    dict( label='filtered', 
-                                alpha=0.2, 
-                                color='r' )
-    _default_hist =     dict( bins=100,
-                                alpha=0.75, 
-                                color='b',
-                                orientation='horizontal' )
-    _default_errorbar = dict( fmt='o', 
-                                ms=2.5,
-                                capsize=0 )
+    _default_spans =    dict(label='filtered', 
+                             alpha=0.2, 
+                             color='r' )
+    _default_hist =     dict(bins=50,
+                             alpha=0.75, 
+                             #color='b',
+                             orientation='horizontal' )
+    _default_errorbar = dict(fmt='o', 
+                             ms=2.5,
+                             mec='none',
+                             capsize=0,
+                             elinewidth=0.5)
     #nested dict of default plot settings
     _defaults = { 'spans'       : _default_spans,
                   'hist'        : _default_hist,
@@ -151,7 +145,6 @@ class LCplot(object):
                                'Only the following keywords are recognised: {}'
                                ''.format(kw, self.allowed_kws))
         
-        
         #Set parameter defaults
         #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
         labels                  =       kws.pop( 'labels',               [] )
@@ -159,9 +152,10 @@ class LCplot(object):
         title                   =       kws.pop( 'title',                '' )
         self.relative_time      =       kws.pop( 'relative_time',        False )
         
-        colours                 =       kws.get( 'colours',              [] ) #colour cycle
+        colours                 =       kws.get( 'colours',             [] ) #colour cycle
+        cmap                    =       kws.get( 'colormap',            None )
         
-        show_errors             =       kws.pop( 'show_errors',  'bar' ) #{'bar','contour'}
+        show_errors             =       kws.pop( 'show_errors',  'bar' ) #{'bar','contour'} #TODO: sampled
         self.errorbar_props     =       kws.pop( 'errorbar',     {} )
         self._set_defaults( self.errorbar_props, self._default_errorbar )
         #self.error_contours     =       kws.pop( 'error_contours',     False )
@@ -185,20 +179,27 @@ class LCplot(object):
         self.twinx              =       kws.pop( 'twinx',           None )
         self.timescale          =       kws.pop( 'timescale',       's' )
         self.start              =       kws.pop( 'start',        None )
+        
+        legend_kw               =       kws.pop( 'legend_kw',        {} )
+        offsets                 =       kws.pop( 'offsets',        None )
         #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
         if isinstance(labels, str):
             labels = [labels]
         
         #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
         Times, Rates, Errors = self.get_data(data)
+        N, _ = Rates.shape
         
         #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
         #Ensure we plot with unique colours
-        if len(colours) < Rates.shape[0]:               #if Rates.shape[0] > len(rcParams['axes.prop_cycle']):
-            cm = plt.get_cmap( 'spectral' )
-            colours =  cm( np.linspace(0, 1, Rates.shape[0]) )
-        #else:
-            #colours = colours[:Rates.shape[0]]
+        
+        if ((not cmap is None) #colour map given - superceeds colours kw
+        or ((not len(colours)) and len(rcParams['axes.prop_cycle']) < N)):
+            cm =  plt.get_cmap(kws.get('colormap', 'spectral'))
+            colours =  cm(np.linspace(0, 1, N))
+        
+        elif len(colours) < N:
+            'Explicit colour sequence less than number of time series. Colours will repeat'
         
         #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
         #Do the plotting
@@ -206,57 +207,72 @@ class LCplot(object):
         
         plots, masked_plots  = [], []
         _linked = []
-        _labels = []
-        for t, rate, err, label in itt.zip_longest(Times, Rates, Errors, labels):  #zip_longest in case no Errors are given
-            #print( 'plotting' )
-            err = err if show_errors else None
-            if not np.size(err):
+        
+        #NOTE: masked array behaves badly in mpl<1.5. see: https://github.com/matplotlib/matplotlib/issues/5016/
+        #Rates = Rates.filled(np.nan)
+        
+        for i, (t, rate, err, label) in enumerate(itt.zip_longest(Times, Rates, Errors, labels)):  #zip_longest in case no Errors are given
+            
+            #catch in case for some reason the user provides a sequence of empty error sequences
+            if not (show_errors and np.size(err)):
                 err = None              #ax.errorbar borks for empty error sequences
                         
             if (not err is None) & (show_errors == 'contour'):
+                #TODO: separate method here
                 from tsa.tsa import smooth
                 c, = ax.plot(t, smooth(rate + 3*err))
                 colour = self.errorbar_props['color'] = c.get_color()   #preserve colour cycle
                 ax.plot(t, smooth(rate - 3*err), colour)
                 err = None
-                
-            pl = ax.errorbar(t, rate, err, label=label, **self.errorbar_props)
-            plots.append(pl)
-            _labels.append(label)       #FIXME: this is messy!!
             
+            #embed()
+            pl = ax.errorbar(t, rate, err, 
+                             label=label,
+                             **self.errorbar_props)
+            plots.append(pl)
             
             #Histogram
             if self.show_hist:
                 self.plot_histogram( rate, **self.hist_props )
 
             #Get / Plot GTIs
+            if show_masked:
+                valid = self._vall[i]
+                unmasked = rate.copy()[:valid]
+                tum = t[:valid]
+                
             if show_masked == 'span':
-                self.plot_masked_intervals(ax, t, rate.mask)
+                self.plot_masked_intervals(ax, tum, unmasked.mask)
             
             elif show_masked == 'x':
-                unmasked = rate.copy()
                 #print( np.where(unmasked.mask) )
                 unmasked.mask = ~unmasked.mask
                 
-                mp = ax.errorbar(t, unmasked, color=pl[0].get_color(),
-                                    marker='x', ls='None',
-                                    label='_nolegend_')
+                #NOTE: using errorbar here so we can easily convert to DraggableErrorbarContainers
+                #Can fix this once DraggableLines are supported
+                mp = ax.errorbar(tum, unmasked, color=pl[0].get_color(),
+                                marker='x', ls='None',
+                                label='_nolegend_')
                 masked_plots.append(mp)
                 plots.append(mp)
                 _linked.append((pl, mp))
-                #_labels.append('_nolegend_') #FIXME: this is messy!!
         
         #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
         self._set_labels( ax, title, axlabels )
-        self._set_axes_limits( ax, Times, Rates, Errors, whitefrac )
+        self._set_axes_limits(ax, Times, Rates, Errors, whitefrac, offsets)
         #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
         #Setup plots for canvas interaction
-        if draggable:
-            #make space for offset text
-            plots = DraggableErrorbar(plots, linked=_linked,
-                                      **self._default_legend) #FIXME: legend with linked!
+        if draggable and not self.show_hist:
+            #make the artists draggable
+            from draggables import DraggableErrorbar
+            
+            lkw = self._default_legend.copy()
+            lkw.update(legend_kw)
+            plots = DraggableErrorbar(plots, offsets=offsets, linked=_linked,
+                                      **lkw) 
+            #TODO: legend with linked plots!
         else:
-            self._make_legend( ax, plots, _labels )
+            self._make_legend( ax, plots, labels )
             
         if hist: 
             return fig, plots, Times, Rates, Errors, self.Hist
@@ -266,43 +282,142 @@ class LCplot(object):
     #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     #@staticmethod TODO:  handle data of different lenghts!!!!!
     def get_data(self, data):
+        '''parse data arguments'''
         
+        #rates only
         if len(data)==1:
-            Rates = np.ma.asarray( data[0] )            #Assume each row gives rates for TS
-            Times = np.arange( Rates.shape[-1] )        #No time given, plot by array index
-            Errors = []                                 #No errors given
+            Rates = np.ma.asarray(data[0])      #Assume each row gives rates for TS
+            Times = []                          #No time given, plot by array index #NOTE: Rates here may be non-uniform, so we will set times when we blockify
+            Errors = []                         #No errors given
         
-        if len(data)==2:                                #No errors given
+        #times & rates given
+        elif len(data)==2:                        #No errors given
             Times, Rates = data
             Errors = []
         
-        if len(data)==3:
+        #times, rates, errors given
+        elif len(data)==3:
             Times, Rates, Errors = data
         
+        else:
+            raise ValueError('Invalid number of arguments: {}'.format(len(data)))
+        
+        #Convert to masked and remove unwanted dimensionality
         Rates = np.ma.asarray(Rates).squeeze()
         Times = np.ma.asarray(Times).squeeze()
         
-            #print( Rates, Times )
-            #print( Rates.shape, Times.shape )
-            #print( Rates.size, Times.size )
+        #at this point the data might be a masked_array of arrays (of non-uniform length)
+        #support for non-uniform data length
         
-        if Times.ndim < Rates.ndim:
-            #Assume same times for each sequence of rates
-            tmp = np.empty_like( Rates )
-            #embed()
-            tmp[:] = Times                      #tiles the Times
-            Times = tmp
+        Times, Rates, Errors  = self.blockify(Times, Rates, Errors)
         
-        Rates = np.ma.atleast_2d( Rates )
-        Rates = np.ma.masked_where( np.isnan(Rates), Rates )
-        Times = np.atleast_2d( Times )
-        Errors = np.atleast_2d( Errors )
+        #print( Rates, Times )
+        #print( Rates.shape, Times.shape )
+        #print( Rates.size, Times.size )
         
-        self.t0 = np.floor( Times[:,0].min() )      if self.relative_time   else 0.
-        if self.t0:
+        self.t0 = 0.
+        #NOTE: relative time is ambiguous when multiple time sequences are given
+        #we will plot relatively to the minimum of all times
+        if self.relative_time:
+            self.t0 = np.floor(Times[:,0].min())
             Times -= self.t0
+            
+        return Times, Rates, Errors
+    
+    #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    def blockify(self, Times, Rates, Errors):
+        '''support for non-uniform data length'''
+        
+        uniform, L = self.is_uniform(Rates)
+        self._vall = L
+        
+        if not uniform:
+            #deal with non-uniform data
+            Rates = self._blockify(Rates, L)            #TODO: IS THIS REALLY NECESSARY??
+        
+        #at this point Rates is uniform
+        #Times might be non-uniform nD or uniform 1D.  Will blockify below
+        if np.size(Times):
+            #case for time nD, rates nD (n in (1,2))
+            #NOTE: times might be 1D containing non-uniform arrays
+            uniform, tL = self.is_uniform(Times)
+            assert np.equal(tL, L).all()
+            
+            if not uniform:
+                Times = self._blockify(Times, L)        #TODO: IS THIS REALLY NECESSARY??
+            
+            elif Times.ndim == 1:       #case uniform 1D time array 
+                #Assume same times for each sequence of rates
+                Times = self.chronify(Rates, Times)
+        else:
+            #case for time 0D, rates nD uniform
+            Times = self.chronify(Rates) #no time array given. use index grid as "time"
+        
+        #do the same for the errors
+        if np.size(Errors):
+            uniform, eL = self.is_uniform(Errors)
+            assert np.equal(eL, L).all()
+            #embed()
+            if not uniform:
+                Errors = self._blockify(Errors, L)      #TODO: IS THIS REALLY NECESSARY??
+            
+            assert Errors.ndim == Rates.ndim
+        
+        #ensure 2D
+        Rates = np.ma.atleast_2d(Rates)
+        Times = np.atleast_2d(Times)
+        Errors = np.atleast_2d(Errors)
+        
+        #if Rates.shape != Times.shape:
+        #embed()
+        
+        #mask nans
+        #TODO:
+        #Rates = np.ma.masked_where(np.isnan(Rates), Rates)
         
         return Times, Rates, Errors
+    
+    #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    @staticmethod
+    def is_uniform(data):
+        '''Determine if data are of uniform length'''
+        try:
+            L = list(map(len, data))
+        except TypeError:
+            #data is legitimately 1D
+            L = len(data)
+            return True, L
+        else:
+            uni = np.allclose(L, L[0])
+            return uni, L
+        
+    #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    @staticmethod
+    def chronify(Rates, Times=None):
+        '''impute time data'''
+        if Times is None:
+            return grid_like(Rates)[Rates.ndim > 1] #Times = #NOTE: may be 1D
+            #return Times
+        else:
+            nTimes = np.empty_like(Rates)
+            nTimes[:] = Times                   #duplicates the Times
+            return nTimes
+        
+    #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    @staticmethod
+    def _blockify(data, L):
+        #data has non-uniform lengths
+        lR = len(data)
+        mxL = max(L)
+        
+        #allocate memory
+        ndata = np.ma.array(np.empty((lR, mxL)), mask=False)
+        for i in range(lR):
+            #mask everything beyond original data size
+            ndata[i, :L[i]] = data[i]
+            ndata.mask[i, L[i]:] = True
+        
+        return ndata
     
     #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     #def _get_ax(self, fig):
@@ -310,10 +425,7 @@ class LCplot(object):
             #ax = SexaTimeDualAxes(fig, 1, 1, 1)
             #ax.setup_ticks()
         #else:
-    
-    #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-    #def 
-    
+ 
     #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     def setup_figure_geometry(self, ax, colours):
         #FIXME:  leave space on the right of figure to display offsets
@@ -323,17 +435,25 @@ class LCplot(object):
         rect = left, bottom, right, top = [0.025, 0.01, 0.97, .98]
         
         if ax is None:
+            
             if self.twinx =='sexa':
-                
+                from .dualaxes import DateTimeDualAxes
                 from astropy import units as u
                 from astropy.coordinates.angles import Angle
                 
-                h,m,s = Angle((self.t0 * u.Unit(self.timescale)).to(u.h)).hms       #start time in (h,m,s)
-                hms = int(h), int(m), int(round(s))                  #datetime hates floats# although the seconds should be integer, (from np.floor for self.t0) the conversion might have some floating point error
-                ymd = tuple(map(int, self.start.split('-')))
-                start = ymd + hms
+                #TODO: support for longer scale time JD, MJD, etc...
                 
-                print( start )
+                #h,m,s = Angle((self.t0 * u.Unit(self.timescale)).to(u.h)).hms       #start time in (h,m,s)
+                #hms = int(h), int(m), int(round(s))                  #datetime hates floats# although the seconds should be integer, (from np.floor for self.t0) the conversion might have some floating point error
+                ##FIXME: self.start might be None
+                ##if self.start is None:
+                    
+                #ymd = tuple(map(int, self.start.split('-')))
+                #start = ymd + hms
+                
+                #print('MOTHERFUCKER!!!!!!!!!!!')
+                #print( start )
+                start= self.start
                 
                 fig = plt.figure(figsize=(18,8))
                 ax = DateTimeDualAxes(fig, 1, 1, 1, 
@@ -345,22 +465,30 @@ class LCplot(object):
             else:
                 fig, ax  = plt.subplots(figsize=(18,8))
             
-            #fig, ax = plt.subplots( figsize=(18,8) )
-            #ax.set_prop_cycle( cycler('color', colours) )      #mpl >1.4 only
-            ax.set_color_cycle( colours )
-            
-            #Add subplot for histogram
-            if self.show_hist:
-                divider = make_axes_locatable(ax)
-                self.hax = divider.append_axes('right', size='25%', pad=0.3, sharey=ax)
-                self.hax.grid()
-                #self.hax.set_prop_cycle( cycler('color', colours) )    #mpl >1.4 only
-                ax.set_color_cycle( colours )
-            else:
-                self.hax = None         #TODO: can be at init OR NullObject
         else:
             fig = ax.figure
+            #ax.set_color_cycle( colours )
+            
+        #Add subplot for histogram
+        if self.show_hist:
+            from mpl_toolkits.axes_grid1 import make_axes_locatable 
+            divider = make_axes_locatable(ax)
+            self.hax = divider.append_axes('right', size='25%', pad=0.3, sharey=ax)
+            self.hax.grid()
+            #ax.set_color_cycle(colours)
+        else:
+            self.hax = None         #TODO: can be at init OR NullObject
         
+        
+        #NOTE: #mpl >1.4 only
+        if len(colours):
+            from cycler import cycler
+            ccyc = cycler('color', colours)
+            ax.set_prop_cycle(ccyc)      
+            if self.show_hist:
+                self.hax.set_prop_cycle(ccyc)
+                
+
         fig.tight_layout( rect=[left, bottom, right, top] )
         ax.grid( b=True, which='both' )
         
@@ -382,13 +510,16 @@ class LCplot(object):
         '''Retrun index tuples of contiguous masked values.'''
         if mask is None:
             mask = a.mask       #NOTE: If a is a masked array, this function will return masked values!!! 
+        
         if ~np.any(mask):
             return ()
-
+        
+        from recipes.iter import interleave
+        
         w, = np.where(mask)
         l1 = w - np.roll(w,1) > 1
         l2 = np.roll(w,-1) -w > 1
-        idx = [w[0]] + interleave( w[l2], w[l1] ) + [w[-1]]
+        idx = [w[0]] + interleave(w[l2], w[l1]) + [w[-1]]
         return a[idx].reshape(-1,2)
     
     #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -404,7 +535,9 @@ class LCplot(object):
         
         h = self.hax.hist(r, **props)
         self.Hist.append(h)
-    
+        
+        self.hax.grid(True)
+        
     #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     def _set_labels(self, ax, title, axlabels):
         '''axis title + labels'''
@@ -412,9 +545,11 @@ class LCplot(object):
         if self.twinx:
             title_text.set_position((0.5,1.09))         #make space for the tick labels
             
-        ax.set_xlabel( axlabels[0]      if len(axlabels)     else 't (s)' )     #xlabel =
-        ax.set_ylabel( axlabels[1]      if len(axlabels)==2  else 'Counts/s' )  #ylabel =
-
+        ax.set_xlabel(axlabels[0] if len(axlabels)      else 't (s)' ) 
+        ax.set_ylabel(axlabels[1] if len(axlabels)==2   else 'Counts/s')
+        if len(axlabels)==3 and self.twinx:
+            ax.parasite.set_xlabel(axlabels[2])
+        
         if self.relative_time:
             ax.xoffsetText = ax.text( 1, ax.xaxis.labelpad, 
                                       '[{:+.1f}]'.format(self.t0),
@@ -423,15 +558,20 @@ class LCplot(object):
         
     #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     @staticmethod
-    def _set_axes_limits(ax, X, Y, E, whitefrac):
+    def _set_axes_limits(ax, X, Y, E, whitefrac, offsets):
         '''Axes limits'''
         
         if np.ma.is_masked(Y):          #unmask
             X = X[~Y.mask]
         
         xfrac, yfrac = whitefrac
-        ax.set_xlim( *get_axlim(X, xfrac) )
-        ax.set_ylim( *get_axlim(Y, yfrac, E) )
+        xlims = get_axlim(X, xfrac)
+        ylims = get_axlim(Y, yfrac, E)
+        if not offsets is None:
+            ylims = np.add(ylims, (min(offsets), max(offsets)))
+        
+        ax.set_xlim( *xlims )
+        ax.set_ylim( *ylims )
          
     #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     def _make_legend(self, ax, plots, labels):
@@ -441,6 +581,7 @@ class LCplot(object):
         
         if len(labels):
             if self.mask_shown:
+                from matplotlib.patches import Rectangle
                 span_label = self.span_props.pop( 'label' )
                 r = Rectangle( (0, 0), 1, 1, **self.span_props )   #span proxy artist for legend
                 
@@ -454,10 +595,82 @@ class LCplot(object):
             #print( plots, labels )
             
             ax.legend( plots, labels,  **self._default_legend)
-            
-            
+
+#****************************************************************************************************
 
     
+#====================================================================================================
+ 
+ 
 #====================================================================================================            
+#initialise
 lcplot = LCplot()
 #====================================================================================================
+
+if __name__ == '__main__':
+    '''tests'''
+    from decor.profile import profile
+    profiler = profile()
+    @profiler.histogram
+    def tests(**kws):
+        #generate some data
+        N = 250
+        np.random.seed(666)
+        t = np.linspace(0, 2*np.pi, N)
+        y = [np.sin(3*t),
+            #np.cos(10*t),
+            np.cos(10*np.sqrt(t))]
+        e = np.random.randn(len(y), N)
+        m = np.random.rand(len(y), N) > 0.8
+        
+        ##try:
+        #case 1:    bare minimum
+        fig, plots, *stuff = lcplot(y[0], **kws )
+        
+        #case 1:    multiple series, no time
+        fig, plots, *stuff = lcplot(y, **kws)
+        
+        #case 1:    multiple series, single time
+        fig, plots, *stuff = lcplot(t, y, **kws)
+        
+        #case 2:    full args
+        t2 = np.power(t, np.c_[1:len(y)+1])  #power stretch time
+        fig, plots, *stuff = lcplot(t2, y, e, **kws)
+        
+        #case 3: masked data
+        ym = np.ma.array(y, mask=m)
+        fig, plots, *stuff = lcplot(t, ym, e,
+                                    show_masked='x', 
+                                    **kws)
+        
+        #case 4: masked data
+        #mask = [(np.pi/4*(1+i) < t)&(t > np.pi/8*(1+i)) for i in range(len(y))]
+        #ym = np.ma.array(y, mask=mask)
+        #fig, plots, *stuff = lcplot(t, ym, e, 
+                                    #show_masked='span')
+        #FIXME:
+        #File "/home/hannes/.local/lib/python3.4/site-packages/draggables/errorbars.py", line 257, in __init__
+        #self.to_orig[handel.markers] = NamedErrorbarContainer(origart)
+        #AttributeError: 'Rectangle' object has no attribute 'markers'
+        
+        #case 4: non-uniform data
+        y2 = [_[:np.random.randint(int(0.7*N), N)] for _ in y]
+        #fig, plots, *stuff = lcplot(y2)
+        
+        t2 = [t[:len(_)] for _ in y2]
+        fig, plots, *stuff = lcplot(t2, y2, **kws)
+        
+        e2 = [np.random.randn(len(_)) for _ in y2]
+        fig, plots, *stuff = lcplot(t2, y2, e2, **kws)
+                
+            #case: non-uniform masked data
+        #except Exception as err:
+            ##plt.show()
+            #raise err
+        
+        #TODO: more tests
+        
+    #tests()
+    #everything with histogram #NOTE: significantly slower
+    tests(show_hist=True)
+    plt.show()

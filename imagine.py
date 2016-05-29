@@ -2,15 +2,23 @@ import numpy as np
 
 import matplotlib
 matplotlib.use('qt4agg')
+import matplotlib.pylab as plt
 from matplotlib.widgets import AxesWidget, Slider
 from matplotlib.patches import FancyArrow, Circle
 from matplotlib.transforms import Affine2D
 from matplotlib.transforms import blended_transform_factory as btf
 
+from mpl_toolkits.mplot3d import Axes3D
+from mpl_toolkits.mplot3d.art3d import Line3DCollection
+from mpl_toolkits.axes_grid1 import AxesGrid
+
+
+from .interactive import ConnectionMixin
+
 #from recipes.iter import grouper
 
-from PyQt4.QtCore import pyqtRemoveInputHook, pyqtRestoreInputHook
-from IPython import embed
+#from PyQt4.QtCore import pyqtRemoveInputHook, pyqtRestoreInputHook
+#from IPython import embed
 #pyqtRemoveInputHook()
 #embed()
 #pyqtRestoreInputHook()
@@ -37,7 +45,8 @@ def picker(artist, event):
     return hit, {}
 
 #****************************************************************************************************
-class AxesSliders(AxesWidget):
+class AxesSliders(AxesWidget, ConnectionMixin):
+    #TODO: ConnectionManager???
     #TODO:  USE DraggableLine to achieve what this class is doing????!!!!!!!!!
     #TODO:  DISPLAY ARROWS SIZES CORRECTLY -- INDEPENDENT OF AXES SCALing (LOG etc)!
     #TODO:  OPTION FOR LOGARITHMIC SLIDER AXIS
@@ -199,6 +208,7 @@ class AxesSliders(AxesWidget):
         
     #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     def set_val(self, val):
+        #print('AxesSliders.set_val')
         #FIXME!
         '''set value of active slider '''
         #self.selection.set_val(self.data2ax(val))       #convert to axis_coordinates
@@ -209,6 +219,7 @@ class AxesSliders(AxesWidget):
         #self.valtext.set_text(self.valfmt % val)
         
         if self.drawon:
+            print('DRAW!')
             self.ax.figure.canvas.draw()
         
         self.positions[self.which_active] = val
@@ -342,11 +353,10 @@ class ColourSliders(AxesSliders):
         self.ax.figure.canvas.draw()
         self.drawon = _drawon
             
-            
-    
-    
 
-            
+   
+   
+    
 #TODO checkout APLPY?????????
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 #****************************************************************************************************
@@ -359,6 +369,9 @@ class ImageDisplay(object):
     def __init__(self, ax, data, *args, **kwargs):
         ''' '''
         #self.sscale = kwargs.pop('sscale', 'linear')
+        title = kwargs.pop('title', None)
+        doh = kwargs.pop('hist', False)
+        
         self.data = data = np.atleast_2d(data)
         self.ax = ax
         self.ax.format_coord = self.cooDisplayFormatter
@@ -367,9 +380,8 @@ class ImageDisplay(object):
         kwargs = self.update_autoscale_limits(data, **kwargs)
         
         #set the axes title if given
-        title = kwargs.pop('title', None )
         if not title is None:
-            ax.set_title( title )
+            ax.set_title(title)
         
         #use imshow to do the plotting
         self.imgplt = ax.imshow(data, *args, **kwargs)
@@ -378,6 +390,9 @@ class ImageDisplay(object):
         self.divider = make_axes_locatable(ax)
         self.Createcolorbar()
         self.CreateSliders()
+        
+        if doh:
+            self.CreateHistogram()
     
     #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     def update_autoscale_limits(self, data, **kwargs):
@@ -458,22 +473,53 @@ class ImageDisplay(object):
         self.sliders = self.SliderClass(sax, *self.imgplt.get_clim(), slide_on='y' )
         self.sliders.drawon = False
         self.sliders.on_changed(self.set_clim)
-   
+    
+    
+    #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    def CreateHistogram(self):
+        #FIXME
+        '''histogram data on slider axis'''
+        from matplotlib.collections import PatchCollection
+        
+        ax = self.sliders.ax
+        bins, vals, patches = ax.hist(self.data.ravel(), 
+                                      bins=100, 
+                                      orientation='horizontal',
+                                      normed=True)
+        PatchCollection(patches)
+        #bins, vals, patches = np.hist(self.data.ravel(), bins=100, orientation='horizontal')
+        #ax.set_xscale('log')
+
+        cmap = self.imgplt.get_cmap()
+        clims = self.imgplt.get_clim()
+        vm = np.ma.masked_outside(vals, *clims)
+        colours = cmap((vm - vm.min())/vm.max())
+        colours[vm.mask, :3] = 0.25
+        colours[vm.mask, -1] = 1
+
+        for i, (p, c) in enumerate(zip(patches, colours)):
+            p.set_fc(c)
+            p.set_x(0.5)
+    
     #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     def set_clim(self, clims):
         self.imgplt.set_clim(clims)
         #self.draw_blit()
         #self.background = ax.figure.canvas.copy_from_bbox(ax.bbox)
-        self.imgplt.figure.canvas.draw()        #TODO: BLIT!!!!!
+        #self.imgplt.figure.canvas.draw()        #TODO: BLIT!!!!!
+        #print('FOO!')
+        
+        #TODO: figure out how to blit properly in an interactive session
     
     #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     def draw_blit(self):
+        print('blitt!!')
         #FIXME!
         fig = self.ax.figure
         fig.canvas.restore_region(self.background)
         
         self.ax.draw_artist(self.imgplt)
-        self.ax.draw_artist(self.sliders.selection)
+        self.ax.draw_artist(self.sliders.selection) #FIXME: does this redraw all 3 sliders when i'ts the center knob?
         
         fig.canvas.blit(self.ax.bbox)
         #fig.canvas.blit(self.sax.bbox)
@@ -489,11 +535,13 @@ class ImageDisplay(object):
         else:
             return 'x=%1.3f, y=%1.3f'%(x, y)
 
+    #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    def connect(self):
+        self.sliders.connect()
+    
     
 #****************************************************************************************************
 class CubeDisplayBase(ImageDisplay):
-    #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-    aperture_properties = dict(radii=10, ec='m', lw=2)
     #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     def __init__(self, ax, data, coords=None, **kwargs):
         '''
@@ -524,16 +572,6 @@ class CubeDisplayBase(ImageDisplay):
         self.fsax = self.divider.append_axes('bottom', size=0.2, pad=0.25)
         self.frame_slider = Slider(self.fsax, 'frame', 0, len(self), valfmt='%d')
         self.frame_slider.on_changed(self.set_frame)
-        
-        #create apertures if coordinates provided
-        self.aps = None
-        self.coords = coords
-        self.has_coords = not coords is None
-        if self.has_coords:
-            from ApertureCollections import ApertureCollection
-            #add apertures to axes.  will not display yet as coordinates not set
-            self.aps = ApertureCollection( **self.aperture_properties )
-            self.aps.axadd(ax)
             
         #save background for blitting
         fig = ax.figure
@@ -543,19 +581,59 @@ class CubeDisplayBase(ImageDisplay):
         fig.canvas.mpl_connect('scroll_event', self._scroll)
     
     #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    def get_data(i):
+        return self.data[i]
+    
+    #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    def get_frame(self):
+        return self._frame
+
+    #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    def set_frame(self, i):
+        i %= len(self)  #wrap around!
+        self._frame = i
+        
+        data = self.get_data(i)
+        
+        #ImageDisplay.draw_blit??
+        #set the slider axis limits
+        dmin, dmax = data.min(), data.max()
+        self.sliders.ax.set_ylim(dmin, dmax)
+        self.sliders.valmin, self.sliders.valmax = dmin, dmax
+        #needs_drawing.append()???
+        
+        #set the image data
+        self.imgplt.set_data(data)
+        needs_drawing = [self.imgplt]
+        
+        if self.autoscale:
+            #set the slider positiions / color limits
+            vmin, vmax = self.get_autoscale_limits(data, autoscale=self.autoscale)
+            self.imgplt.set_clim(vmin, vmax)
+            self.sliders.set_positions((vmin, vmax))
+            needs_drawing.extend([self.imgplt.colorbar, 
+                                  self.sliders.sliders, 
+                                  self.sliders.centre_knob]) #self.sliders.sliders
+
+        #ImageDisplay.draw_blit??
+        self.draw_blit(needs_drawing)
+
+    frame = property(get_frame, set_frame)
+
+    #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     def _scroll(self, event):
         self.frame += [-1, +1][event.button == 'up']
         self.frame_slider.set_val(self.frame)
     
     #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-    def draw_blit(self, artists):
+    def draw_blit(self, *artists):
         fig = self.ax.figure
         fig.canvas.restore_region(self.background)
         
         for art in artists:
             self.ax.draw_artist(art)
         
-        fig.canvas.blit(fig.bbox) #FIXME: what about colorbar?
+        fig.canvas.blit(fig.bbox)
         
     #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     def cooDisplayFormatter(self, x, y):
@@ -563,8 +641,7 @@ class CubeDisplayBase(ImageDisplay):
         return 'frame %d: %s'%(self.frame, s)
 
 
-
-
+    
 #****************************************************************************************************
 class ImageCubeDisplay(CubeDisplayBase):
     #TODO: frame switch buttons;
@@ -577,18 +654,51 @@ class ImageCubeDisplay(CubeDisplayBase):
     def __len__(self):
         return len(self.data)
     
-    #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-    def get_frame(self):
-        return self._frame
 
+
+#****************************************************************************************************
+class ImageCubeDisplayA(ImageCubeDisplay):
     #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-    def set_frame(self, i):
-        i %= len(self)  #wrap around!
-        self.draw_blit(self.data[i])
+    aperture_properties = dict(radii=10, ec='m', lw=2)
+    #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    def __init__(self, ax, data, coords=None, **kwargs):
+        '''with Apertures'''
+        CubeDisplayBase.__init__(self, ax, data, coords=None, **kwargs)
         
-        self._frame = i
+        #create apertures if coordinates provided
+        self.aps = None
+        self.coords = coords
+        self.has_coords = not coords is None
+        if self.has_coords:
+            from ApertureCollections import ApertureCollection
+            #add apertures to axes.  will not display yet as coordinates not set
+            self.aps = ApertureCollection( **self.aperture_properties )
+            self.aps.axadd(ax)
+    
+    #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    #def draw_blit(self, artists):
+        #fig = self.ax.figure
+        #fig.canvas.restore_region(self.background)
+        
+        #for art in artists:
+            #self.ax.draw_artist(art)
+        
+        #fig.canvas.blit(fig.bbox)
+        
 
-    frame = property(get_frame, set_frame)
+#****************************************************************************************************
+class ImageCubeDisplayX(ImageCubeDisplay):
+    #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    marker_properties = dict(c='r', marker='x', alpha=.3, ls='none')
+    #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    def __init__(self, ax, data, coords=None, **kwargs):
+        CubeDisplayBase.__init__(self, ax, data, coords=None, **kwargs)
+        
+        if self.has_coords:
+            self.marks = ax.plot([],[], **self.marker_properties)
+            
+
+
 
 
 
@@ -596,6 +706,7 @@ class ImageCubeDisplay(CubeDisplayBase):
 from fastfits import FITSFrame
 from recipes.iter import interleave
 class FITSCubeDisplay(CubeDisplayBase, FITSFrame):
+    #FIXME: switching with slider messes up the aperture indexes
     #TODO: frame switch buttons; 
     #TODO: option to set clim from first frame??
     #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -604,14 +715,18 @@ class FITSCubeDisplay(CubeDisplayBase, FITSFrame):
         #setup data access
         FITSFrame.__init__(self, filename)
         
-        sx = self.shape
+        sx = self.ishape
         extent = interleave((0,)*len(sx), sx)
         CubeDisplayBase.__init__(self, ax, [[0]], 
                                   coords,
                                   origin='llc',
                                   extent=extent,
                                   **kws)
-        
+    
+    #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    def get_data(i):
+        return self[i]
+    
     #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     def get_frame(self):
         return self._frame
@@ -673,6 +788,205 @@ class FITSCubeDisplay(CubeDisplayBase, FITSFrame):
         #self._frame = f
 
     #frame = property(get_frame, set_frame)
+
+
+
+
+
+#****************************************************************************************************
+class Compare3DImage():
+    #TODO: profile & speed up!
+    #TODO: link viewing angles!!!!!!!!!
+    #MODE = 'update'
+    '''Class for plotting image data for comparison'''
+    #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    #@profile()
+    def __init__(self, fig=None, *args, **kws):
+        '''args=X, Y, Z, data'''
+        
+        self.titles = kws.get('titles', ['Data', 'Fit', 'Residual'])
+        self.setup_figure(fig)
+        if len(args):
+            #X, Y, Z, data
+            self.update(*args)
+    
+    #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    #@unhookPyQt
+    def setup_figure(self, fig=None):
+        #TODO: Option for colorbars
+        '''
+        Initialize grid of 2x3 subplots. Top 3 are 3D wireframe, bottom 3 are colour images of 
+        data, fit, residual.
+        '''
+        ##### Plots for current fit #####
+        self.fig = fig = fig or plt.figure( figsize=(16,12),)
+                                            #tight_layout=True )
+        self.plots, self.images = [], []
+        #TODO:  Include info as text in figure??????
+        
+        self.setup_3D_axes(fig)
+        self.setup_image_axes(fig)
+        
+        fig.set_tight_layout(True)
+        #fig.suptitle( 'PSF Fitting' )                   #TODO:  Does not display correctlt with tight layout
+    
+    #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    def setup_3D_axes(self, fig):
+        #Create the plot grid for the 3D plots
+        self.grid_3D = AxesGrid(fig, 211, # similar to subplot(211)
+                                nrows_ncols = (1, 3),
+                                axes_pad = -0.2,
+                                label_mode = None,          #This is necessary to avoid AxesGrid._tick_only throwing
+                                share_all = True,
+                                axes_class=(Axes3D,{}) )
+        
+        for ax, title in zip(self.grid_3D, self.titles):
+            #pl = ax.plot_wireframe( [],[],[] )     #since matplotlib 1.5 can no longer initialize this way
+            pl = Line3DCollection([])
+            ax.add_collection(pl)
+                
+            #set title to display above axes
+            title = ax.set_title( title, {'fontweight':'bold'} )
+            x,y = title.get_position()
+            title.set_position( (x, 1.0) )
+            ax.set_facecolor('None')
+            #ax.patch.set_linewidth( 1 )
+            #ax.patch.set_edgecolor( 'k' )
+            self.plots.append( pl )
+    
+    #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    def setup_image_axes(self, fig):
+        #Create the plot grid for the images
+        self.grid_images = AxesGrid(fig, 212, # similar to subplot(212)
+                                    nrows_ncols = (1, 3),
+                                    axes_pad = 0.1,
+                                    label_mode = "L",           #THIS DOESN'T FUCKING WORK!
+                                    #share_all = True,
+                                    cbar_location="right",
+                                    cbar_mode="each",
+                                    cbar_size="7.5%",
+                                    cbar_pad="0%"  )
+        
+        for i, (ax, cax) in enumerate(zip(self.grid_images, self.grid_images.cbar_axes)):
+            im = ax.imshow( np.zeros((1,1)), origin='lower' )
+            cbar = cax.colorbar(im)
+            #make the colorbar ticks look nice
+            c = 'orangered' # > '0.85'
+            cax.axes.tick_params(axis='y', 
+                                 pad=-7,
+                                 direction='in',
+                                 length=3,
+                                 colors=c,
+                                 labelsize='x-small')
+            #make the colorbar spine invisible
+            cax.spines['left'].set_visible(False)
+            #for w in ('top', 'bottom', 'right'):
+            cax.spines['right'].set_color(c)
+            
+            for t in cax.axes.yaxis.get_ticklabels():
+                t.set_weight('bold')
+                t.set_ha('center')
+                t.set_va('center')
+                t.set_rotation(90)
+                
+            #if i>1:
+                #ax.set_yticklabels( [] )       #FIXME:  This kills all ticklabels
+            self.images.append(im)
+    
+    #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    @staticmethod
+    def make_segments(X, Y, Z):
+        '''Update segments of wireframe plots.'''
+        xlines = np.r_['-1,3,0', X, Y, Z]
+        ylines = xlines.transpose(1,0,2)        #swap x-y axes
+        return list(xlines) + list(ylines)
+
+    #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    def update(self, X, Y, Z, data):
+        '''update plots with new data.'''
+        res = data - Z
+        plots, images = self.plots, self.images
+        
+        plots[0].set_segments( self.make_segments(X,Y,data) )
+        plots[1].set_segments( self.make_segments(X,Y,Z) )
+        plots[2].set_segments( self.make_segments(X,Y,res) )
+        images[0].set_data( data )
+        images[1].set_data( Z )
+        images[2].set_data( res )
+        
+        zlims = [Z.min(), Z.max()]
+        rlims = [res.min(), res.max()]
+        #plims = 0.25, 99.75                             #percentiles
+        #clims = np.percentile( data, plims )            #colour limits for data
+        #rlims = np.percentile( res, plims )             #colour limits for residuals
+        for i, pl in enumerate( plots ):
+            ax = pl.axes
+            ax.set_zlim( zlims if (i+1)%3 else rlims )
+        ax.set_xlim( [X[0,0],X[0,-1]] ) 
+        ax.set_ylim( [Y[0,0],Y[-1,0]] )
+        
+        for i,im in enumerate(images):
+            ax = im.axes
+            im.set_clim( zlims if (i+1)%3 else rlims )
+            #artificially set axes limits --> applies to all since share_all=True in constuctor
+            im.set_extent( [X[0,0], X[0,-1], Y[0,0], Y[-1,0]] )
+            
+        #self.fig.canvas.draw()
+        #TODO: SAVE FIGURES.................
+
+
+
+#****************************************************************************************************        
+class Compare3DContours(Compare3DImage):
+    #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    def setup_image_axes(self, fig):
+        #Create the plot grid for the contour plots
+        self.grid_contours = AxesGrid(fig, 212, # similar to subplot(211)
+                                        nrows_ncols = (1, 3),
+                                        axes_pad = 0.2,
+                                        label_mode = 'L',          #This is necessary to avoid AxesGrid._tick_only throwing
+                                        share_all = True)
+        
+    #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    def update(self, X, Y, Z, data):
+        '''update plots with new data.'''
+        res = data - Z
+        plots, images = self.plots, self.images
+        
+        plots[0].set_segments( self.make_segments(X,Y,data) )
+        plots[1].set_segments( self.make_segments(X,Y,Z) )
+        plots[2].set_segments( self.make_segments(X,Y,res) )
+        #images[0].set_data( data )
+        #images[1].set_data( Z )
+        #images[2].set_data( res )
+        
+        for ax, z in zip(self.grid_contours, (data, Z, res)):
+            cs = ax.contour(X, Y, z)
+            ax.clabel(cs, inline=1, fontsize=7) #manual=manual_locations
+        
+        zlims = [Z.min(), Z.max()]
+        rlims = [res.min(), res.max()]
+        #plims = 0.25, 99.75                             #percentiles
+        #clims = np.percentile( data, plims )            #colour limits for data
+        #rlims = np.percentile( res, plims )             #colour limits for residuals
+        for i, pl in enumerate( plots ):
+            ax = pl.axes
+            ax.set_zlim( zlims if (i+1)%3 else rlims )
+        ax.set_xlim( [X[0,0],X[0,-1]] ) 
+        ax.set_ylim( [Y[0,0],Y[-1,0]] )
+        
+        #for i,im in enumerate(images):
+            #ax = im.axes
+            #im.set_clim( zlims if (i+1)%3 else rlims )
+            ##artificially set axes limits --> applies to all since share_all=True in constuctor
+            #im.set_extent( [X[0,0], X[0,-1], Y[0,0], Y[-1,0]] )
+            
+        #self.fig.canvas.draw()
+
+
+
+
+
 
 #====================================================================================================
 def supershow(ax, data, *args, **kwargs):

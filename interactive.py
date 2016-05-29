@@ -54,40 +54,7 @@ class ConnectionMixin(ConnectionManager):
         #self.lines = flatten(lines)
 
 #*******************************************************************************
-#from recipes.meta import flaggerFactory2
-#ConnectionManager2 = flaggerFactory2(collection='_connections')
 
-#class AutoConnect(ConnectionManager2):
-    #'''Mixin for connecting the decorated methods to the figure canvas'''
-    #def __init__(self, fig):
-        #''' '''
-        #ConnectionManager2.__init__(self)
-        #self.connections = {}                   #connection ids
-        #self.canvas = fig.canvas
-        
-    ##~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-    #def add_connection(self, name, method):
-        #self.connections[name] = self.canvas.mpl_connect(name, method)
-    
-    ##~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-    #def remove_connection(self, name):
-        #self.canvas.mpl_disconnect( self.connections[name] )
-        #self.connections.pop( name )
-    
-    ##~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-    #def connect(self):
-        #'''connect the flagged methods to the canvas'''
-        #for (name,), method in self._connections.items():  #TODO: map??
-            #self.add_connection( name, method )
-                
-    ##~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-    #def disconnect(self):
-        #'''
-        #Disconnect from figure canvas.
-        #'''
-        #for name, cid in self.connections.items():
-            #self.canvas.mpl_disconnect( cid )
-        #print('Disconnected from figure {}'.format(self.figure.canvas) )
 
 
 #*******************************************************************************
@@ -107,7 +74,8 @@ class CanvasSaver(ConnectionMixin):
         ''' '''
         #connect method to save bg when axes panned/zoomed
         self.saving = self.canvas.manager.toolbar._active in ('PAN', 'ZOOM')
-    
+        #FIXME: remove markers before bg save!
+        
     #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     def save(self, axes=None):
         '''save the figure content as background'''
@@ -140,7 +108,7 @@ class CanvasSaver(ConnectionMixin):
 #*******************************************************************************
 from matplotlib.transforms import ScaledTranslation
 
-class PointSelector(CanvasSaver): #LineGrab?
+class PointSelector(ConnectionMixin): #LineGrab?
     '''Click on the axes to return the closest index point along Line2D'''
     #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     fmt = '{line}: Point {i}; {coo}'
@@ -157,11 +125,14 @@ class PointSelector(CanvasSaver): #LineGrab?
         
         self.ax = ax = self.lines[0].axes
         self.figure = fig = ax.figure
-        CanvasSaver.__init__(self, fig)
+        ConnectionMixin.__init__(self, fig)
         
-        print('RAAAR')
-        print(self.connections)
-        print(self._connections)
+        #save the background after the first draw
+        saving = True
+        
+        #print('RAAAR')
+        #print(self.connections)
+        #print(self._connections)
         
         #create the position markers
         self.markers, = ax.plot([], [], **self.marker_props)
@@ -170,6 +141,7 @@ class PointSelector(CanvasSaver): #LineGrab?
         
     #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     def ignore(self, event):
+        print('ignoring')
         return not (event.inaxes and
                     self.canvas.manager.toolbar._active is None)
     
@@ -180,7 +152,8 @@ class PointSelector(CanvasSaver): #LineGrab?
         mouse position on click.
         '''
         xy = line.get_xydata()
-        return np.argmin( abs(xy[:,0] - event.xdata) )
+        xye = (event.xdata, event.ydata)
+        return np.linalg.norm(xy - xye,  axis=1).argmin()
     
     #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     def get_index_coords(self, line, event):
@@ -193,8 +166,9 @@ class PointSelector(CanvasSaver): #LineGrab?
         return ix, xy[ix]
     
     #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-    @AutoConnect('button_press_event')
+    @mpl_connect('button_press_event')
     def _on_click(self, event):
+        print('click')
         if self.ignore(event):
             return
         
@@ -220,9 +194,32 @@ class PointSelector(CanvasSaver): #LineGrab?
         #self.markers.set_transform(ax.transData + offset)
         
         #self.markers.
-        self.draw_blit([self.markers])
+        #self.draw_blit([self.markers])
+        self.canvas.draw()
         
         return indeces
+    
+    #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    #@mpl_connect('button_release_event')
+    #def _on_release(self, event):
+        #''' '''
+        ##connect method to save bg when axes panned/zoomed
+        #self.saving = self.canvas.manager.toolbar._active in ('PAN', 'ZOOM')
+        ##FIXME: remove markers before bg save!
+    
+    #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    #@mpl_connect('draw_event')
+    #def _on_draw(self, event):
+        #'''Saves the canvas background after the first draw'''
+        
+        #print( 'UH!' )
+        
+        ##save background for bliting
+        #if self.saving:
+            #self.background = self.canvas.copy_from_bbox(self.figure.bbox)
+        
+        ##prevent saving after EVERY draw
+        #self.saving = False
     
     #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     def draw_blit(self, artists):
@@ -506,7 +503,7 @@ class LCFrameDisplay(ConnectionMixin):
     
     
 #*******************************************************************************
-from .imagine import FITSCubeDisplay
+#from .imagine import FITSCubeDisplay
 
 class LCFrameDisplay2(PointSelector):
     ''' '''
@@ -547,6 +544,8 @@ class LCFrameDisplay2(PointSelector):
         #print the selected points
         indeces = PointSelector._on_click(self, event)
         ix = indeces[0]
+        
+        print(ix)
         
         self.frame.frame_slider.set_val(ix)
         #NOTE: This will call self.frame.set_frame(ix)

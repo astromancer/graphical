@@ -13,8 +13,8 @@ class Splot(LCplot):
     #FIXME:  period axes does not display correctly when plotting from 0 on frequency axis....
     
     #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-    _default_errorbar = dict( fmt='-', 
-                              capsize=0 )
+    _default_errorbar = dict(fmt='-', 
+                             capsize=0)
     
     xax = 'f'
     #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -25,8 +25,13 @@ class Splot(LCplot):
         ax.setup_ticks()
         
         ax.grid( b=True, which='both' )
-        ax.set_color_cycle( colours )
         
+        #NOTE: #mpl >1.4 only
+        if len(colours):
+            from cycler import cycler
+            ccyc = cycler('color', colours)
+            ax.set_prop_cycle(ccyc)      
+                
         rect = left, bottom, right, top = [0.025, 0.01, 0.97, .98]
         fig.tight_layout( rect=[left, bottom, right, top] )
         
@@ -56,3 +61,7 @@ class Splot(LCplot):
 
 
 splot = Splot()
+
+
+if __name__ =='__main__':
+    pass

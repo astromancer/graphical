@@ -92,9 +92,32 @@ class MplMultiTab2D(QtGui.QMainWindow):
         self.stack.setCurrentIndex(_rows*j + i)
         self.toolstack.setCurrentIndex(_rows*j + i)
         
-
+    #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    def save_plots(self, filenames, path=''):
+        import os
+        #file_choices = "PNG (*.png)|*.png"
+        #path = str(QFileDialog.getSaveFileName(self, 
+                        #'Save file', '', 
+                        #file_choices))
+        path = os.path.realpath(path) + os.path.sep
+        ntabs = len(self.canvases)
+        if isinstance(filenames, str):
+            if not '{' in filenames:            #no format str specifier
+                filenames = filenames + '{}'    #append numerical
+            filenames = [filenames.format(i) for i in range(ntabs)]
+          
+        for i, canvas in enumerate(self.canvases):
+            filename = filenames[i]
+            root, name = os.path.split(filename)
+            if root:
+                savename = filename
+            else:
+                savename = os.path.join(path, filename)
+            
+            canvas.figure.savefig(savename)
 
 if __name__ == '__main__':
+    #FIXME: doesn't seem to work!!
     #import numpy as np
     from matplotlib import cm
     #Example use
