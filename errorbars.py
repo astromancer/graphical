@@ -10,13 +10,13 @@ from matplotlib.legend_handler import HandlerErrorbar
 from matplotlib.transforms import blended_transform_factory as btf
 from matplotlib.transforms import Affine2D
 
-from grafico.misc import ConnectionMixin, mpl_connect
-
 import itertools as itt
 from recipes.iter import grouper, partition
 from recipes.list import flatten
 
-from PyQt4.QtCore import pyqtRemoveInputHook, pyqtRestoreInputHook
+from grafico.misc import ConnectionMixin, mpl_connect
+
+#from PyQt4.QtCore import pyqtRemoveInputHook, pyqtRestoreInputHook
 #from decor.misc import unhookPyQt#, expose
 
 from IPython import embed
@@ -357,7 +357,6 @@ class NamedErrorbarContainer(ErrorbarContainer,
         else:
             ErrorbarContainer.__init__(self, container, has_xerr, has_yerr, **kws)
 
-        
 
 #****************************************************************************************************
 class DraggableErrorbarContainer(NamedErrorbarContainer):
@@ -368,6 +367,7 @@ class DraggableErrorbarContainer(NamedErrorbarContainer):
         ''' '''
         self.offset = kws.pop('offset', 0)
         self.annotated = kws.pop('annotate', True)
+        #haunted = kws.pop('haunted', True)
         
         NamedErrorbarContainer.__init__(self, container, has_xerr, has_yerr, **kws)
         
@@ -391,6 +391,9 @@ class DraggableErrorbarContainer(NamedErrorbarContainer):
         
         #shift to the given offset (default 0)
         self.shift(self.offset)
+        
+        #if haunted:
+            #self.haunt()
         
     #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     def __repr__(self):
@@ -456,11 +459,13 @@ class DraggableErrorbarContainer(NamedErrorbarContainer):
         #NOTE: can avoid this if statement by subclassing...
         if self.annotated:
             self.annotation.draw(renderer)
-    
+
+
+
 
 #****************************************************************************************************
 class DraggableErrorbar(ConnectionMixin):  
-    #TODO:      rename! DraggableMachinery()???
+    #TODO:      inherit from DragMachinery()???
     #TODO:      Use offsetbox????
     #TODO:      BLITTING !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
     #TODO:      one-way links??
@@ -670,28 +675,3 @@ class DraggableErrorbars(DraggableErrorbar):
     pass
 
 #######################################################################################################################
-
-#The code below serves as a test
-if __name__ == '__main__':
-    import numpy as np
-    import pylab as plt
-
-    fig, ax = plt.subplots( figsize=(18,8) )
-    N = 100
-    x = np.arange(N)
-    y0 = np.random.randn(N)
-    y1, y2, y3  = y0 + np.c_[[5, 10, -10]]
-    y0err, y1err = np.random.randn(2, N) / np.c_[[5, 2]]
-    y2err, y3err = None, None
-    x0err, x1err, x2err, x3err  = np.random.randn(N), None, None, np.random.randn(N)*8
-    
-    
-    plots = [ ax.errorbar( x, y0, y0err, x0err, fmt='go', label='foo' ),
-              ax.errorbar( x, y1, y1err, x1err, fmt='mp', label='bar' ),
-              ax.errorbar( x, y2, y2err, x2err, fmt='cd', label='baz' ),
-              ax.errorbar( x, y3, y3err, x3err, fmt='r*', ms=25, mew=2, 
-                          mec='c', label='linked to baz' ) ]
-    
-    d = DraggableErrorbar( plots, linked=plots[-2:] )
-    d.connect()
-    plt.show()
