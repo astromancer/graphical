@@ -6,8 +6,8 @@ import matplotlib.pyplot as plt
 from recipes.meta import flaggerFactory
 from recipes.list import flatten
 
-from decor import profile
-from decor.misc import unhookPyQt
+#from decor import profile
+#from decor.misc import unhookPyQt
 #from PyQt4.QtCore import pyqtRemoveInputHook, pyqtRestoreInputHook
 #from IPython import embed
 
@@ -106,7 +106,7 @@ class CanvasSaver(ConnectionMixin):
         
         
 #*******************************************************************************
-from matplotlib.transforms import ScaledTranslation
+#from matplotlib.transforms import ScaledTranslation
 
 class PointSelector(ConnectionMixin): #LineGrab?
     '''Click on the axes to return the closest index point along Line2D'''
@@ -404,7 +404,7 @@ class LineSelector(RectangleSelector):
             self.highlighted[i].set_data([[],[]])
     
     #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-    @unhookPyQt
+    #@unhookPyQt
     def _on_key_press(self, event):
         if event.key.lower().startswith('d'):   # 'delete'/'d'/'D'
             #print( 'delete', '!'*10 )

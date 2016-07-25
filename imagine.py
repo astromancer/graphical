@@ -1,19 +1,23 @@
 import numpy as np
 
 import matplotlib
-matplotlib.use('qt4agg')
+matplotlib.use('qt5agg')
 import matplotlib.pylab as plt
-from matplotlib.widgets import AxesWidget, Slider
-from matplotlib.patches import FancyArrow, Circle
-from matplotlib.transforms import Affine2D
-from matplotlib.transforms import blended_transform_factory as btf
+from matplotlib.widgets import Slider #AxesWidget, 
+#from matplotlib.patches import FancyArrow, Circle
+#from matplotlib.transforms import Affine2D
+#from matplotlib.transforms import blended_transform_factory as btf
 
 from mpl_toolkits.mplot3d import Axes3D
 from mpl_toolkits.mplot3d.art3d import Line3DCollection
 from mpl_toolkits.axes_grid1 import AxesGrid
 
+#from .interactive import ConnectionMixin
 
-from .interactive import ConnectionMixin
+#from draggables.machinery import DragMachinery
+from .sliders import AxesSliders
+
+from decor import expose
 
 #from recipes.iter import grouper
 
@@ -24,337 +28,84 @@ from .interactive import ConnectionMixin
 #pyqtRestoreInputHook()
 
 
-def picker(artist, event):
-    #print(vars(event))
-    mouse_position = (event.xdata, event.ydata)
-    if None in mouse_position:
-        return False, {}
+#class ColourSliders():
+    ##~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    #def __init__(self, ax, x1, x2, slide_on='y', axpos=0., **kwargs):
+        #''' '''
+        ##self.setup_axes(ax, axpos)
+        
+        #markers = ax.plot(axpos, x1, 'b>', 
+                          #axpos, np.mean((x1,x2)), 'go', 
+                          #axpos, x2, 'r<',
+                          #ms=7.5,
+                          #clip_on=False, zorder=3)
+        
+        #self.knobs = DragMachinery(markers, annotate=False) #TODO: inherit???
+        #self.max_knob, self.centre_knob, self.min_knob = self.knobs
+        
+        ##FIXME: knobs don't update immediately when shifting center knob - i guess this could be desirable
+        ##TODO: options for plot_on_motion / plot_on_release behaviour
+        ##self.centre_knob.on_changed(self.center_shift)
+        
+        #self.min_knob.on_changed(self.recentre0)
+        #self.max_knob.on_changed(self.recentre1)
+        ##self.min_knob.on_changed(lambda o: self.recentre(-o))
+        ##FIXME: update centre knob when shifting others...
+        
+        #self.knobs.connect()
     
-    ax = artist.axes
-    _data2ax_trans = ax.transData + ax.transAxes.inverted()
-    mouse_ax_pos = _data2ax_trans.transform(mouse_position)
     
-    centre = artist.get_centre()
-   
-    prox = np.linalg.norm(mouse_ax_pos - centre)
-    hit = prox < 0.5
-    print( 'mouse_position, mouse_ax_pos,  centre' )
-    print( mouse_position, mouse_ax_pos, centre )       
-    print( 'prox', prox )
-    print( 'hit', hit )
-    return hit, {}
-
-#****************************************************************************************************
-class AxesSliders(AxesWidget, ConnectionMixin):
-    #TODO: ConnectionManager???
-    #TODO:  USE DraggableLine to achieve what this class is doing????!!!!!!!!!
-    #TODO:  DISPLAY ARROWS SIZES CORRECTLY -- INDEPENDENT OF AXES SCALing (LOG etc)!
-    #TODO:  OPTION FOR LOGARITHMIC SLIDER AXIS
-    #FIXME: scale independent picking....
-    marker_size = 10
-    #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-    def __init__(self, ax, x1, x2, slide_on='x', valfmt='%1.2f',
-                    closedmin=True, closedmax=True, dragging=True, **kwargs):
-        
-        AxesWidget.__init__(self, ax)           #NOTE: sets self.ax
-        
-        self.slide_on = slide_on
-        self._index = int(slide_on == 'y')
-        self._order = -1 if self._index else 1
-        
-        self.setup_axes(ax)
-        #ax2data = ax.transAxes + ax.transData.inverted()
-        
-        
-        #initial values of SliderArrows
-        self._original_position = [x1, x2]
-        self.valmin, self.valmax = ax.viewLim.get_points()[:, self._index]
-        
-        #transform position of sliders form data to axes coordinates
-        self.positions = np.array([x1, x2]) #
-        val_ax = [x1, x2] / (self.valmax - self.valmin)
-
-        self.dragging = dragging
-        #create sliders & add to axis
-        
-        #TODO: shift markers to point on axis
-        self.axpos = axpos = 0.5
-        ms = self.marker_size
-        coo = [x1, self.axpos][::self._order]
-        self.min_slider, = ax.plot(*coo, 
-                                    marker='>', ms=ms, mfc='b', 
-                                    picker=15)
-        coo = [x2, self.axpos][::self._order]
-        self.max_slider, = ax.plot(*coo, 
-                                    marker='<', ms=ms, mfc='r', 
-                                    picker=15)
-        self.sliders = [self.min_slider, self.max_slider]
-        #self.valfmt = valfmt
-        
-        ax.set_navigate(False)
-        
-        #self.label = ax.text(-0.02, 0.5, label, transform=ax.transAxes,
-                             #verticalalignment='center',
-                             #horizontalalignment='right')
-
-        #self.valtext = ax.text(1.02, 0.5, valfmt % x1,
-        #                       transform=ax.transAxes,
-         #                      verticalalignment='center',
-          #                     horizontalalignment='left')
-
-        self.cnt = 0
-        self.observers = {}
-
-        self.closedmin = closedmin
-        self.closedmax = closedmax
-        self.selection = None
-        self.which_active = None
+    ##~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    #def setup_axes(self, ax, axpos):
+        #''' '''
+        ##hide axis patch
+        #ax.patch.set_visible(0)
+        ##setup ticks
+        #self.ax.tick_params(axis=self.slide_on, direction='inout', which='both')
+        #axsli, axoth = [ax.xaxis, ax.yaxis][::self._order]
+        #axoth.set_ticks([])
+        #which_spine = 'right' if self._index else 'bottom'
+        #axsli.set_ticks_position(which_spine)
+        ##hide the axis spines
+        #ax.spines[which_spine].set_position(('axes', axpos))
+        #for where, spine in ax.spines.items():
+            #if where != which_spine:
+                #spine.set_visible(0)
     
-    #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-    def setup_axes(self, ax):
-        ''' '''
-        #hide axis patch
-        ax.patch.set_visible(0)
-        #setup ticks
-        self.ax.tick_params(axis=self.slide_on, direction='inout', which='both')
-        axsli, axoth = [ax.xaxis, ax.yaxis][::self._order]
-        axoth.set_ticks([])
-        which_spine = 'right' if self._index else 'bottom'
-        axsli.set_ticks_position(which_spine)
-        #hide the axis spines
-        ax.spines[which_spine].set_position(('axes', 0.5))
-        for where, spine in ax.spines.items():
-            if where != which_spine:
-                spine.set_visible(0)
+    ##~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    #def get_vals(self):
+        #return tuple(k.get_ydata()[0] + d.offset 
+                        #for i, (k,d) in enumerate(self.knobs.draggables.items()) 
+                            #if not i==1)
+        ##SAY WHAAAAT???
     
-    #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-    def _on_pick(self, event):
-        #print( 'picked:', event.artist, id(event.artist) )
-        #print( 'event.artist in self.sliders', event.artist in self.sliders )
-        if event.artist in self.sliders:
-            self.selection = event.artist
-            self.which_active = self.sliders.index(self.selection)
-            
-            #TODO: connect motion event here
-            
-            #self._orig_pos = event.artist.get_val()
-            #print( 'which active:', self.which_active )
-
-    #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-    def _update(self, event):
-        """update the slider position"""
-        #print(11111)
-        if self.ignore(event):
-            return
-        #print(2*11111)
-        if event.button != 1:
-            return
-         
-        #print(3*11111)
-        if self.selection is None:
-            return
-        #print(2*22222)
-        #motion_notify_event handled below
-        self._on_motion(event)
+    ##~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    #def on_changed(self, func):
+        #for knob in (self.min_knob, self.max_knob):
+            #knob.on_changed(func)
     
-    #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-    def _on_release(self, event):
-        #print( 'releasing..', event.name )
-        #event.canvas.release_mouse(self.ax)
-        self.selection = None
-        self.which_active = None
+    ##~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    ##@expose.args()
+    #def recentre0(self, offset):
+        ##momentarily disable observers to reposition center knob
+        ##offset = (self.max_knob.offset + self.min_knob.offset) / 2
+        #print('offset', offset)
+        #self.centre_knob.shift(offset/2, observers_active=False)
+        #self.centre_knob.offset = offset/2
         
-        #TODO: disconnect motion event here
+    #def recentre1(self, offset):
+        #self.recentre0(-offset)
     
-    #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-    def _on_motion(self, event):
-        ''' '''
-        val = [event.xdata, event.ydata][self._index]
-        val = self.validate(self.selection, val)
-        
-        #print( val, 'validated'  )
-        
-        if val:
-            #print( '!' *10 )
-            self.set_val(val)
+    ##~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    ##@expose.args()
+    ##def center_shift(self, offset):
+        ##for knob in (self.min_knob, self.max_knob):
+            ##knob.shift(offset)
+            ##knob.offset = offset
     
-    #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-    def validate(self, slider, val):
-        '''check if new slider position value is OK'''
-        
-        if val is None:     #out of axis
-            return
-
-        if val <= self.valmin:
-            if not self.closedmin:
-                return
-            val = self.valmin
-        
-        elif val >= self.valmax:
-            if not self.closedmax:
-                return
-            val = self.valmax
-        
-        min_pos, max_pos = self.positions
-        if (((slider is self.min_slider) and (val >= max_pos)) or 
-            ((slider is self.max_slider) and (val <= min_pos))):
-            return
-        
-        return val
     
-    #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-    #def update_slider(self, val):
-        #self.selection.set_val(val - self._orig_pos)
-        
-    #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-    def set_val(self, val):
-        #print('AxesSliders.set_val')
-        #FIXME!
-        '''set value of active slider '''
-        #self.selection.set_val(self.data2ax(val))       #convert to axis_coordinates
-        xy = [val, self.axpos][::self._order]
-        self.selection.set_data(xy)
-        
-        #self._orig_pos = self.selection.get_val()
-        #self.valtext.set_text(self.valfmt % val)
-        
-        if self.drawon:
-            print('DRAW!')
-            self.ax.figure.canvas.draw()
-        
-        self.positions[self.which_active] = val
-        
-        if not self.eventson:
-            return
-        
-        for cid, func in self.observers.items():
-            func(self.positions)
-
-    #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-    def set_positions(self, values):
-        #FIXME!
-        mem = self.selection
-        for slider, val in zip(self.sliders, values):
-            xy = [val, self.axpos][::self._order]
-            
-            sval = self.validate(slider, val)
-            if sval:
-                self.selection = slider
-                self.which_active = self.sliders.index(self.selection)
-                self.set_val(sval)
-           
-        self.selection = mem
-    
-    #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-    def on_changed(self, func):
-        """
-        When the slider value is changed, call *func* with the new
-        slider position
-
-        A connection id is returned which can be used to disconnect
-        """
-        cid = self.cnt
-        self.observers[cid] = func
-        self.cnt += 1
-        return cid
-    
-    #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-    def connect(self):
-        '''connect events'''
-        self.connect_event('pick_event', self._on_pick)
-        #self.connect_event('button_press_event', self.)
-        self.connect_event('button_release_event', self._on_release)
-        if self.dragging:
-            self.connect_event('motion_notify_event', self._update)
-    
-    #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-    def disconnect(self, cid):
-        """remove the observer with connection id *cid*"""
-        try:
-            del self.observers[cid]
-        except KeyError:
-            pass
-
-    #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-    def reset(self):
-        """reset the slider to the initial value if needed"""
-        if (self.val != self.valinit):
-            self.set_val(self.valinit)
-
-
-class ColourSliders(AxesSliders):
-    #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-    def __init__(self, ax, x1, x2, slide_on='x', valfmt='%1.2f',
-                 closedmin=True, closedmax=True, dragging=True, **kwargs):
-        ''' '''
-        super().__init__(ax, x1, x2, slide_on, valfmt,
-                         closedmin, closedmax, dragging, **kwargs)
-        
-        #data2fig_trans = self.ax.transData + self.ax.transFigure.inverted()
-        #data2fig_trans.transform
-        pos = self.positions.mean()
-        coo = [pos, self.axpos][::self._order]
-        self.centre_knob, = ax.plot(*coo, marker='o', ms=self.marker_size, mfc='g', 
-                                    picker=10)
-        self.centre_knob.set_clip_on(False)
-    
-    #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-    def set_positions(self, values):
-        AxesSliders.set_positions(self, values)
-        xy = [self.positions.mean(), self.axpos][::self._order]
-        self.centre_knob.set_data(xy)
-        
-    
-    #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-    def _on_pick(self, event):
-        if event.artist is self.centre_knob:
-            self.selection = event.artist
-        else:
-            super()._on_pick(event)
-    
-    #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-    def _on_motion(self, event):
-        #FIXME!
-        val = [event.xdata, event.ydata][self._index]
-        
-        if val is None:     #out of axis
-            return
         
         
-        _drawon = self.drawon
-        if self.selection == self.centre_knob:
-            self.drawon = False
-            current = self.centre_knob.get_xydata()[0, self._index]
-            offset = val - current
-            #update positions of sliders
-            #HACK!!
-            for slider, sval in zip(self.sliders, self.positions):
-                sval = self.validate(slider, sval + offset)
-                if sval:
-                    self.selection = slider
-                    self.which_active = self.sliders.index(self.selection)
-                    self.set_val(sval)
-                else:
-                    self.selection = self.centre_knob
-                    return
-                
-            xy = [self.positions.mean(), self.axpos][::self._order]
-            self.centre_knob.set_data(xy)
-            
-            self.selection = self.centre_knob
-            
-        else:
-            super()._on_motion(event)
-            
-            xy = [self.positions.mean(), self.axpos][::self._order]
-            self.centre_knob.set_data(xy)
-            
-        #TODO: BLIT:
-        self.ax.figure.canvas.draw()
-        self.drawon = _drawon
-            
-
-   
    
     
 #TODO checkout APLPY?????????
@@ -363,14 +114,17 @@ from mpl_toolkits.axes_grid1 import make_axes_locatable
 class ImageDisplay(object):
     #TODO: Option for data histogram on slider bar!!!
     #TODO: Choose figure geometry based on data shape
+    #TODO: connect histogram range with colorbar and drop colorbar ticklabels + shift hist ticklabels to outside?
+    
+    #FIXME: sliders disappear behind histogram on blitting
     #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-    SliderClass = ColourSliders #AxesSliders
+    SliderClass = AxesSliders#ColourSliders #AxesSliders
     #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     def __init__(self, ax, data, *args, **kwargs):
         ''' '''
         #self.sscale = kwargs.pop('sscale', 'linear')
         title = kwargs.pop('title', None)
-        doh = kwargs.pop('hist', False)
+        self.has_hist = kwargs.pop('hist', True)
         
         self.data = data = np.atleast_2d(data)
         self.ax = ax
@@ -388,11 +142,15 @@ class ImageDisplay(object):
         
         #create the colourbar and the AxesSliders
         self.divider = make_axes_locatable(ax)
+        
         self.Createcolorbar()
+        
+        #if self.has_hist:
+            #self.CreateHistogram()
+        
         self.CreateSliders()
         
-        if doh:
-            self.CreateHistogram()
+     
     
     #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     def update_autoscale_limits(self, data, **kwargs):
@@ -462,48 +220,80 @@ class ImageDisplay(object):
     #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     def Createcolorbar(self):
         self.cax = self.divider.append_axes('right', size=0.2, pad=0)
-        self.ax.figure.colorbar( self.imgplt, cax=self.cax)
+        self.cbar = self.ax.figure.colorbar( self.imgplt, cax=self.cax)
 
     #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     def CreateSliders(self):
-        sax = self.divider.append_axes('right', size=0.2, pad=0.5)
+        
+        sax = self.divider.append_axes('right', size=1, pad=0.5)
         sax.set_ylim((self.data.min(), self.data.max()))
         #sax.set_yscale( self.sscale )
-
-        self.sliders = self.SliderClass(sax, *self.imgplt.get_clim(), slide_on='y' )
-        self.sliders.drawon = False
-        self.sliders.on_changed(self.set_clim)
-    
-    
+        
+        #self.sliders = type('null', (), {})()
+        #self.sliders.ax = sax
+        
+        if self.has_hist:
+            self.CreateHistogram(sax)
+        
+        self.sliders = self.SliderClass(sax, *self.imgplt.get_clim(), slide_on='y')
+        #self.sliders.drawon = False
+        #self.sliders.knob[1].
+        self.sliders.min_slide.on_changed(self.set_clim)
+        self.sliders.max_slide.on_changed(self.set_clim)
+        
     #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-    def CreateHistogram(self):
+    def CreateHistogram(self, ax):
         #FIXME
         '''histogram data on slider axis'''
-        from matplotlib.collections import PatchCollection
+        #from matplotlib.collections import PatchCollection
         
-        ax = self.sliders.ax
-        bins, vals, patches = ax.hist(self.data.ravel(), 
-                                      bins=100, 
-                                      orientation='horizontal',
-                                      normed=True)
-        PatchCollection(patches)
-        #bins, vals, patches = np.hist(self.data.ravel(), bins=100, orientation='horizontal')
-        #ax.set_xscale('log')
-
-        cmap = self.imgplt.get_cmap()
+        h = ax.hist(self.data.ravel(), bins=100,
+                    orientation='horizontal', log=True)
+        self.hvals, self.bin_edges, self.patches = h
+        
         clims = self.imgplt.get_clim()
-        vm = np.ma.masked_outside(vals, *clims)
+        self.hup(clims)
+        
+    #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    def hup(self, clims):    
+        for i, (p, c) in enumerate(zip(self.patches, self.get_hcol(clims))):
+            p.set_fc(c)
+
+    #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    def get_hcol(self, clims):
+        
+        cmap = self.imgplt.get_cmap()
+        
+        vm = np.ma.masked_outside(self.bin_edges, *clims)
         colours = cmap((vm - vm.min())/vm.max())
         colours[vm.mask, :3] = 0.25
         colours[vm.mask, -1] = 1
-
-        for i, (p, c) in enumerate(zip(patches, colours)):
-            p.set_fc(c)
-            p.set_x(0.5)
+        
+        return colours
     
     #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-    def set_clim(self, clims):
+    def set_clim(self, xydata):
+        #clims = xy[self._index]
+        #print('clims', clims)
+        
+        clims = np.array(self.sliders.positions) #NOTE: positions will only be current upon release
+        clims[self.sliders.index()] = xydata[self.sliders._index]
         self.imgplt.set_clim(clims)
+        
+        if not self.has_hist:
+            return self.imgplt #COLOURBAR ticklabels??
+        
+        self.hup(clims)
+        return self.imgplt, self.patches #COLOURBAR ticklabels??
+        
+         #COLOURBAR??
+    
+        #fig = self.ax.figure
+        
+        #self.imgplt.draw(fig._cachedRenderer)
+        
+        #print('DRAW')
+        #fig.canvas.draw()
         #self.draw_blit()
         #self.background = ax.figure.canvas.copy_from_bbox(ax.bbox)
         #self.imgplt.figure.canvas.draw()        #TODO: BLIT!!!!!
@@ -512,16 +302,16 @@ class ImageDisplay(object):
         #TODO: figure out how to blit properly in an interactive session
     
     #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-    def draw_blit(self):
-        print('blitt!!')
-        #FIXME!
-        fig = self.ax.figure
-        fig.canvas.restore_region(self.background)
+    #def draw_blit(self):
+        #print('blitt!!')
+        ##FIXME!
+        #fig = self.ax.figure
+        #fig.canvas.restore_region(self.background)
         
-        self.ax.draw_artist(self.imgplt)
-        self.ax.draw_artist(self.sliders.selection) #FIXME: does this redraw all 3 sliders when i'ts the center knob?
+        #self.ax.draw_artist(self.imgplt)
+        #self.ax.draw_artist(self.sliders.selection) #FIXME: does this redraw all 3 sliders when i'ts the center knob?
         
-        fig.canvas.blit(self.ax.bbox)
+        #fig.canvas.blit(self.ax.bbox)
         #fig.canvas.blit(self.sax.bbox)
 
    

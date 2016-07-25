@@ -1,7 +1,13 @@
-.gitignore
+#.gitignore
+
+#kate 
 *.kate-swp
 *~
+
+#python
 /__pycache__
 
+#dev
 multitab.2d.py
-
+imagine_test.py
+sliders.*.py

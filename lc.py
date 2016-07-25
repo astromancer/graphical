@@ -3,8 +3,8 @@ import itertools as itt
 import numpy as np
 from matplotlib import rcParams
 import matplotlib.pyplot as plt
-import colormaps as cmaps
-plt.register_cmap(name='viridis', cmap=cmaps.viridis)
+#import colormaps as cmaps
+#plt.register_cmap(name='viridis', cmap=cmaps.viridis)
 
 from recipes.array import grid_like
 
@@ -133,6 +133,7 @@ class LCplot(object):
         '''Plot light curve(s)'''
         #TODO: docstring
         #TODO: astropy.units
+        #TODO: max points = 1e4 ??
         
         self.mask_shown = False
         self.Hist = []
@@ -199,7 +200,7 @@ class LCplot(object):
             colours =  cm(np.linspace(0, 1, N))
         
         elif len(colours) < N:
-            'Explicit colour sequence less than number of time series. Colours will repeat'
+            'Given colour sequence less than number of time series. Colours will repeat'
         
         #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
         #Do the plotting
@@ -372,8 +373,9 @@ class LCplot(object):
         #embed()
         
         #mask nans
-        #TODO:
-        #Rates = np.ma.masked_where(np.isnan(Rates), Rates)
+        Rates = np.ma.masked_where(np.isnan(Rates), Rates)
+        Errors = np.ma.masked_where(np.isnan(Errors), Errors)
+        
         
         return Times, Rates, Errors
     
@@ -396,7 +398,7 @@ class LCplot(object):
     def chronify(Rates, Times=None):
         '''impute time data'''
         if Times is None:
-            return grid_like(Rates)[Rates.ndim > 1] #Times = #NOTE: may be 1D
+            return grid_like(Rates)[int(Rates.ndim > 1)] #Times = #NOTE: may be 1D
             #return Times
         else:
             nTimes = np.empty_like(Rates)

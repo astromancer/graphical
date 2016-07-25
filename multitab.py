@@ -6,12 +6,12 @@ from six.moves import zip_longest #python 2 compat
 
 #from PyQt4 import QtCore
 from matplotlib.backends.qt_compat import QtGui, QtCore
-SIGNAL = QtCore.SIGNAL
+SIGNAL = QtCore.Signal
 
 from matplotlib import use
-use('QT4Agg')
+use('QT5Agg')
 
-from matplotlib.backends.backend_qt4 import (FigureCanvasQT as FigureCanvas,
+from matplotlib.backends.backend_qt5 import (FigureCanvasQT as FigureCanvas,
                                             NavigationToolbar2QT as NavigationToolbar)
 from matplotlib.figure import Figure
 from matplotlib import pyplot as plt
