@@ -292,9 +292,10 @@ class DraggableBase():
             self.annotation.set_visible(vis)
 
     #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-    #def draw(self):
-        #renderer = self.ref_art.figure.canvas.renderer
-        #self.ref_art.draw(renderer)
+    def draw(self, renderer=None):
+        if renderer is None:
+            renderer = self.ref_art.figure.canvas.renderer
+        self.ref_art.draw(renderer)
     
     #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     #def get_xdata()
@@ -337,7 +338,7 @@ class DragMachinery(ConnectionMixin):
         ConnectionMixin.__init__(self, ax.figure)
         
         #flag for blitting behaviour
-        self._draw_on = True
+        #self._draw_on = True                #TODO: as a argument to the upate method - cleaner than attribute
         self._use_blit = use_blit and self.canvas.supports_blit
         
         #esure linked argument is a nested list
@@ -547,11 +548,11 @@ class DragMachinery(ConnectionMixin):
         
     
     #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-    def update(self, draggable, xydata):
+    def update(self, draggable, xydata, draw_on=True):
         '''draw all artists that where changed by the motion'''
         artists = filter(None, 
-                          (func(xydata) for cid, func in draggable.observers.items()))    #six.iteritems(self.observers):
-        if self._draw_on:
+                         (func(xydata) for cid, func in draggable.observers.items()))    #six.iteritems(self.observers):
+        if draw_on: #self._draw_on
             if self._use_blit:
                 self.canvas.restore_region(self.background)
                 for art in flatiter((artists, draggable.ref_art)): #WARNING: will flatten containers etc
@@ -559,4 +560,5 @@ class DragMachinery(ConnectionMixin):
                 self.canvas.blit(self.figure.bbox)
             else:
                 self.canvas.draw()
-    
+        
+        return artists

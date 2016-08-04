@@ -27,7 +27,7 @@ from IPython import embed
 #TODO: Convert to general class for draggable artists.  see: matplotlib.offsetbox.DraggableBase
 from matplotlib.offsetbox import DraggableBase
 
-class Foo( DraggableBase ):
+class Foo(DraggableBase):
     artist_picker = 5
     
     def __init__(self, ref_artist, use_blit=False, free_axis='both'):
@@ -509,7 +509,7 @@ class DraggableErrorbar(ConnectionMixin):
         self.tmp_offset         = 0                     #in case of pick without motion
         
         #self.plots              = plots #= flatten(plots)
-        self.ax = ax            = plots[0][0].get_axes()
+        self.ax = ax            = plots[0][0].axes
         self.figure             = ax.figure
         
         #initialize mapping
