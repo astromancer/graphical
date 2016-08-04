@@ -459,7 +459,7 @@ class ColourSliders(AxesSliders):
                 print('sliding away', self.delta)
                 slide.shift(slide.offset + self.delta)
                 slide.offset = self.delta
-                slide.ref_art.set_animated(False)
+                slide.ref_art.set_animated(False)       #FIXME: This precludes setting by an external method without auto draw by mpl.....
                 slide.draw()
             
             #self.canvas.blit(self.figure.bbox)

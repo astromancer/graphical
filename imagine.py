@@ -1,3 +1,5 @@
+import traceback
+from collections import Callable
 import numpy as np
 
 import matplotlib
@@ -125,6 +127,7 @@ class ImageDisplay(object):
         #self.sscale = kwargs.pop('sscale', 'linear')
         title = kwargs.pop('title', None)
         self.has_hist = kwargs.pop('hist', True)
+        self.use_blit = kwargs.pop('use_blit', True)
         
         self.data = data = np.atleast_2d(data)
         self.ax = ax
@@ -150,7 +153,10 @@ class ImageDisplay(object):
         
         self.CreateSliders()
         
-     
+        if self.use_blit:
+            self.imgplt.set_animated(True)
+            self.sliders.ax.set_animated(True)
+        
     
     #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     def update_autoscale_limits(self, data, **kwargs):
@@ -221,7 +227,10 @@ class ImageDisplay(object):
     def Createcolorbar(self):
         self.cax = self.divider.append_axes('right', size=0.2, pad=0)
         self.cbar = self.ax.figure.colorbar( self.imgplt, cax=self.cax)
-
+        
+        if self.use_blit:
+            self.cax.set_animated(True)
+        
     #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     def CreateSliders(self):
         
@@ -251,6 +260,11 @@ class ImageDisplay(object):
                     orientation='horizontal', log=True)
         self.hvals, self.bin_edges, self.patches = h
         
+        #TODO: use PatchCollection?????
+        if self.use_blit:
+            for p in self.patches:
+                p.set_animated(True)
+            
         clims = self.imgplt.get_clim()
         self.hup(clims)
         
@@ -357,11 +371,16 @@ class CubeDisplayBase(ImageDisplay):
         self.autoscale = kwargs.pop('autoscale', 'percentile') #TODO: move up??
         ImageDisplay.__init__(self, ax, data, **kwargs)
         
+        #self.coords = coords
+        
         #setup frame slider
         self._frame = 0
         self.fsax = self.divider.append_axes('bottom', size=0.2, pad=0.25)
+        #TODO: elliminated this SHIT Slider class!!!
         self.frame_slider = Slider(self.fsax, 'frame', 0, len(self), valfmt='%d')
         self.frame_slider.on_changed(self.set_frame)
+        if self.use_blit:
+            self.frame_slider.drawon = False   
             
         #save background for blitting
         fig = ax.figure
@@ -371,7 +390,32 @@ class CubeDisplayBase(ImageDisplay):
         fig.canvas.mpl_connect('scroll_event', self._scroll)
     
     #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-    def get_data(i):
+    #@property
+    #def has_coords(self):
+        #return self.coords is not None
+    
+    #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    def _needs_drawing(self):
+        #NOTE: this method is a temp hack to return the artists that need to be 
+        #drawn when the frame is changed (for blitting). This is in place while
+        #the base class is being refined.
+        #TODO: proper observers as modelled on draggables.machinery
+        
+        needs_drawing = [self.imgplt]
+        if self.has_hist:
+            needs_drawing.extend(self.patches)      #TODO: PatchCollection...
+        
+        if self.autoscale:
+            needs_drawing.extend(self.sliders.sliders)
+            
+            
+        ##[#self.imgplt.colorbar, #self.sliders.centre_knob])
+        
+        
+        return needs_drawing
+        
+    #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    def get_data(self, i):
         return self.data[i]
     
     #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -379,8 +423,11 @@ class CubeDisplayBase(ImageDisplay):
         return self._frame
 
     #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-    def set_frame(self, i):
-        i %= len(self)  #wrap around!
+    #@expose.args()
+    def set_frame(self, i, draw=False):
+        '''Set frame data. draw if requested '''
+        i %= len(self)          #wrap around! (eg. scroll past end ==> go to beginning)
+        i = int(round(i, 0))    #make sure we have an int
         self._frame = i
         
         data = self.get_data(i)
@@ -394,19 +441,22 @@ class CubeDisplayBase(ImageDisplay):
         
         #set the image data
         self.imgplt.set_data(data)
-        needs_drawing = [self.imgplt]
+        #needs_drawing = [self.imgplt]
+        
         
         if self.autoscale:
             #set the slider positiions / color limits
             vmin, vmax = self.get_autoscale_limits(data, autoscale=self.autoscale)
             self.imgplt.set_clim(vmin, vmax)
             self.sliders.set_positions((vmin, vmax))
-            needs_drawing.extend([self.imgplt.colorbar, 
-                                  self.sliders.sliders, 
-                                  self.sliders.centre_knob]) #self.sliders.sliders
-
+            
+        
+        #TODO: update hisogram values etc...
+        
         #ImageDisplay.draw_blit??
-        self.draw_blit(needs_drawing)
+        if draw:
+            needs_drawing = self._needs_drawing()
+            self.draw_blit(needs_drawing)
 
     frame = property(get_frame, set_frame)
 
@@ -416,12 +466,21 @@ class CubeDisplayBase(ImageDisplay):
         self.frame_slider.set_val(self.frame)
     
     #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-    def draw_blit(self, *artists):
+    #@expose.args()
+    def draw_blit(self, artists):
+        
+        #print('draw_blit')
+        
         fig = self.ax.figure
         fig.canvas.restore_region(self.background)
         
         for art in artists:
-            self.ax.draw_artist(art)
+            try:
+                self.ax.draw_artist(art)
+            except Exception as err:
+                print('drawing FAILED', art)
+                traceback.print_exc()
+                
         
         fig.canvas.blit(fig.bbox)
         
@@ -449,21 +508,61 @@ class ImageCubeDisplay(CubeDisplayBase):
 #****************************************************************************************************
 class ImageCubeDisplayA(ImageCubeDisplay):
     #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-    aperture_properties = dict(radii=10, ec='m', lw=2)
+    aperture_properties = dict(ec='m', lw=1, animated=True, picker=False,
+                               widths=7.5, heights=7.5)
     #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-    def __init__(self, ax, data, coords=None, **kwargs):
-        '''with Apertures'''
-        CubeDisplayBase.__init__(self, ax, data, coords=None, **kwargs)
+    def __init__(self, ax, data, ap_data_dict={}, **kwargs):
+        '''with Apertures
+        ap_data_dict is dict keyed on aperture aperture_properties, values of which
+        are either array-like sequence of values indeces corresponing to frame number, 
+        or callables that generate values.
+        '''
+        CubeDisplayBase.__init__(self, ax, data, **kwargs)
         
         #create apertures if coordinates provided
         self.aps = None
-        self.coords = coords
-        self.has_coords = not coords is None
-        if self.has_coords:
-            from ApertureCollections import ApertureCollection
+        self.ap_data = ap_data_dict
+        if self.ap_data:
+            from obstools.aps import ApertureCollection
             #add apertures to axes.  will not display yet as coordinates not set
-            self.aps = ApertureCollection( **self.aperture_properties )
+            props = ImageCubeDisplayA.aperture_properties
+            self.aps = ApertureCollection(**props)
+            
             self.aps.axadd(ax)
+            
+            #TODO: check data
+            
+    #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    def set_frame(self, i, draw=True):
+        
+        super().set_frame(i, False)
+        needs_drawing = self._needs_drawing()
+        
+        if self.aps is not None:
+            for attr, item in self.ap_data.items():
+                if isinstance(item, Callable):
+                    vals = item(i)
+                else:
+                    vals = item[i]
+                    
+                setattr(self.aps, attr, vals)
+            needs_drawing.append(self.aps)
+        
+        self.draw_blit(needs_drawing)
+    
+    #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    #def update(self, draggable, xydata):
+        #'''draw all artists that where changed by the motion'''
+        #artists = filter(None, 
+                         #(func(xydata) for cid, func in draggable.observers.items()))    #six.iteritems(self.observers):
+        #if self._draw_on:
+            #if self._use_blit:
+                #self.canvas.restore_region(self.background)
+                #for art in flatiter((artists, draggable.ref_art)): #WARNING: will flatten containers etc
+                    #art.draw(self.canvas.renderer)
+                #self.canvas.blit(self.figure.bbox)
+            #else:
+                #self.canvas.draw()
     
     #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     #def draw_blit(self, artists):
@@ -495,26 +594,32 @@ class ImageCubeDisplayX(ImageCubeDisplay):
 #****************************************************************************************************
 from fastfits import FITSFrame
 from recipes.iter import interleave
-class FITSCubeDisplay(CubeDisplayBase, FITSFrame):
+class FITSCubeDisplay(ImageCubeDisplayA, FITSFrame):
     #FIXME: switching with slider messes up the aperture indexes
     #TODO: frame switch buttons; 
     #TODO: option to set clim from first frame??
     #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-    def __init__(self, ax, filename, coords=None, **kws):
+    #DisplayClass = ImageCubeDisplayA
+    #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    def __init__(self, ax, filename, ap_data_dict={}, **kws):
         ''' '''
         #setup data access
         FITSFrame.__init__(self, filename)
         
         sx = self.ishape
         extent = interleave((0,)*len(sx), sx)
-        CubeDisplayBase.__init__(self, ax, [[0]], 
-                                  coords,
-                                  origin='llc',
-                                  extent=extent,
-                                  **kws)
+        ImageCubeDisplayA.__init__(self, ax, [[0]], 
+                                    ap_data_dict,
+                                    origin='llc',
+                                    extent=extent,
+                                    **kws)
     
     #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-    def get_data(i):
+    def __len__(self):
+        return FITSFrame.__len__(self)
+    
+    #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    def get_data(self, i):
         return self[i]
     
     #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -522,32 +627,32 @@ class FITSCubeDisplay(CubeDisplayBase, FITSFrame):
         return self._frame
 
     #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-    def set_frame(self, i):
+    #def set_frame(self, i):
         
-        self._frame = i
-        data = self[int(i%len(self))]
-        if self.autoscale:
-            #set the slider axis limits
-            dmin, dmax = data.min(), data.max()
-            self.sliders.ax.set_ylim(dmin, dmax)
-            self.sliders.valmin, self.sliders.valmax = dmin, dmax
+        #self._frame = i
+        #data = self[int(i%len(self))]
+        #if self.autoscale:
+            ##set the slider axis limits
+            #dmin, dmax = data.min(), data.max()
+            #self.sliders.ax.set_ylim(dmin, dmax)
+            #self.sliders.valmin, self.sliders.valmax = dmin, dmax
             
-            #set the slider positiions / color limits
-            vmin, vmax = self.get_autoscale_limits(data, autoscale=self.autoscale)
-            self.imgplt.set_data(data)
-            self.imgplt.set_clim(vmin, vmax)
-            self.sliders.set_positions((vmin, vmax))
+            ##set the slider positiions / color limits
+            #vmin, vmax = self.get_autoscale_limits(data, autoscale=self.autoscale)
+            #self.imgplt.set_data(data)
+            #self.imgplt.set_clim(vmin, vmax)
+            #self.sliders.set_positions((vmin, vmax))
         
-        #update the apertures if needed
-        if self.has_coords:
-             self.aps.coords = self.coords[:, i, :]
+        ##update the apertures if needed
+        #if self.has_coords:
+             #self.aps.coords = self.coords[:, i, :]
         
-        #TODO: BLIT!!
-        self.ax.figure.canvas.draw()
-        #self.draw_blit([self.imgplt, self.aps])
+        ##TODO: BLIT!!
+        #self.ax.figure.canvas.draw()
+        ##self.draw_blit([self.imgplt, self.aps])
         
 
-    frame = property(get_frame, set_frame)
+    #frame = property(get_frame, set_frame)
 
 
 #class FITSCubeDisplay(ImageCubeDisplay, 

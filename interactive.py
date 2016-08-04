@@ -503,9 +503,10 @@ class LCFrameDisplay(ConnectionMixin):
     
     
 #*******************************************************************************
-#from .imagine import FITSCubeDisplay
+from .imagine import FITSCubeDisplay
 
 class LCFrameDisplay2(PointSelector):
+    
     ''' '''
     #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     def __init__(self, cube, **kw):
@@ -535,7 +536,7 @@ class LCFrameDisplay2(PointSelector):
                     event.button == 1)
 
     #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-    @mpl_connect( 'button_press_event' )
+    @mpl_connect('button_press_event')
     def _on_click(self, event):
         if self.ignore(event):
             print( 'ignoring' )

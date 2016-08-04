@@ -5,14 +5,15 @@ import sys
 from six.moves import zip_longest #python 2 compat
 
 #from PyQt4 import QtCore
-from matplotlib.backends.qt_compat import QtGui, QtCore
+from matplotlib.backends.qt_compat import QtGui, QtCore, QtWidgets
+#from PyQt5 import QtCore, QtGui, QtWidgets
 SIGNAL = QtCore.Signal
 
 from matplotlib import use
 use('QT5Agg')
 
 from matplotlib.backends.backend_qt5 import (FigureCanvasQT as FigureCanvas,
-                                            NavigationToolbar2QT as NavigationToolbar)
+                                             NavigationToolbar2QT as NavigationToolbar)
 from matplotlib.figure import Figure
 from matplotlib import pyplot as plt
 
@@ -22,16 +23,16 @@ import numpy as np
 #__all__ = []
 
 #****************************************************************************************************
-class MultiTabNavTool(QtGui.QWidget):
+class MultiTabNavTool(QtWidgets.QWidget):
     #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     def __init__(self, canvases, tabs, parent=None):
         '''Create one navigation toolbar per tab, switching between them upon tab change'''
-        QtGui.QWidget.__init__(self, parent)
+        QtWidgets.QWidget.__init__(self, parent)
         self.canvases = canvases
         self.tabs = tabs
         self.toolbars = [NavigationToolbar(canvas, parent) for canvas in self.canvases]
         
-        self.vbox = QtGui.QVBoxLayout()
+        self.vbox = QtWidgets.QVBoxLayout()
         
         for toolbar in self.toolbars:
             self.add( toolbar )
@@ -58,17 +59,17 @@ class MultiTabNavTool(QtGui.QWidget):
    
         
 #######################################################################################################################    
-class MplMultiTab(QtGui.QMainWindow):
+class MplMultiTab(QtWidgets.QMainWindow):
     #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     def __init__(self, parent=None, figures=[], labels=[], title=None):
-        QtGui.QMainWindow.__init__(self, parent)
+        QtWidgets.QMainWindow.__init__(self, parent)
         title = title or 'MplMultiTab'
         self.setWindowTitle( title )
         
         self.canvases = []
         
-        self.create_menu()
-        self.create_main_frame( figures, labels )
+        #self.create_menu()
+        self.create_main_frame(figures, labels)
         self.create_status_bar()
 
         #self.textbox.setText('1 2 3 4')
@@ -106,7 +107,7 @@ class MplMultiTab(QtGui.QMainWindow):
     def on_about(self):
         msg = """ doom dooom doom... doom di doom DOOOOOOM!!!!
         """
-        QtGui.QMessageBox.about(self, "About the demo", msg.strip())
+        QtWidgets.QMessageBox.about(self, "About the demo", msg.strip())
     
     #def on_pick(self, event):
         ## The event received here is of the type
@@ -152,15 +153,15 @@ class MplMultiTab(QtGui.QMainWindow):
     #@print_args()
     def create_main_frame(self, figures, labels):
         
-        self.main_frame = QtGui.QWidget()
-        self.tabWidget = QtGui.QTabWidget( self.main_frame )
+        self.main_frame = QtWidgets.QWidget()
+        self.tabWidget = QtWidgets.QTabWidget( self.main_frame )
         
         # Create the navigation toolbar NOTE: still empty
         self.mpl_toolbar = MultiTabNavTool(self.canvases, self.tabWidget, self.main_frame)
         
         #NavigationToolbar(canvas, parent) for canvas in self.canvases
         
-        #tabs = QtGui.QTabWidget()
+        #tabs = QtWidgets.QTabWidget()
         
         self.create_tabs( figures, labels )
         
@@ -173,19 +174,19 @@ class MplMultiTab(QtGui.QMainWindow):
         
         
         # Other GUI controls
-        #self.textbox = QtGui.QLineEdit()
+        #self.textbox = QtWidgets.QLineEdit()
         #self.textbox.setMinimumWidth(200)
         #self.connect(self.textbox, SIGNAL('editingFinished ()'), self.on_draw)
         
-        #self.draw_button = QtGui.QPushButton("&Draw")
+        #self.draw_button = QtWidgets.QPushButton("&Draw")
         #self.connect(self.draw_button, SIGNAL('clicked()'), self.on_draw)
         
-        #self.grid_cb = QtGui.QCheckBox("Show &Grid")
+        #self.grid_cb = QtWidgets.QCheckBox("Show &Grid")
         #self.grid_cb.setChecked(False)
         #self.connect(self.grid_cb, SIGNAL('stateChanged(int)'), self.on_draw)
         
-        #slider_label = QtGui.QLabel('Bar width (%):')
-        #self.slider = QtGui.QSlider(Qt.Horizontal)
+        #slider_label = QtWidgets.QLabel('Bar width (%):')
+        #self.slider = QtWidgets.QSlider(Qt.Horizontal)
         #self.slider.setRange(1, 100)
         #self.slider.setValue(20)
         #self.slider.setTracking(True)
@@ -203,7 +204,7 @@ class MplMultiTab(QtGui.QMainWindow):
         
         #print( self.mpl_toolbar.toolbars )
         
-        self.vbox = vbox = QtGui.QVBoxLayout()
+        self.vbox = vbox = QtWidgets.QVBoxLayout()
         vbox.addWidget(self.mpl_toolbar)
         vbox.addWidget(self.tabWidget)
         #vbox.addLayout(hbox)
@@ -249,28 +250,28 @@ class MplMultiTab(QtGui.QMainWindow):
     
     #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     def create_status_bar(self):
-        self.status_text = QtGui.QLabel("This is a demo")
+        self.status_text = QtWidgets.QLabel("This is a demo")
         self.statusBar().addWidget(self.status_text, 1)
         
     #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-    def create_menu(self):        
-        self.file_menu = self.menuBar().addMenu("&File")
+    #def create_menu(self):        
+        #self.file_menu = self.menuBar().addMenu("&File")
         
-        load_file_action = self.create_action("&Save plot",
-            shortcut="Ctrl+S", slot=self.save_plots, 
-            tip="Save the plot")
-        quit_action = self.create_action("&Quit", slot=self.close, 
-            shortcut="Ctrl+Q", tip="Close the application")
+        #load_file_action = self.create_action("&Save plot",
+            #shortcut="Ctrl+S", slot=self.save_plots, 
+            #tip="Save the plot")
+        #quit_action = self.create_action("&Quit", slot=self.close, 
+            #shortcut="Ctrl+Q", tip="Close the application")
         
-        self.add_actions(self.file_menu, 
-            (load_file_action, None, quit_action))
+        #self.add_actions(self.file_menu, 
+            #(load_file_action, None, quit_action))
         
-        self.help_menu = self.menuBar().addMenu("&Help")
-        about_action = self.create_action("&About", 
-            shortcut='F1', slot=self.on_about, 
-            tip='About the demo')
+        #self.help_menu = self.menuBar().addMenu("&Help")
+        #about_action = self.create_action("&About", 
+            #shortcut='F1', slot=self.on_about, 
+            #tip='About the demo')
         
-        self.add_actions(self.help_menu, (about_action,))
+        #self.add_actions(self.help_menu, (about_action,))
 
     #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     def add_actions(self, target, actions):
@@ -281,28 +282,28 @@ class MplMultiTab(QtGui.QMainWindow):
                 target.addAction(action)
 
     #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-    def create_action(  self, text, slot=None, shortcut=None, 
-                        icon=None, tip=None, checkable=False, 
-                        signal="triggered()"):
-        action = QtGui.QAction(text, self)
-        if icon is not None:
-            action.setIcon(QIcon(":/%s.png" % icon))
-        if shortcut is not None:
-            action.setShortcut(shortcut)
-        if tip is not None:
-            action.setToolTip(tip)
-            action.setStatusTip(tip)
-        if slot is not None:
-            self.connect(action, SIGNAL(signal), slot)
-        if checkable:
-            action.setCheckable(True)
-        return action
+    #def create_action(  self, text, slot=None, shortcut=None, 
+                        #icon=None, tip=None, checkable=False, 
+                        #signal="triggered()"):
+        #action = QtWidgets.QAction(text, self)
+        #if icon is not None:
+            #action.setIcon(QIcon(":/%s.png" % icon))
+        #if shortcut is not None:
+            #action.setShortcut(shortcut)
+        #if tip is not None:
+            #action.setToolTip(tip)
+            #action.setStatusTip(tip)
+        #if slot is not None:
+            #self.connect(action, SIGNAL(signal), slot)
+        #if checkable:
+            #action.setCheckable(True)
+        #return action
 
 
 
 
 #****************************************************************************************************
-class MplMultiTab2D(QtGui.QMainWindow):
+class MplMultiTab2D(QtWidgets.QMainWindow):
     '''Combination tabs display matplotlib canvas'''
     #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     def __init__(self, figures=[], labels=[], shape=None, title=None):
@@ -316,19 +317,19 @@ class MplMultiTab2D(QtGui.QMainWindow):
         self.labels = labels    #np.array(labels).reshape(self.figures.shape)
         
         #create main widget
-        self.main_widget = QtGui.QWidget(self)
+        self.main_widget = QtWidgets.QWidget(self)
         self.main_widget.setFocus()
         self.setCentralWidget(self.main_widget)
         
         #Create the navigation toolbar stack
-        self.toolstack = QtGui.QStackedWidget(self.main_widget)
+        self.toolstack = QtWidgets.QStackedWidget(self.main_widget)
         
         #stack switches display for central pannel
-        self.stack = QtGui.QStackedWidget(self.main_widget)
+        self.stack = QtWidgets.QStackedWidget(self.main_widget)
         
         #create the tab bars
         self.tabbars = []
-        for loc, lbls in zip((QtGui.QTabBar.RoundedWest, QtGui.QTabBar.RoundedNorth), 
+        for loc, lbls in zip((QtWidgets.QTabBar.RoundedWest, QtWidgets.QTabBar.RoundedNorth), 
                              self.labels):
             tabs = self._create_tabs(loc, lbls)
             tabs.currentChanged.connect(self.tab_change)
@@ -336,7 +337,7 @@ class MplMultiTab2D(QtGui.QMainWindow):
         self.tabsWest, self.tabsNorth = self.tabbars
         
         #define layout
-        grid = QtGui.QGridLayout(self.main_widget)
+        grid = QtWidgets.QGridLayout(self.main_widget)
         #grid.setSpacing(10)
         
         #add widgets to layout
@@ -362,7 +363,7 @@ class MplMultiTab2D(QtGui.QMainWindow):
     #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     def _create_tabs(self, loc, labels):
         '''create the tab bars at location with labels'''
-        tabs = QtGui.QTabBar(self.main_widget)
+        tabs = QtWidgets.QTabBar(self.main_widget)
         tabs.setShape(loc)
         for i, d in enumerate(labels):
             tabs.addTab(d)
@@ -423,8 +424,8 @@ if __name__ == "__main__":
         figures.append( fig )
         labels.append( 'Tab %i'%i )
     
-    app = QtGui.QApplication(sys.argv)
-    ui = MplMultiTab( figures=figures, labels=labels)
+    app = QtWidgets.QApplication(sys.argv)
+    ui = MplMultiTab(figures=figures, labels=labels)
     ui.show()
     #from IPython import embed
     #embed()
