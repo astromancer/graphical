@@ -8,6 +8,7 @@
 /__pycache__
 
 #dev
+/dev
 multitab.2d.py
-imagine_test.py
-sliders.*.py
+multitab_test.py
+

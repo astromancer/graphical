@@ -7,25 +7,41 @@ import matplotlib.pyplot as plt
 #plt.register_cmap(name='viridis', cmap=cmaps.viridis)
 
 from recipes.array import grid_like
+from recipes.string import minlogfmt
 
 from IPython import embed
             
 
 #====================================================================================================
 def get_axlim(x, whitefrac, e=0):
-    '''Return suggested axis limits based on the extrema of x, and the desired fractional whitespace 
-    on plot.'''
+    '''
+    Return suggested axis limits based on the extrema of x, and the desired
+    fractional whitespace on plot.
+    whitespace  - can be number, or (bottom, top) tuple
+    e - uncertainty
+        can be either single array of same shape as x, or 2 arrays (upper, lower)
+    '''
+    if np.ma.is_masked(x):
+        x = x[~x.mask]          #unmask
+    else:
+        x = np.asarray(x)
+    x = x.flatten()
     
-    if ~np.any(e):
-        e = 0
+    e = np.asarray(e)
+    e_ = np.zeros((2, len(x)))
+    if e.size:      #passed array may have 0 size
+        e_[:] = e#.flatten()
+    el, eu = e_
     
-    xl, xu = np.nanmin(x-e), np.nanmax(x+e)
+    xl, xu = np.nanmin(x-el), np.nanmax(x+eu)
     xd = xu - xl
-    wxd = whitefrac * xd
-    return xl - wxd, xu + wxd
+    wf = np.empty(2)
+    wf[:] = whitefrac
+    wxd = wf * xd
+    return xl - wxd[0], xu + wxd[1]
 
 #====================================================================================================
-def hist( x, **kws ):
+def hist(x, **kws):
     '''Plot a nice looking histogram.
     
     Parameters
@@ -50,37 +66,78 @@ def hist( x, **kws ):
     ax:         axes
     '''
     
-    show_stats  = kws.pop( 'show_stats', () )
-    lbls        = kws.pop( 'axlabels', () )
-    title       = kws.pop( 'title', '' )
+    show_stats  = kws.pop('show_stats', ())
+    fmt_stats   = kws.pop('fmt_stats', None)
+    lbls        = kws.pop('axlabels', ())
+    title       = kws.pop('title', '')
+    #ax = ax.plot
     
-    kws.setdefault( 'bins', 100 )
-    alpha = kws.setdefault( 'alpha', 0.5 )
+    kws.setdefault('bins', 100)
+    alpha = kws.setdefault('alpha', 0.5)
+    Q = kws.pop('percentile', [])
+    named_quantiles = {25 : 'lower  quartile',      #https://en.wikipedia.org/wiki/Quantile#Specialized_quantiles
+                       50 : 'median',
+                       75 : 'upper quartile'}
+    
     
     #Create figure
-    fig, ax = plt.subplots( tight_layout=1, figsize=(12,8) )
-
+    ax                      =       kws.pop('ax',        None)
+    if ax is None:
+        _, ax = plt.subplots(tight_layout=1, figsize=(12,8))
+    #else:
+        #fig = ax.figure
+    
     #Plot the histogram
-    h = ax.hist( x, **kws )
+    h = ax.hist(x, **kws)
 
     #Make axis labels and title
     xlbl = lbls[0]      if len(lbls)     else ''
     ylbl = lbls[1]      if len(lbls)>1   else 'Counts'
-    ax.set_xlabel( xlbl )
-    ax.set_ylabel( ylbl )
-    ax.set_title( title )
+    ax.set_xlabel(xlbl)
+    ax.set_ylabel(ylbl)
+    ax.set_title(title)
     ax.grid()
 
-    #Extra stats
-    if 'mode' in show_stats:
+    #Extra stats #FIXME bad nomenclature
+    if len(show_stats):
         from matplotlib.transforms import blended_transform_factory as btf
-        from scipy.stats import mode
+        stats = {}
+    if 'min' in show_stats:
+        stats['min'] = x.min()
         
-        xmode, count = mode( x )
-        ax.axvline(xmode, color='r', alpha=alpha, ls='--', lw=2 )
-        trans = btf( ax.transData, ax.transAxes )
-        txt = 'mode = {}'.format( xmode[0] )
-        ax.text( xmode, 1, txt, rotation='vertical', transform=trans, va='top', ha='right' )
+    if 'max' in show_stats:
+        stats['max'] = x.max()
+    
+    if 'mode' in show_stats:
+        from scipy.stats import mode
+        mr = mode(x)
+        xmode = mr.mode.squeeze()
+        stats['mode'] = xmode
+    
+    if 'mean' in show_stats:
+        stats['mean'] = x.mean()
+    if 'median' in show_stats:
+        Q.append(50)
+        
+    if len(Q): #'percentile' in show_stats:
+        P = np.percentile(x, Q)
+        for p, q in zip(P, Q):
+            name = named_quantiles.get(q, '$p_{%i}$' % q)
+            stats[name] = p
+    
+    if fmt_stats is None:
+        from recipes.string import minfloatfmt
+        fmt_stats = minfloatfmt
+    
+    for key, val in stats.items():
+        ax.axvline(val, color='r', alpha=alpha, ls='--', lw=2)
+        trans = btf(ax.transData, ax.transAxes)
+        txt = '%s = %s' % (key, fmt_stats(val))
+        ax.text(val, 1, txt, 
+                rotation='vertical', transform=trans, va='top', ha='right')
+    
+    #if 'percentile' in show_stats:
+        #pass
     
     return h, ax
     
@@ -94,6 +151,7 @@ class LCplot(object):
                    'timescale', 'start', 'offsets', 'legend_kw', 'auto_legend')
     
     #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    maxpoints = 1e4             #TODO
     whitefrac = 0.025
     _default_spans =    dict(label='filtered', 
                              alpha=0.2, 
@@ -148,49 +206,65 @@ class LCplot(object):
         
         #Set parameter defaults
         #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-        labels                  =       kws.pop( 'labels',               [] )
-        axlabels                =       kws.pop( 'axlabels',             [] )
-        title                   =       kws.pop( 'title',                '' )
-        self.relative_time      =       kws.pop( 'relative_time',        False )
+        labels                  =       kws.pop('labels',               None )
+        axlabels                =       kws.pop('axlabels',             [] )
+        title                   =       kws.pop('title',                '' )
+        self.relative_time      =       kws.pop('relative_time',        False )
         
-        colours                 =       kws.get( 'colours',             [] ) #colour cycle
-        cmap                    =       kws.get( 'colormap',            None )
+        colours                 =       kws.get('colours',             [] ) #colour cycle
+        cmap                    =       kws.get('colormap',            None )
         
-        show_errors             =       kws.pop( 'show_errors',  'bar' ) #{'bar','contour'} #TODO: sampled
-        self.errorbar_props     =       kws.pop( 'errorbar',     {} )
-        self._set_defaults( self.errorbar_props, self._default_errorbar )
+        show_errors             =       kws.pop('show_errors',  'bar' ) #{'bar','contour'} #TODO: sampled
+        self.errorbar_props     =       kws.pop('errorbar',     {} )
+        self._set_defaults(self.errorbar_props, self._default_errorbar)
         #self.error_contours     =       kws.pop( 'error_contours',     False )
         
-        show_masked             =       kws.pop( 'show_masked',  False )#'spans' in kws
-        self.span_props         =       kws.pop( 'spans',        {} )
-        self._set_defaults( self.span_props, self._default_spans )
+        show_masked             =       kws.pop('show_masked',  False )#'spans' in kws
+        self.span_props         =       kws.pop('spans',        {} )
+        self._set_defaults(self.span_props, self._default_spans)
         
-        self.hist_props         =       kws.pop( 'hist',           {} )
-        self.show_hist          =       kws.pop( 'show_hist', bool(len(self.hist_props)) )
-        self._set_defaults( self.hist_props, self._default_hist )
+        self.hist_props         =       kws.pop('hist',           {} )
+        self.show_hist          =       kws.pop('show_hist', bool(len(self.hist_props)) )
+        self._set_defaults(self.hist_props, self._default_hist)
         
-        draggable               =       kws.pop( 'draggable',            True )
-        ax                      =       kws.pop( 'ax',                   None )
-        whitefrac               =       kws.pop( 'whitefrac',            self.whitefrac )
+        draggable               =       kws.pop('draggable', True)
+        ax                      =       kws.pop('ax',        None)
+        #TODO: x,y,upper, lower
+        whitefrac               =       kws.pop('whitefrac', self.whitefrac)
         whitefrac = np.atleast_1d(whitefrac)
         whitefrac = np.r_[whitefrac, whitefrac] if len(whitefrac)==1 else whitefrac[:2]
         
         #Upper time axis display
         #NOTE: this might get messy! Consider setting up the axes outside and passing
-        self.twinx              =       kws.pop( 'twinx',           None )
-        self.timescale          =       kws.pop( 'timescale',       's' )
-        self.start              =       kws.pop( 'start',        None )
+        self.twinx              =       kws.pop('twinx',           None )
+        self.timescale          =       kws.pop('timescale',       's' )
+        self.start              =       kws.pop('start',        None )
         
-        legend_kw               =       kws.pop( 'legend_kw',        {} )
-        offsets                 =       kws.pop( 'offsets',        None )
+        legend_kw               =       kws.pop('legend_kw',        {} )
+        offsets                 =       kws.pop('offsets',        None )
+
         #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-        if isinstance(labels, str):
-            labels = [labels]
-        
-        #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+        #check for structured data
+        l = [isinstance(d, dict) for d in data]
+        if any(l):
+            dgen = (list(d.values()) if ll else d  for d, ll in zip(data, l))
+            keys = [tuple(data[i].keys()) for i in np.where(l)[0]]
+            data = tuple(dgen)
+            if len(keys) > 1:
+                assert keys[0] == keys[1], "dict keys don't match"
+            if labels is None:
+                labels = keys[0]
+            
+        #parse data args
         Times, Rates, Errors = self.get_data(data)
         N, _ = Rates.shape
         
+        #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+        #check if single label specified
+        if labels is None:
+            labels = []
+        if isinstance(labels, str):
+            labels = [labels]
         #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
         #Ensure we plot with unique colours
         
@@ -209,25 +283,23 @@ class LCplot(object):
         plots, masked_plots  = [], []
         _linked = []
         
-        #NOTE: masked array behaves badly in mpl<1.5. see: https://github.com/matplotlib/matplotlib/issues/5016/
+        #NOTE: masked array behaves badly in mpl<1.5. 
+        #see: https://github.com/matplotlib/matplotlib/issues/5016/
         #Rates = Rates.filled(np.nan)
         
-        for i, (t, rate, err, label) in enumerate(itt.zip_longest(Times, Rates, Errors, labels)):  #zip_longest in case no Errors are given
+        for i, (t, rate, stddev, label) in enumerate(itt.zip_longest(
+                Times, Rates, Errors, labels)):  #zip_longest in case no Errors are given
             
-            #catch in case for some reason the user provides a sequence of empty error sequences
-            if not (show_errors and np.size(err)):
-                err = None              #ax.errorbar borks for empty error sequences
+            #catch in case for some reason the user provides a sequence of empty
+            #error sequences
+            if not (show_errors and np.size(stddev)):
+                stddev = None          #ax.errorbar borks for empty error sequences
                         
-            if (not err is None) & (show_errors == 'contour'):
-                #TODO: separate method here
-                from tsa.tsa import smooth
-                c, = ax.plot(t, smooth(rate + 3*err))
-                colour = self.errorbar_props['color'] = c.get_color()   #preserve colour cycle
-                ax.plot(t, smooth(rate - 3*err), colour)
-                err = None
+            if (stddev is not None) & (show_errors == 'contour'):
+                self.uncertainty_contours(ax, t, rate, stddev, lw=1)
             
             #embed()
-            pl = ax.errorbar(t, rate, err, 
+            pl = ax.errorbar(t, rate, stddev, 
                              label=label,
                              **self.errorbar_props)
             plots.append(pl)
@@ -279,16 +351,25 @@ class LCplot(object):
             return fig, plots, Times, Rates, Errors, self.Hist
         else:
             return fig, plots, Times, Rates, Errors
-    
+   
     #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-    #@staticmethod TODO:  handle data of different lenghts!!!!!
+    def uncertainty_contours(self, ax, t, rate, stddev, **kws):
+        #NOTE: interpret uncertainties as stddev of distribution
+        from tsa.tsa import smoother
+        c, = ax.plot(t, smoother(rate + 3 * stddev), **kws)
+        colour = self.errorbar_props['color'] = c.get_color()   #preserve colour cycle
+        ax.plot(t, smoother(rate - 3*stddev), colour, **kws)
+   
+   #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    #TODO:  handle data of different lenghts!!!!!
     def get_data(self, data):
         '''parse data arguments'''
         
         #rates only
         if len(data)==1:
             Rates = np.ma.asarray(data[0])      #Assume each row gives rates for TS
-            Times = []                          #No time given, plot by array index #NOTE: Rates here may be non-uniform, so we will set times when we blockify
+            Times = []                          #No time given, plot by array index 
+            #NOTE: Rates here may be non-uniform, so we will set times when we blockify
             Errors = []                         #No errors given
         
         #times & rates given
@@ -306,9 +387,12 @@ class LCplot(object):
         #Convert to masked and remove unwanted dimensionality
         Rates = np.ma.asarray(Rates).squeeze()
         Times = np.ma.asarray(Times).squeeze()
+        Errors = np.array(Errors).squeeze()
         
         #at this point the data might be a masked_array of arrays (of non-uniform length)
         #support for non-uniform data length
+
+        #print(Rates, Times, Errors)
         
         Times, Rates, Errors  = self.blockify(Times, Rates, Errors)
         
@@ -437,7 +521,6 @@ class LCplot(object):
         rect = left, bottom, right, top = [0.025, 0.01, 0.97, .98]
         
         if ax is None:
-            
             if self.twinx =='sexa':
                 from .dualaxes import DateTimeDualAxes
                 from astropy import units as u
@@ -475,7 +558,8 @@ class LCplot(object):
         if self.show_hist:
             from mpl_toolkits.axes_grid1 import make_axes_locatable 
             divider = make_axes_locatable(ax)
-            self.hax = divider.append_axes('right', size='25%', pad=0.3, sharey=ax)
+            self.hax = divider.append_axes('right', size='25%', pad=0.3, 
+                                           sharey=ax)
             self.hax.grid()
             #ax.set_color_cycle(colours)
         else:
@@ -491,11 +575,11 @@ class LCplot(object):
                 self.hax.set_prop_cycle(ccyc)
                 
 
-        fig.tight_layout( rect=[left, bottom, right, top] )
-        ax.grid( b=True, which='both' )
+        fig.tight_layout(rect=[left, bottom, right, top])
+        ax.grid(b=True, which='both')
         
         return fig, ax
-   
+    
     #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     def plot_masked_intervals(self, ax, t, mask):
         '''Highlight the masked values within the time series with a span accross the axis'''
@@ -529,7 +613,7 @@ class LCplot(object):
         #print( 'Plotting H' )
         
         if np.ma.is_masked(rate):
-            r = rate[ ~rate.mask ]
+            r = rate[~rate.mask]
         else:
             r = rate
         
@@ -563,17 +647,14 @@ class LCplot(object):
     def _set_axes_limits(ax, X, Y, E, whitefrac, offsets):
         '''Axes limits'''
         
-        if np.ma.is_masked(Y):          #unmask
-            X = X[~Y.mask]
-        
         xfrac, yfrac = whitefrac
         xlims = get_axlim(X, xfrac)
         ylims = get_axlim(Y, yfrac, E)
         if not offsets is None:
             ylims = np.add(ylims, (min(offsets), max(offsets)))
         
-        ax.set_xlim( *xlims )
-        ax.set_ylim( *ylims )
+        ax.set_xlim(xlims)
+        ax.set_ylim(ylims)
          
     #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     def _make_legend(self, ax, plots, labels):
@@ -598,9 +679,68 @@ class LCplot(object):
             
             ax.legend( plots, labels,  **self._default_legend)
 
-#****************************************************************************************************
 
+#****************************************************************************************************
+#NOTE: you can probs use the std plt.subplots machinery if you register your axes classes
+
+def time_phase_plot(P, toff=0):
+    from matplotlib.transforms import Affine2D
+    from .dualaxes import DualAxes
+    fig = plt.figure()
+    aux_trans = Affine2D().translate(-toff, 0).scale(P)
+    ax = DualAxes(fig, 1,1,1, aux_trans=aux_trans)
+    ax.setup_ticks()
+    ax.parasite.set_xlabel('Orbital Phase')
+    fig.add_subplot(ax)
+    return fig, ax
+
+
+def plot_folded_lc(ax, phase, lcdata, P_s, twice=True, orientation='h'):
+    '''plot folded lc mean/max/min/std'''
     
+    lcmean, lcmn, lcmx, lcstd = np.tile(lcdata, (twice+1))
+    if twice:
+        phase = np.r_[phase, phase+1]
+        
+    t = phase * P_s
+    lcerr = lcmean + lcstd * 1. * np.c_[1,-1].T
+    
+    linevars = (lcmean, lcmn, lcmx)
+    colours = ('b', '0.5', '0.5')
+    args = zip(itt.repeat(t), linevars)
+    if orientation.startswith('v'):
+        args = map(reversed, args)
+        fill_between = ax.fill_betweenx
+    else:
+        fill_between = ax.fill_between
+    
+        
+    lines = []
+    for args, colour in zip(args, colours):
+        pl, = ax.plot(*args, color=colour, lw=1)
+        lines.append(pl)
+    plm, plmn, plmx = lines
+    
+    fill_between(t, *lcerr, color='grey')
+
+    #ax.hlines(phbins, *ax.get_ylim(), color='g', linestyle='--')
+    ax.grid()
+    if orientation.startswith('h'):
+        ax.set_xlim(0, (twice+1)*P_s)
+        ax.set_xlabel('t (s)')
+    else:
+        ax.set_ylim(0, (twice+1)*P_s)
+        ax.set_ylabel('t (s)')
+
+    r = Rectangle( (0, 0), 1, 1, fc='grey', ec='none')            #rectangle proxy art for legend.
+    leg = ax.legend((plm, plmn, r), ('mean', 'extrema', r'$1\sigma$'))
+    
+    ax.figure.tight_layout()
+    #return fig
+
+
+
+
 #====================================================================================================
  
  

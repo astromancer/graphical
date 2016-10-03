@@ -593,7 +593,7 @@ class ImageCubeDisplayX(ImageCubeDisplay):
 
 #****************************************************************************************************
 from fastfits import FITSFrame
-from recipes.iter import interleave
+#from recipes.iter import interleave
 class FITSCubeDisplay(ImageCubeDisplayA, FITSFrame):
     #FIXME: switching with slider messes up the aperture indexes
     #TODO: frame switch buttons; 
@@ -605,9 +605,7 @@ class FITSCubeDisplay(ImageCubeDisplayA, FITSFrame):
         ''' '''
         #setup data access
         FITSFrame.__init__(self, filename)
-        
-        sx = self.ishape
-        extent = interleave((0,)*len(sx), sx)
+        extent = np.c_[(0,0), self.ishape].flatten() - 0.5
         ImageCubeDisplayA.__init__(self, ax, [[0]], 
                                     ap_data_dict,
                                     origin='llc',

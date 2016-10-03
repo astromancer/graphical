@@ -1,15 +1,13 @@
 from matplotlib import ticker
 from matplotlib import scale as mscale
-from matplotlib.transforms import (Transform, 
-                                   IdentityTransform,
-                                   ScaledTranslation)
-from matplotlib.transforms import blended_transform_factory as btf
-
+from matplotlib.transforms import (blended_transform_factory as btf,
+                                   Transform, IdentityTransform, ScaledTranslation)
 from mpl_toolkits.axes_grid1.parasite_axes import SubplotHost
 
 #from decor import expose
 
 from grafico.formatters import *
+from grafico.ticks import locator_factory, formatter_factory
 
 #****************************************************************************************************
 class ReciprocalTransform(Transform): 
@@ -125,7 +123,7 @@ class DualAxes(SubplotHost):
         SubplotHost.__init__(self, *args, **kws)   #self.__class__, self
         
         #Initialize the parasite axis
-        self.parasite = self.twin( self.aux_trans ) # ax2 is responsible for "top" axis and "right" axis
+        self.parasite = self.twin(self.aux_trans) # ax2 is responsible for "top" axis and "right" axis
    
     #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     def setup_ticks(self):
@@ -159,13 +157,13 @@ class DualAxes(SubplotHost):
         #Set the minor tick locator
         mloc = self.xaxis.get_minor_locator()
         if isinstance(mloc, ticker.NullLocator):
-            mloc = ticker.AutoMinorLocator()
-            self.xaxis.set_minor_locator( mloc )
+            mloc = ticker.AutoMinorLocator(2)
+            self.xaxis.set_minor_locator(mloc)
         
         #similarly for the minor locator
         #TransMinorLocator = locator_factory( self.xaxis.get_minor_locator(), 
         #                                     self.aux_trans )
-        self.parasite.xaxis.set_minor_locator( ticker.AutoMinorLocator(4) )#TransMinorLocator() )
+        self.parasite.xaxis.set_minor_locator(ticker.AutoMinorLocator(2))#TransMinorLocator() )
         
     #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     def set_formatters(self):
@@ -184,17 +182,17 @@ class DualAxes(SubplotHost):
         
         #Time axis
         #Set the minor tick formatter#
-        MinorScalarFormatter = formatter_factory( ticker.ScalarFormatter(useOffset=False) )
+        MinorScalarFormatter = formatter_factory(
+            ticker.ScalarFormatter(useOffset=False))
         msf = ticker.ScalarFormatter(useOffset=False) #MinorScalarFormatter()                  #instance 
-        self.xaxis.set_minor_formatter( msf )
-        self.parasite.xaxis.set_minor_formatter( MinorScalarFormatter()   )
+        self.xaxis.set_minor_formatter(msf)
+        self.parasite.xaxis.set_minor_formatter(MinorScalarFormatter())
     
 
 
     #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     def set_xscale(self, value, **kw):
         super(DualAxes, self).set_xscale(value, **kw)
-        
         self.parasite.set_xscale(value, **kw)
         
     #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -326,7 +324,7 @@ class DateTimeDualAxes(DualAxes):
         
         aux_trans = Affine2D().translate(-xoff, 0).scale(scale)
 
-        DualAxes.__init__( self, *args, aux_trans=aux_trans, **kw )
+        DualAxes.__init__(self, *args, aux_trans=aux_trans, **kw)
         
         self.cid = self.figure.canvas.mpl_connect('draw_event', self._on_draw)
         
@@ -406,8 +404,8 @@ class DateTimeDualAxes(DualAxes):
 class TimeFreqDualAxes(SubplotHost):
     #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     def __init__(self, *args, **kw):
-        
-        xax = kw.pop( 'xax', 'f' )
+    
+        xax = kw.pop('xax', 'f')
         self.xtrans = ReciprocalTransform()
         #self._aux_trans = btf(ReciprocalTransform(), IdentityTransform())
         
@@ -440,9 +438,9 @@ class TimeFreqDualAxes(SubplotHost):
         #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
         #def set_locators(self):
         #formatter_factory(AutoMinorLocator(n=5))
-        self.xaxis.set_minor_locator(AutoMinorLocator(n=5))
+        self.xaxis.set_minor_locator(ticker.AutoMinorLocator(n=5))
         
-        self.parasite.xaxis.set_minor_locator(AutoMinorLocator(n=5))
+        self.parasite.xaxis.set_minor_locator(ticker.AutoMinorLocator(n=5))
         
     #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     def format_coord(self, x, y):
@@ -463,13 +461,11 @@ class TimeFreqDualAxes2(DualAxes):
     def __init__(self, *args, **kw):
         
         xax = kw.pop( 'xax', 'f' )
-        
         self.xtrans = ReciprocalTransform()     #TODO: SEPARATING TRANSFORMS
+        aux_trans = kw.pop('aux_trans', btf(ReciprocalTransform(),
+                                            IdentityTransform()))
         
-        aux_trans = kw.pop( 'aux_trans', btf(  ReciprocalTransform(),
-                                                IdentityTransform() ) )
-        
-        DualAxes.__init__( self, *args, aux_trans=aux_trans, **kw ) #self.__class__, self
+        DualAxes.__init__(self, *args, aux_trans=aux_trans, **kw) #self.__class__, self
     
         if xax.lower().startswith( 'f' ):
             self.frequency_axis, self.period_axis = self.xaxis, self.parasite.xaxis
@@ -496,8 +492,8 @@ class TimeFreqDualAxes2(DualAxes):
         
         minFreqForm = MinorFreqFormatter()
         
-        fax.set_minor_formatter( minFreqForm  )
-        fax.set_major_formatter( majorFreqForm )
+        fax.set_minor_formatter(minFreqForm)
+        fax.set_major_formatter(majorFreqForm)
         
         
         #Period axis
