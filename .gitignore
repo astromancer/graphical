@@ -4,6 +4,9 @@
 *.kate-swp
 *~
 
+#pyCharm
+.idea/
+
 #python
 /__pycache__
 
