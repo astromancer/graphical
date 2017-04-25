@@ -1,25 +1,28 @@
+'''
+Additional matplotlib axes tick formatters
+'''
 import warnings
 
+import numpy as np
 from scipy.stats import mode
-
 from matplotlib import ticker
-from matplotlib.transforms import (Transform, 
-                                   IdentityTransform,
-                                   ScaledTranslation)
+from matplotlib.transforms import IdentityTransform #, Transform, ScaledTranslation
 
 from recipes.string import minfloatformat
 
 
+#****************************************************************************************************
 class TransFormatter(ticker.ScalarFormatter):
     _transform = IdentityTransform()
-        
+
     def __call__(self, x, pos=None):
         with warnings.catch_warnings():
             warnings.simplefilter("ignore")
             xt = self._transform.transform(x)
-            
+
         return minfloatformat(xt, 3)
 
+#****************************************************************************************************
 class InfiniteAwareness():
     def __call__(self, x, pos=None):
         xs = super(InfiniteAwareness, self).__call__(x, pos)
@@ -28,9 +31,15 @@ class InfiniteAwareness():
             return r'$\infty$'
         else:
             return xs #
- 
-    
-    
+
+
+# class SwitchLogFormatter():
+#     def __init__(self, precision, mult_symb):
+#
+#     def __call__(x, pos=None):
+#         return minlogfmt(x, 2, '\cdot')
+
+
 #****************************************************************************************************
 class MetricFormatter(ticker.Formatter):
     """
@@ -64,12 +73,12 @@ class MetricFormatter(ticker.Formatter):
     def __init__(self, unit="", precision=None, uselabel=True):
         self.baseunit = unit
         self.pow10 = 0
-        
+
         if precision is None:
             self.format_str = '{:g}'
         elif precision > 0:
             self.format_str = '{0:.%if}' % precision
-            
+
         self.uselabel = uselabel
 
     #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -83,18 +92,18 @@ class MetricFormatter(ticker.Formatter):
     def set_locs(self, locs):
         #print( 'set_locs' )
         self.locs = locs
-        
-        sign = np.sign( locs )
-        logs = sign*np.log10(sign*locs)
-        pow10 = int( mode( logs//3 )[0][0] * 3 )
 
-        self.pow10 = pow10 = np.clip( pow10, -24, 24 )
-        #self.mantissa = locs / (10 ** pow10)
+        sign = np.sign(locs)
+        logs = sign * np.log10(sign * locs)
+        pow10 = int(mode(logs // 3)[0][0] * 3)
+
+        self.pow10 = pow10 = np.clip(pow10, -24, 24)
+        # self.mantissa = locs / (10 ** pow10)
         self.prefix = self.METRIC_PREFIXES[pow10]
         self.unit = self.prefix + self.baseunit
-        
+
         #if self.unitlabel is None:
-            #self.unitlabel = self.axis.axes.text( 1, 1, self.unit, 
+            #self.unitlabel = self.axis.axes.text( 1, 1, self.unit,
                                                  #transform=self.axis.axes.transAxes )
         #else:
             #self.unitlabel.set_text( self.unit )

@@ -21,22 +21,22 @@ class ConnectionMixin(ConnectionManager):
         ConnectionManager.__init__(self)
         self.connections = {}                   #connection ids
         self.canvas = fig.canvas
-        
+
     #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     def add_connection(self, name, method):
         self.connections[name] = self.canvas.mpl_connect(name, method)
-    
+
     #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     def remove_connection(self, name):
         self.canvas.mpl_disconnect( self.connections[name] )
         self.connections.pop( name )
-    
+
     #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     def connect(self):
         '''connect the flagged methods to the canvas'''
         for (name,), method in self._connections.items():  #TODO: map??
             self.add_connection( name, method )
-                
+
     #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     def disconnect(self):
         '''
@@ -67,7 +67,7 @@ class CanvasSaver(ConnectionMixin):
         print(self._connections)
         #save the background after the first draw
         saving = True
-        
+
     #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     @mpl_connect('button_release_event')
     def _on_release(self, event):
@@ -75,27 +75,27 @@ class CanvasSaver(ConnectionMixin):
         #connect method to save bg when axes panned/zoomed
         self.saving = self.canvas.manager.toolbar._active in ('PAN', 'ZOOM')
         #FIXME: remove markers before bg save!
-        
+
     #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     def save(self, axes=None):
         '''save the figure content as background'''
         print('HALLELUJA!')
         self.background = self.canvas.copy_from_bbox(self.figure.bbox)
-    
+
     #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     @mpl_connect('draw_event')
     def _on_draw(self, event):
         '''Saves the canvas background after the first draw'''
-        
+
         print( 'UH!' )
-        
+
         #save background for bliting
         if self.saving:
             self.save()
-        
+
         #prevent saving after EVERY draw
         self.saving = False
-        
+
     #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     def save_after_draw(self, event):
         '''Saves the canvas background after the canvas draw'''
@@ -103,8 +103,8 @@ class CanvasSaver(ConnectionMixin):
         self.save()
         #remove this method callback
         #self.remove_connection('draw_event')
-        
-        
+
+
 #*******************************************************************************
 #from matplotlib.transforms import ScaledTranslation
 
@@ -118,60 +118,60 @@ class PointSelector(ConnectionMixin): #LineGrab?
                         mec = 'r',
                         ls='None')
     marker_offset = (0, 15)           #in display (pixel) coordinates
-    
+
     #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     def __init__(self, lines):
         self.lines = flatten(lines)
-        
+
         self.ax = ax = self.lines[0].axes
         self.figure = fig = ax.figure
         ConnectionMixin.__init__(self, fig)
-        
+
         #save the background after the first draw
         saving = True
-        
+
         #print('RAAAR')
         #print(self.connections)
         #print(self._connections)
-        
+
         #create the position markers
         self.markers, = ax.plot([], [], **self.marker_props)
         self.markers.set_zorder(20)
         #apply the marker offset
-        
+
     #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     def ignore(self, event):
         print('ignoring')
         return not (event.inaxes and
                     self.canvas.manager.toolbar._active is None)
-    
+
     #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     def get_index(self, line, event):
         '''
-        Return the index corresponding to closest matching point on line to 
+        Return the index corresponding to closest matching point on line to
         mouse position on click.
         '''
         xy = line.get_xydata()
         xye = (event.xdata, event.ydata)
         return np.linalg.norm(xy - xye,  axis=1).argmin()
-    
+
     #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     def get_index_coords(self, line, event):
         '''
-        Return the index corresponding to closest matching point on line to 
+        Return the index corresponding to closest matching point on line to
         mouse position on click.
         '''
         xy = line.get_xydata()
         ix = np.argmin( abs(xy[:,0] - event.xdata) )
         return ix, xy[ix]
-    
+
     #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     @mpl_connect('button_press_event')
     def _on_click(self, event):
         print('click')
         if self.ignore(event):
             return
-        
+
         indeces, xy = [], []
         ax = event.inaxes
         for line in self.lines:
@@ -179,26 +179,26 @@ class PointSelector(ConnectionMixin): #LineGrab?
             indeces.append(ix)
             xy.append(coo)
 
-            msg = self.fmt.format(i=ix, 
-                                  line=line, 
+            msg = self.fmt.format(i=ix,
+                                  line=line,
                                   coo=ax.format_coord(*coo))
             print(msg)
         print()
-        
+
         #update marker positions
         xy = np.array(xy).T
         self.markers.set_data(xy)
-        
+
         #offset = ScaledTranslation(*self.marker_offset,
                             #scale_trans=fig.dpi_scale_trans)
         #self.markers.set_transform(ax.transData + offset)
-        
+
         #self.markers.
         #self.draw_blit([self.markers])
         self.canvas.draw()
-        
+
         return indeces
-    
+
     #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     #@mpl_connect('button_release_event')
     #def _on_release(self, event):
@@ -206,32 +206,32 @@ class PointSelector(ConnectionMixin): #LineGrab?
         ##connect method to save bg when axes panned/zoomed
         #self.saving = self.canvas.manager.toolbar._active in ('PAN', 'ZOOM')
         ##FIXME: remove markers before bg save!
-    
+
     #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     #@mpl_connect('draw_event')
     #def _on_draw(self, event):
         #'''Saves the canvas background after the first draw'''
-        
+
         #print( 'UH!' )
-        
+
         ##save background for bliting
         #if self.saving:
             #self.background = self.canvas.copy_from_bbox(self.figure.bbox)
-        
+
         ##prevent saving after EVERY draw
         #self.saving = False
-    
+
     #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     def draw_blit(self, artists):
-        
+
         self.canvas.restore_region(self.background)
         for art in artists:
             art.draw(self.canvas.renderer)
-        
+
         self.canvas.blit(self.ax.bbox)
-        
-        
-            
+
+
+
 #*******************************************************************************
 
 
@@ -253,21 +253,21 @@ class LineSelector(RectangleSelector):
                  lineprops=None, rectprops=None, spancoords='data',
                  button=None, maxdist=10, marker_props=None,
                  interactive=False, state_modifier_keys=None):
-        
+
         self.verbose = True
         self.lines = flatten(lines)
         ax = self.lines[0].axes
-        
+
         RectangleSelector.__init__( self, ax, self.select_lines, drawtype,
                                         minspanx, minspany, useblit,
                                         lineprops, rectprops, spancoords,
                                         button, maxdist, marker_props,
                                         interactive, state_modifier_keys)
-    
+
         hprops = dict(linewidth=10, alpha=0.5, linestyle='-') # marker='s'
-        self.selection = [ np.zeros(l.get_xdata().shape, bool) 
+        self.selection = [ np.zeros(l.get_xdata().shape, bool)
                             for l in self.lines ]
-        
+
         #Create Line2D for highlighting selected sections
         self.highlighted = []
         for line in self.lines:
@@ -289,7 +289,7 @@ class LineSelector(RectangleSelector):
             l = (xmin < x) & (x < xmax) &\
                 (ymin < y) & (y < ymax)         #points contained within selector box
             self.selection[i] = l
-            
+
             #set the highlighted line data
             #need to mask a section if selection is discontinuous (i.e. has gaps)
             if l.any():
@@ -297,7 +297,7 @@ class LineSelector(RectangleSelector):
                 nix, = np.where(~l)
                 fti, lti = ix[0], ix[-1]
                 ffi = nix[0]
-                
+
                 if ffi<lti:         #discontinuous selection
                     sx = slice(fti,lti+1)
                     xh = np.ma.masked_where(~l[sx], x[sx])
@@ -306,15 +306,15 @@ class LineSelector(RectangleSelector):
                     xh, yh = x[l], y[l]
             else:
                 xh, yh = x[l], y[l]
-            
+
             hline = self.highlighted[i]
             hline.set_data( xh, yh )
-            
+
             if self.verbose:
                 print( 'Masking {} points on {} '
                        'within x=({:.3f},{:.3f});'
                               'y=({:.3f}, {:.3f})'.format(l.sum(), line, *extent))
-    
+
     #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     #@profile( follow=[] )
     def _release(self, event):
@@ -347,11 +347,11 @@ class LineSelector(RectangleSelector):
                 (xproblems or yproblems)):
             # check if drawn distance (if it exists) is not too small in
             # neither x nor y-direction
-            
+
             for h in self.highlighted:
                 h.set_data([[],[]])
                 print( h, h.get_data() )
-            
+
             self.extents = [0]*4 #FIXME: This draws all the handles at (0,0)
 
             return
@@ -374,21 +374,21 @@ class LineSelector(RectangleSelector):
 
         return False
 
-    
-    
+
+
     #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     #@profile( follow=[RectangleSelector._press] )
     def _press(self, event):
         if event.button == 1:
             pass
-        
+
         if event.button == 2:
             self.restart()
             self.canvas.draw()          #TODO: blit
             return
-        
+
         RectangleSelector._press(self, event)
-    
+
     #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     #@profile( follow=[RectangleSelector._release] )
     #def _release(self, event):
@@ -400,9 +400,9 @@ class LineSelector(RectangleSelector):
             if np.ma.is_masked(x):
                 x.mask = False
                 line.set_xdata(x)
-                
+
             self.highlighted[i].set_data([[],[]])
-    
+
     #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     #@unhookPyQt
     def _on_key_press(self, event):
@@ -413,7 +413,7 @@ class LineSelector(RectangleSelector):
                 x = np.ma.masked_where(self.selection[i], x)
                 line.set_xdata(x)
                 self.highlighted[i].set_data([[],[]])
-        
+
         if event.key.lower() == 'r':
             for i,line in enumerate(self.lines):
                 hline = self.highlighted[i]
@@ -424,7 +424,7 @@ class LineSelector(RectangleSelector):
                 line.set_xdata(x)
                 #unmask highlighted section that was just restored
                 #embed()
-                
+
                 xh = hline.get_xdata( )
                 print( 'len(xh), len(l), l.sum()' )
                 print( len(xh), len(l), l.sum() )
@@ -433,13 +433,13 @@ class LineSelector(RectangleSelector):
                 embed()
                 #print( xh.mask | x.mask[l] )
                 #hline.set_xdata(xh)
-        
+
         self.canvas.draw()          #TODO: blit
-    
+
     #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 
-    
+
 #*******************************************************************************
 class LCFrameDisplay(ConnectionMixin):
 
@@ -461,8 +461,8 @@ class LCFrameDisplay(ConnectionMixin):
         extent = interleave((0,)*len(sx), sx)
 
         self.figi, axi = plt.subplots( tight_layout=True )
-        self.image = axi.imshow( [[0]], 
-                                 origin='llc', 
+        self.image = axi.imshow( [[0]],
+                                 origin='llc',
                                  extent=extent ) #np.zeros(self.frame.shape) / empty?
         #TODO: colorbar; set clim from first frame; sliders; frame switch buttons;
 
@@ -480,7 +480,7 @@ class LCFrameDisplay(ConnectionMixin):
     def ignore(self, event):
         return not (event.inaxes and
                     self.canvas.manager.toolbar._active is None)
-        
+
     #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     @mpl_connect( 'button_press_event' )
     def _on_click(self, event):
@@ -500,27 +500,27 @@ class LCFrameDisplay(ConnectionMixin):
         self.image.set_data( frame )
         self.image.set_clim( np.percentile(frame, (0.25,99.75)) )
         self.figi.canvas.draw()
-    
-    
+
+
 #*******************************************************************************
-from .imagine import FITSCubeDisplay
+# from .imagine import FitsCubeDisplay
 
 class LCFrameDisplay2(PointSelector):
-    
+
     ''' '''
     #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     def __init__(self, cube, **kw):
 
         coords =  np.array([star.coo for star in cube])
-        
+
         tkw = kw.get('tkw', 'utsec')
-        starplots = cube.plot_lc(tkw=tkw, 
+        starplots = cube.plot_lc(tkw=tkw,
                                   mode='flux',
                                   relative_time=True,
                                   twinx='sexa',
                                   **kw)
         #starplots.connect()
-        
+
         PointSelector.__init__(self, starplots.draggables)
 
         fitsfile = cube.filename
@@ -529,9 +529,9 @@ class LCFrameDisplay2(PointSelector):
 
     #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     def ignore(self, event):
-        return not (event.inaxes 
+        return not (event.inaxes
                     and
-                    self.canvas.manager.toolbar._active is None 
+                    self.canvas.manager.toolbar._active is None
                     and
                     event.button == 1)
 
@@ -541,22 +541,22 @@ class LCFrameDisplay2(PointSelector):
         if self.ignore(event):
             print( 'ignoring' )
             return
-        
+
         #print the selected points
         indeces = PointSelector._on_click(self, event)
         ix = indeces[0]
-        
+
         print(ix)
-        
+
         self.frame.frame_slider.set_val(ix)
         #NOTE: This will call self.frame.set_frame(ix)
-        
-        #FIXME: frame selection with slider - not updating coordinates!!
-    
-    
-    
 
-    
+        #FIXME: frame selection with slider - not updating coordinates!!
+
+
+
+
+
 
 if __name__ == '__main__':
     fig, ax = plt.subplots()
