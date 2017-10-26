@@ -4,7 +4,44 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 
-def hist(x, bins=100, range=None, weights=None, **kws):
+def get_bins(x, bins, range=None):
+    # if bins is a string, first compute bin edges with the desired heuristic
+    if isinstance(bins, six.string_types):
+        a = np.asarray(x).ravel()
+
+        # TODO: if weights is specified, we need to modify things.
+        #       e.g. we could use point measures fitness for Bayesian blocks
+        # if weights is not None:
+        #     raise NotImplementedError("weights are not yet supported "
+        #                               "for the enhanced histogram")
+
+        # if range is specified, we need to truncate the data for
+        # the bin-finding routines
+        if range is not None:
+            a = a[(a >= range[0]) & (a <= range[1])]
+
+        if bins == 'ptp':
+            # useful for discrete data
+            bins = int(np.floor(a.ptp()))
+
+        elif bins == 'blocks':
+            from astropy.stats import bayesian_blocks
+            bins = bayesian_blocks(a)
+        elif bins == 'knuth':
+            from astropy.stats import knuth_bin_width
+            da, bins = knuth_bin_width(a, True)
+        elif bins == 'scott':
+            from astropy.stats import scott_bin_width
+            da, bins = scott_bin_width(a, True)
+        elif bins == 'freedman':
+            from astropy.stats import freedman_bin_width
+            da, bins = freedman_bin_width(a, True)
+        else:
+            raise ValueError("unrecognized bin code: '{}'".format(bins))
+
+    return bins
+
+def hist(x, bins=100, range=None, normed=False, weights=None, **kws):
     """
     Plot a nice looking histogram.
 
@@ -30,61 +67,34 @@ def hist(x, bins=100, range=None, weights=None, **kws):
     ax:         axes
     """
 
-    show_stats = kws.pop('show_point_estimates', ())
-    fmt_stats = kws.pop('fmt_stats', None)
-    lbls = kws.pop('axlabels', ())
-    title = kws.pop('title', '')
-    # ax = ax.plot
-
-    # if bins is a string, first compute bin edges with the desired heuristic
-    if isinstance(bins, six.string_types):
-        a = np.asarray(x).ravel()
-
-        # TODO: if weights is specified, we need to modify things.
-        #       e.g. we could use point measures fitness for Bayesian blocks
-        if weights is not None:
-            raise NotImplementedError("weights are not yet supported "
-                                      "for the enhanced histogram")
-
-        # if range is specified, we need to truncate the data for
-        # the bin-finding routines
-        if range is not None:
-            a = a[(a >= range[0]) & (a <= range[1])]
-
-        if bins == 'blocks':
-            from astropy.stats import bayesian_blocks
-            bins = bayesian_blocks(a)
-        elif bins == 'knuth':
-            from astropy.stats import knuth_bin_width
-            da, bins = knuth_bin_width(a, True)
-        elif bins == 'scott':
-            from astropy.stats import scott_bin_width
-            da, bins = scott_bin_width(a, True)
-        elif bins == 'freedman':
-            from astropy.stats import freedman_bin_width
-            da, bins = freedman_bin_width(a, True)
-        else:
-            raise ValueError("unrecognized bin code: '{}'".format(bins))
-
-    alpha = kws.setdefault('alpha', 0.5)
-    Q = kws.pop('percentile', [])
     named_quantiles = {25: 'lower  quartile',  # https://en.wikipedia.org/wiki/Quantile#Specialized_quantiles
                        50: 'median',
                        75: 'upper quartile'}
 
-    # Create figure
+    show_stats = kws.pop('show_stats', ())
+    show_stats_labels = kws.pop('show_stats_labels', True)
+    fmt_stats = kws.pop('fmt_stats', None)
+    lbls = kws.pop('axlabels', ())
+    title = kws.pop('title', '')
+    alpha = kws.setdefault('alpha', 0.75)
     ax = kws.pop('ax', None)
+    Q = kws.pop('percentile', [])
+
+    # Create figure
     if ax is None:
         _, ax = plt.subplots(tight_layout=1, figsize=(12, 8))
         # else:
         # fig = ax.figure
 
+    # compute bins if heuristic
+    bins = get_bins(x, bins, range)
+
     # Plot the histogram
-    h = counts, bins, patches = ax.hist(x, bins, range, weights, **kws)
+    h = counts, bins, patches = ax.hist(x, bins, range, normed, weights, **kws)
 
     # Make axis labels and title
-    xlbl = lbls[0] if len(lbls)     else ''
-    ylbl = lbls[1] if len(lbls) > 1   else 'Counts'
+    xlbl = lbls[0] if len(lbls) else ''
+    ylbl = lbls[1] if len(lbls) > 1 else ('Density' if normed else 'Counts')
     ax.set_xlabel(xlbl)
     ax.set_ylabel(ylbl)
     ax.set_title(title)
@@ -92,9 +102,6 @@ def hist(x, bins=100, range=None, weights=None, **kws):
 
     # Extra summary statistics (point estimators)
     stats = {}
-    if len(show_stats):
-        from matplotlib.transforms import blended_transform_factory as btf
-
     if 'min' in show_stats:
         stats['min'] = x.min()
 
@@ -122,12 +129,17 @@ def hist(x, bins=100, range=None, weights=None, **kws):
         from recipes.string import minfloatfmt
         fmt_stats = minfloatfmt
 
+    if stats:
+        from matplotlib.transforms import blended_transform_factory as btf
+
     for key, val in stats.items():
-        ax.axvline(val, color='r', alpha=alpha, ls='--', lw=2)
+        c = patches[0].get_facecolor()
+        ax.axvline(val, color=c, alpha=1, ls='--', lw=2)
         trans = btf(ax.transData, ax.transAxes)
-        txt = '%s = %s' % (key, fmt_stats(val))
-        ax.text(val, 1, txt,
-                rotation='vertical', transform=trans, va='top', ha='right')
+        if show_stats_labels:
+            txt = '%s = %s' % (key, fmt_stats(val))
+            ax.text(val, 1, txt,
+                    rotation='vertical', transform=trans, va='top', ha='right')
 
         # if 'percentile' in show_stats:
         # pass

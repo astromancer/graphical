@@ -1,8 +1,9 @@
-# TODO: functionality that (un)locks sliders in place
 
-import operator
+import logging
+# import operator
 
-import numpy as np  # NOTE: might be unnecessary
+
+import numpy as np
 
 # from matplotlib.widgets import AxesWidget, Slider
 # from matplotlib.patches import Circle
@@ -11,9 +12,11 @@ import numpy as np  # NOTE: might be unnecessary
 # from matplotlib.transforms import blended_transform_factory as btf
 
 
-from .interactive import ConnectionMixin, mpl_connect
-from draggables.machinery import DraggableBase, DragMachinery
+# from .interactive import ConnectionMixin, mpl_connect
+from draggables.machinery import DragMachinery
+from recipes.iter import flatiter
 
+from IPython import embed
 
 # from decor import expose
 
@@ -38,109 +41,82 @@ def picker(artist, event):
     return hit, {}
 
 
-# ****************************************************************************************************
-# class Slider(DraggableBase):
-##def __init__(self):
 
-
-# def get_val(self):
-# y, = self.artist.get_data()[1] #TODO: slide_on x?
-# return float(y + self.offset)  #NOTE the value of offset is not updated during drag
-
-# def validate(self, val):
-# """validate in data coordinates"""
-# current = self.get_val()
-
-
-
-# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-# def bind(self, interval):
-# i0, i1 = sorted(interval)
-# lambda o: i0 <= o <= i1
-
-##self.validation()
-
-# def unbind(self, interval):
-# pass
-
-
-# class SlideMachinery(DragMachinery):
-# @staticmethod
-# def artist_factory(art, offset, annotate, **kws):
-# return art, Slider(art, offset, annotate, **kws)
-
+from matplotlib.lines import Line2D
 
 # ****************************************************************************************************
-class AxesSliders(DragMachinery):  # ConnectionMixin, AxesWidget,
-    # #NOTE: ConnectionMixin renders AxesWidget somewhat redundant
-    # TODO:  OPTION FOR LOGARITHMIC SLIDER AXIS
-    # FIXME: fast dragging past limits ==> set slider value to limit!?
-    # TODO: sliders in axes coordinates... will make it easier to plot othes artists on the same axes
-    # machinery = SlideMachinery
-    marker_size = 10
+class AxesSliders(DragMachinery):
+    """
+    Class with sliders that set min/max of a value
+
+    Basic interactions include:
+        movement - click & drag
+        reset - middle mouse
+
+    Connect listeners to the sliders with
+    sliders.upper.on_changed.add(func)
+    """
+
+    delta_min = 0.025
+
+    # marker_size = 10
+
+    # valfmt = '%1.2f',
 
     # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-    def __init__(self, ax, x1, x2, bounds=None, slide_on='x', valfmt='%1.2f',
-                 closedmin=True, closedmax=True, dragging=True, use_blit=True, **kwargs):
+    def __init__(self, ax, x0, x1, slide_on='x', dragging=True, trapped=False,
+                 annotate=False, haunted=False, use_blit=True, **kwargs):
 
-        self.ax = ax
-        # AxesWidget.__init__(self, ax)          #NOTE: sets self.ax, self.canvas etc
-
-        self.slide_on = slide_on
-        self._index = int(slide_on == 'y')
-        self._locked = 'yx'[self._index]
-        self._order = slice(None, None, -1 if self._index else 1)
-
-        self.axpos = ax.viewLim.get_points()[
-            int(not self._index), 0]  # 1.0    #set the axis spine position #TODO: more descriptive name for this thing
-        # print(ax.get_xlim(), ax.get_ylim())
-        self.setup_axes(ax)
-
-        # ax2data = ax.transAxes + ax.transData.inverted()
-
-
+        self._ax = ax
         # initial values
-        # self.positions  = np.array([x1, x2]) #x1, x2 = vals
-        self._original_position = np.array([x1, x2])
+        self.slide_on = slide_on.lower()
+        i = self._index = int(slide_on == 'y')  # 0 for x-axis slider, 1 for y-axis
+        self._locked = 'yx'[i]
+        _step = -1 if i else 1
+        o = self._order = slice(None, None, _step)
+        x0, x1 = self._original_position = np.sort([x0, x1])
 
-        # set the bounds #IS THIS EXPLICITLY NECESSARY??
-        self._bounds = bounds
-        if bounds is not None:
-            self._bounds = sorted(bounds)
+        # get transform (like axhline / axvline)
+        get_transform = getattr(ax, 'get_%saxis_transform' % self.slide_on)
+        transform = get_transform(which='grid')
 
-        # transform position of sliders form data to axes coordinates
-        # val_ax = [x1, x2] / (self.valmax - self.valmin)
+        # create the dragging ui
+        DragMachinery.__init__(self, use_blit=use_blit)
 
-        self.dragging = dragging        #FIXME: get this working to you update on release not motion
-                                        # for speed
+        # add the sliding lines
+        sliders = []
+        for c, p in zip('br', (x0, x1)):
+            # create sliders Line2D
+            x, y = [[p], [0, 1]][o]
+            line = Line2D(x, y, color=c, transform=transform, clip_on=trapped)
+            ax.add_artist(line)
+            drg = self.add_artist(line, (0, 0), annotate, haunted, trapped=trapped)
+            sliders.append(line)
+
+            # add some markers for aesthetic
+            for x, m in zip((0, 0.5, 1), '>s<'):
+                x, y = [[p], [x]][o]
+                linked = Line2D(x, y, color=c, marker=m,
+                                transform=transform, clip_on=trapped)
+                ax.add_line(linked)  # move to link function??
+                self[line].link(linked)
+
+        # set upper / lower attributes for convenience
+        self.lower = self.draggables[sliders[0]]
+        self.upper = self.draggables[sliders[1]]
+        self.lock(self._locked)
+
+        # constrain movement
+        self.lower.ymax = x1 - self.delta_min
+        self.upper.ymin = x0 + self.delta_min
+
+        self.upper.on_changed.add(self.set_lower_ymax)
+        self.lower.on_changed.add(self.set_upper_ymin)
+
+
+        self.dragging = dragging
+        # FIXME: get this working to you update on release not motion for speed
         # create sliders & add to axis
-
-        ms = self.marker_size
-        coo1 = [x1, self.axpos][self._order]
-        coo2 = [x2, self.axpos][self._order]
-
-        # transform = btf(*[ax.transAxes, ax.transData][self._order])
-
-        markers = ax.plot(*coo1, 'b>',
-                          *coo2, 'r<',  # note: python3.5 syntax only
-                          ms=ms, picker=15, clip_on=False, )  # plot outside axes ok
-        # transform=transform)
-
-        # self.sliders = [self.min_slider, self.max_slider]
-        # self.valfmt = valfmt
-
-        DragMachinery.__init__(self, markers, annotate=False)
-        self.sliders = self.min_slide, self.max_slide = list(self)
-        for slide in self.sliders:
-            slide.lock(self._locked)
-
-        opg = operator.ge if closedmin else operator.gt
-        self.min_slide.validation(lambda xy: opg(xy[self._index], self.boundmin))
-        self.min_slide.validation(lambda xy: xy[self._index] < self.positions[1])
-
-        opl = operator.le if closedmax else operator.lt
-        self.max_slide.validation(lambda xy: opl(xy[self._index], self.boundmax))
-        self.max_slide.validation(lambda xy: xy[self._index] > self.positions[0])
 
     # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     def get_positions(self):
@@ -148,397 +124,208 @@ class AxesSliders(DragMachinery):  # ConnectionMixin, AxesWidget,
 
     positions = property(get_positions)
 
-    def set_positions(self, values):
-        # mem = self.selection
+    # def set_positions(self, values):
+    #     # mem = self.selection
+    #
+    #     # current = self.offsets[:, self._index]
+    #     offsets = values - self._original_position
+    #     current = self.offsets[:]
+    #     current[:, self._index] = offsets
+    #
+    #     for slider, off in zip(self.sliders, current):
+    #         slider.shift(off)
+    #         slider.offset = off
 
-        # current = self.offsets[:, self._index]
-        offsets = values - self._original_position
-        current = self.offsets[:]
-        current[:, self._index] = offsets
+    def set_upper_ymin(self, x, y):
+        # pos = self.get_positions()
+        self.upper.ymin = y + self.delta_min
+        logging.debug('upper ymin: %.2f, %.2f', self.upper.ymin, y)
 
-        for slider, off in zip(self.sliders, current):
-            slider.shift(off)
-            slider.offset = off
-
-
-
-
-            # sval = self.validate(slider, val)
-            # if sval:
-            # self.selection = slider
-            # self.which_active = self.sliders.index(self.selection)
-            # self.set_val(sval)
-
-            # self.selection = mem
-
-    # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-    def get_bounds(self):
-        # let slider limits be set by axes limits.
-        if self._bounds is None:
-            return self.ax.viewLim.get_points()[:, self._index]
-        return self._bounds
-
-    def set_bounds(self, val):
-        self._bounds = val
-
-    bounds = property(get_bounds, set_bounds)
-
-    def get_boundmax(self):
-        return self.bounds[1]
-
-    boundmax = property(get_boundmax)
-
-    def get_boundmin(self):
-        return self.bounds[0]
-
-    boundmin = property(get_boundmin)
-
-    # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-    # def _active(self):
-    # return self.sliders.index(self.selection)
-    # which_active = property(
-
-    def index(self):
-        return [slide.artist for slide in self.sliders].index(self.selection)
-
-
-        # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-        # def get_valmin(self):
-        # return self.bounds[0]
-        # valmin = property(get_valmin)
-
-        # def get_valmax(self):
-        # return self.bounds[1]
-
-    # valmax = property(get_valmax)
+    def set_lower_ymax(self, x, y):
+        # pos = self.get_positions()
+        self.lower.ymax = y - self.delta_min
+        logging.debug('lower ymax: %.2f, %.2f', self.lower.ymax, y)
 
     # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     def setup_axes(self, ax):
         """ """
         ax.set_navigate(False)  # turn off nav for this axis
-        # ax.patch.set_visible(0)     #hide axis patch
-        # setup ticks
-        # self.ax.tick_params(axis=self.slide_on, direction='inout', which='both')
-        # axsli, axoth = [ax.xaxis, ax.yaxis][self._order]
-        # axoth.set_ticks([])
-        # which_spine = 'right' if self._index else 'bottom'
-        # axsli.set_ticks_position(which_spine)
-        # hide the axis spines
-        # ax.spines[which_spine].set_position(('axes', self.axpos))
-        # for where, spine in ax.spines.items():
-        # if where != which_spine:
-        # spine.set_visible(0)
 
 
-        # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-        # @mpl_connect('pick event')
-        # def _on_pick(self, event):
-        ##print( 'picked:', event.artist, id(event.artist) )
-        ##print( 'event.artist in self.sliders', event.artist in self.sliders )
-        # if event.artist in self.sliders:
-        # self.selection = event.artist
-        # self.which_active = self.sliders.index(self.selection)
-
-        ##TODO: connect motion event here
-
-        ##self._orig_pos = event.artist.get_val()
-        ##print( 'which active:', self.which_active )
-
-        ##~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-        # @mpl_connect('motion_notify_event')
-        # def _update(self, event):
-        # """update the slider position"""
-        # if self.ignore(event):
-        # return
-
-        # if event.button != 1:
-        # return
-
-        # if self.selection is None:
-        # return
-
-        ##motion_notify_event handled below
-        # self._on_motion(event)
-
-        ##~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-        # def _on_motion(self, event):
-        # """ """
-        # val = [event.xdata, event.ydata][self._index]
-        # val = self.validate(self.knobs.selection, val)
-
-        ##print( val, 'validated'  )
-
-        # if val:
-        ##print( '!' *10 )
-        # self.set_val(val)
-
-        ##~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-        # def validate(self, slider, val):
-        # """check if new slider position value is OK"""
-
-        # if val is None:     #out of axis
-        # return
-
-        # if val <= self.valmin:
-        # if not self.closedmin:
-        # return
-        # val = self.valmin
-
-        # elif val >= self.valmax:
-        # if not self.closedmax:
-        # return
-        # val = self.valmax
-
-        # min_pos, max_pos = self.positions
-        # if (((slider is self.min_slider) and (val >= max_pos)) or
-        # ((slider is self.max_slider) and (val <= min_pos))):
-        # return
-
-        # return val
-
-        ##~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-        # def _on_release(self, event):
-        ##print( 'releasing..', event.name )
-        ##event.canvas.release_mouse(self.ax)
-        # self.selection = None
-        # self.which_active = None
-
-        ##TODO: disconnect motion event here
-
-
-        ##~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-        ##def update_slider(self, val):
-        ##self.selection.set_val(val - self._orig_pos)
-
-        ##~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-        # def set_val(self, val):
-        ##print('AxesSliders.set_val')
-        ##FIXME!
-        # """set value of active slider """
-        ##self.selection.set_val(self.data2ax(val))       #convert to axis_coordinates
-        # xy = [val, self.axpos][self._order]
-        # self.selection.set_data(xy)
-
-        ##self._orig_pos = self.selection.get_val()
-        ##self.valtext.set_text(self.valfmt % val)
-
-        # if self.drawon:
-        # print('DRAW!')
-        # self.ax.figure.canvas.draw()
-
-        # self.positions[self.which_active] = val
-
-        # if not self.eventson:
-        # return
-
-        # for cid, func in self.observers.items():
-        # func(self.positions)
-
-        ##~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-        # def set_positions(self, values):
-        ##FIXME!
-        # mem = self.selection
-        # for slider, val in zip(self.sliders, values):
-        # xy = [val, self.axpos][self._order]
-
-        # sval = self.validate(slider, val)
-        # if sval:
-        # self.selection = slider
-        # self.which_active = self.sliders.index(self.selection)
-        # self.set_val(sval)
-
-        # self.selection = mem
-
-        ##~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-        # def on_changed(self, func):
-        # """
-        # When the slider value is changed, call *func* with the new
-        # slider position
-
-        # A connection id is returned which can be used to disconnect
-        # """
-        # cid = self.cnt
-        # self.observers[cid] = func
-        # self.cnt += 1
-        # return cid
-
-        ##~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-        # def connect(self):
-        # """connect events"""
-        # self.connect_event('pick_event', self._on_pick)
-        ##self.connect_event('button_press_event', self.)
-        # self.connect_event('button_release_event', self._on_release)
-        # if self.dragging:
-        # self.connect_event('motion_notify_event', self._update)
-
-        ##~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-        # def disconnect(self, cid):
-        # """remove the observer with connection id *cid*"""
-        # try:
-        # del self.observers[cid]
-        # except KeyError:
-        # pass
-
-        ##~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-        # def reset(self):
-        # """reset the slider to the initial value if needed"""
-        # if (self.val != self.valinit):
-        # self.set_val(self.valinit)
-
-
-# SlideMachinery
-
-class ColourSliders(AxesSliders):
-    # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-    # machinery =
-
-    # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-    def __init__(self, ax, x1, x2, bounds=None, slide_on='x', valfmt='%1.2f',
-                 closedmin=True, closedmax=True, dragging=True, **kwargs):
+class ThreeSliders(AxesSliders):
+    """ """
+    def __init__(self, ax, x0, x1, slide_on='x', dragging=True, trapped=False,
+                 annotate=False, haunted=False, use_blit=True, **kwargs):
         """ """
-        AxesSliders.__init__(self, ax, x1, x2, bounds, slide_on, valfmt,
-                             closedmin, closedmax, dragging, **kwargs)
+        AxesSliders.__init__(self, ax, x0, x1, slide_on, dragging, trapped,
+                             annotate, haunted, use_blit, **kwargs)
 
-        # data2fig_trans = self.ax.transData + self.ax.transFigure.inverted()
-        # data2fig_trans.transform
-        pos = sum(self.positions) / 2.  # midpoint of sliders
+        o = self._order
+        get_transform = getattr(ax, 'get_%saxis_transform' % self.slide_on)
+        transform = get_transform(which='grid')
+        # transform = btf(*(ax.transAxes, ax.transData)[o])
+        xc = np.mean([x0, x1])
+        xy0 = [[xc], [0, 1]][o]
 
-        coo = [pos, self.axpos][self._order]
-        marker, = ax.plot(*coo, 'go',
-                          ms=self.marker_size,
-                          picker=10, clip_on=False)
+        # create sliders Line2D
+        line = Line2D(*xy0, color='g', transform=transform, clip_on=trapped)
+        ax.add_artist(line)
+        self.centre = self.add_artist(line, (0, 0), annotate, haunted, trapped=trapped)
+        self.centre.lock(self._locked)
 
-        self._original_position = np.r_[self.positions, pos]
-        self.centre_knob = self.add(marker, annotate=False)
-        self.centre_knob.lock(self._locked)
+        # add some markers for aesthetic
+        for x, m in zip((0, 0.5, 1), '>o<'):
+            x, y = [[xc], [x]][o]
+            linked = Line2D(x, y, color='g', marker=m, transform=transform,
+                            clip_on=trapped)
+            ax.add_line(linked)  # move to link function??
+            self[line].link(linked)
 
-        self.centre_knob.validation(lambda xy:
-                                    self.positions[0] < xy[self._index] < self.positions[1])
+        # self.lower.on_picked.add(lambda x, y: self.centre.set_animate(True))
+
+        # add method to move central slider when either other is moved
+        self._lwr_mv_ctr = self.lower.on_changed.add(self.set_centre)
+        self._upr_mv_ctr = self.upper.on_changed.add(self.set_centre)
+
+        # make sure centre slide is between upper and lower
+        self.lower.on_release.add(self.set_centre_max)
+        self.upper.on_release.add(self.set_centre_min)
+
+        # self.centre.on_picked.add(self.animate)
+        self.centre.on_picked.add(self.deactivate_centre_control)
+
+        # self.centre.on_changed.add(self.centre_moves)
+        self.centre.on_changed.add(lambda x, y:
+                                   self.lower.draw_list + self.upper.draw_list) # so they get drawn
+
+        # self.centre.on_release.add(self.deanimate)
+        self.centre.on_release.add(self.activate_centre_control)
 
 
-        # self.centre_knob.on_changed(self.centre_shift)
+    def get_positions(self):
+        return self._original_position + self.offsets[[0, 1], self._index]
+    positions = property(get_positions)
 
-        # self.centre_knob.on_changed(self.max_slide.validate_and_shift)
+    def set_centre(self, x, y):
+        """
+        set the position of the central slider when either of the other sliders
+        is moved
+        """
+        y = self.positions.mean()
+        draw_list = self.centre.update(x, y)
+        return draw_list
 
-        # self.centre_knob.set_clip_on(False)
+    def set_centre_min(self, x, y):
+        """set minimum position of the central slider"""
+        self.centre.ymin = self.lower.ymin + self.delta_min / 2
+        logging.debug('centre min: %.2f, %.2f', self.centre.ymin, y)
 
-    # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-    def centre_shift(self, xydata):
+    def set_centre_max(self, x, y):
+        """set maximum position of the central slider"""
+        self.centre.ymax = self.upper.ymax + self.delta_min / 2
+        logging.debug('centre ymax: %.2f, %.2f', self.centre.ymax, y)
 
-        # cdat = xydata#[self._index]
-        mmo = np.ptp(self.positions) / 2
-        # minmax = np.add(cdat, self.positions)
+    def _animate(self, b):
+        for drg in self.draggables.values():
+            drg.set_animated(b)
 
-        delta = xydata - self.ref_point
-        # print('xydata', xydata)
-        # print('delta', delta)
-        # self.positions
-        # self.canvas.restore_region(self.background)
+    def animate(self, x, y):
+        self._animate(True)
 
-        for slide in (self.min_slide, self.max_slide):
-            # print('minmax', xydata + mmo)
-            if slide.validate(xydata + mmo):
-                # print('mmo', mmo)
-                # print('slide.offset', slide.offset)
-                # print()
-                slide.shift(slide.offset + delta)
-                slide.draw()
-                # print()
+    def deanimate(self, x, y):
+        self._animate(False)
 
-        self.canvas.blit(self.figure.bbox)
+    def centre_moves(self, x, y):
+        up = self.delta[self._index] > 0  # True if movement is upwards
+        cpos = self.centre.position  # previous position
+        art1 = self.centre.update(x, y)
+        shift = self.centre.position - cpos
+        # print(shift, self.delta)
 
-        # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-        # @mpl_connect('pick_event')
-        # def on_pick(self, event):
-        # """Pick event handler."""
+        # upper if moving up else lower. i.e. the one that may get clipped
+        lead = self.draggables[int(up)]
+        lpos = lead.position + shift
+        art2 = lead.update(*lpos)
 
-    # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-    @mpl_connect('button_release_event')
-    def on_release(self, event):
+        trail = self.draggables[int(not up)]
+        tpos = 2 * self.centre.position - lead.position
+        art3 = trail.update(*tpos)
 
-        if event.button != 1:
-            return
+        return art1 + art2 + art3
 
-        # AxesSliders.on_release(self, event)
+    def activate_centre_control(self, x, y):
+        # print('act')
+        self.lower.on_changed.active[self._lwr_mv_ctr] = True
+        self.upper.on_changed.active[self._upr_mv_ctr] = True
 
-        if self.selection == self.centre_knob.artist:
-            print('centre release')
-            for slide in self.sliders:
-                print('sliding away', self.delta)
-                slide.shift(slide.offset + self.delta)
-                slide.offset = self.delta
-                slide.artist.set_animated(
-                    False)  # FIXME: This precludes setting by an external method without auto draw by mpl.....
-                slide.draw()
+    def deactivate_centre_control(self, x, y):
+        # print('deact')
+        self.lower.on_changed.active[self._lwr_mv_ctr] = False
+        self.upper.on_changed.active[self._upr_mv_ctr] = False
 
-                # self.canvas.blit(self.figure.bbox)
-                # self.canvas.draw()
+    # def on_pick(self, event):
+    #     if self._ignore_pick(event):
+    #         return
+    #
+    #     self.centre.set_animated(True)
+    #     AxesSliders.on_pick(self, event)
 
-                # for drag in self:
-                # drag.artist.set_animated(True)
-                # self._draw_on = False
-                # AxesSliders.on_release(self, event)
-                # self._draw_on = True
-                # self.canvas.draw()
-                # self.canvas.blit(self.figure.bbox)
-
-                ##~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-                # def set_positions(self, values):
-                # AxesSliders.set_positions(self, values)
-                # xy = [self.positions.mean(), self.axpos][self._order]
-                # self.centre_knob.set_data(xy)
-
-    # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-    @mpl_connect('pick_event')
-    def on_pick(self, event):
-        print('picking')
-        if event.artist is self.centre_knob.artist:
-            for drag in self.sliders:
-                drag.artist.set_animated(True)
-                # self.canvas.draw()
-                # self.background = self.canvas.copy_from_bbox(self.figure.bbox)
-
-        # self._draw_on = False
-        AxesSliders.on_pick(self, event)
-        # self._draw_on = True
-
-    # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     def on_motion(self, event):
 
+        # AxesSliders.on_motion(self, event)
+
         if event.button != 1:
             return
 
-        # _drawon = self.drawon
-        if self.selection == self.centre_knob.artist:
-            # print('GOGOGO')
-            print('moving')
-            self.canvas.restore_region(self.background)
-            self._draw_on = False
-            AxesSliders.on_motion(self, event)
+        if self.selection:
+            draggable = self.draggables[self.selection]
 
-            # offset = val - current
-            # update positions of sliders
-            # HACK!!
-            for slide, val in zip(self.sliders, self.positions):
-                if slide.validate(val + self.delta):
-                    slide.shift(slide.offset + self.delta)
-                    # TODO: observers for this one
+            xydisp = event.x, event.y
+            xydata = x, y = self.ax.transData.inverted().transform(xydisp)
+            self.delta = xydata - self.ref_point
 
-                    slide.draw()
+            # TODO: find a way of using this conditional logic in the update method??
+            if draggable is self.centre:
+                draw_list = self.centre_moves(x, y)
+                self.draw(draw_list)
+            else:
+                self.update(draggable, xydata)
 
-            self.centre_knob.draw()
-            # xy = [self.positions.mean(), self.axpos][self._order]
-            # self.selection = self.centre_knob
-            self._draw_on = True
+    def on_release(self, event):
+        if event.button != 1:
+            return
 
-        else:
-            AxesSliders.on_motion(self, event)
+        if self.selection:
+            logging.debug('on_release: %r', self.selection)
+            # Remove dragging method for selected artist
+            self.remove_connection('motion_notify_event')
 
-            xy = [self.positions.mean(), self.axpos][self._order]
-            # self.centre_knob.set_data(xy)
+            xydisp = event.x, event.y  #NOTE: may be far outside allowed range
+            x, y = self.ax.transData.inverted().transform(xydisp) #xydata =
+            logging.debug('on_release: delta %s', self.delta)
 
-        self.canvas.blit(self.figure.bbox)
+            draggable = self.draggables[self.selection]
+            draw_list = draggable.on_release(x, y)
 
-        # TODO: BLIT:
-        # self.ax.figure.canvas.draw()
-        # self.drawon = _drawon
+            if draggable is self.centre:
+                draw_list = self.centre_moves(x, y)
+
+            logging.debug('on_release: offset %s %s', draggable, draggable.offset)
+
+            if self.use_blit:
+                self.draw_blit(draw_list)
+                for art in filter(None, flatiter(draw_list)):
+                    art.set_animated(False)
+
+        self.selection = None
+
+    def reset(self):
+        #super().reset()
+        logging.debug('resetting!')
+        draw_list = []
+        for draggable, off in zip(self.draggables.values(), self._original_offsets):
+            artists = draggable.update(*draggable.ref_point)
+            draw_list.extend(artists)
+
+        #artist = self.centre_moves(*self.centre.position)
+        self.draw(draw_list)

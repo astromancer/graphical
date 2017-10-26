@@ -14,7 +14,7 @@ import matplotlib.pyplot as plt
 #     return fig, axes
 
 
-def make_fig(sigmas, ncol=2, progression='clockwise'):
+def make_fig(sigmas, ncol=2):
     nrow, left = divmod(len(sigmas), ncol)
     fig, axes = plt.subplots(nrow, ncol,
                              figsize=(10.4, 9.5),

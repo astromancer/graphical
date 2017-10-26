@@ -304,7 +304,7 @@ from matplotlib.transforms import Affine2D
         #return num2date(vpi)
 
 #****************************************************************************************************
-class DateTimeDualAxes(DualAxes):
+class DateTimeDualAxes(DualAxes):  # TODO: get a better descriptive name
     #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     scales = {'s' : 24*60*60,
               'm' : 24*60,
@@ -313,7 +313,7 @@ class DateTimeDualAxes(DualAxes):
 
     #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     def __init__(self, *args, **kw):
-        tscale = kw.pop('timescale', 'd')
+        scale = kw.pop('timescale', 'd')
         start = kw.pop('start', '1-1-1')
         if isinstance(start, str):
             start = datetime.datetime(*map(int, start.split('-')))
@@ -321,9 +321,13 @@ class DateTimeDualAxes(DualAxes):
             start = datetime.datetime(*start)
 
         xoff = date2num(start)
-        scale = self.scales[tscale]
+        # if isinstance(scale, str):
+        scale = float(self.scales.get(scale, scale))
+        # else:
 
         aux_trans = Affine2D().translate(-xoff, 0).scale(scale)
+
+        #FIXME: this is kind of silly since its basically a one line init
         DualAxes.__init__(self, *args, aux_trans=aux_trans, **kw)
 
         self.cid = self.figure.canvas.mpl_connect('draw_event', self._on_draw)
