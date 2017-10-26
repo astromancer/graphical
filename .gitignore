@@ -1,14 +1,18 @@
-#git
+# git
 .gitignore
 
-#kate
+# pycharm
+.idea
+
+# kate
 *.kate-swp
 *~
 
-#python
+# python
 /__pycache__
 
-#dev
+# dev
+dev
 draggables.py+
 draggables.*.py*
 draggables.py.bak*
