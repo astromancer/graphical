@@ -15,6 +15,8 @@
 multitab.2d.py
 multitab_test.py
 lc.py
+sliders_test.py
+
 
 #backups
 *.bak

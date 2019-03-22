@@ -2,10 +2,20 @@
 Versatile functions for plotting time-series data
 """
 
+# TODO:
+# MAJOR REFACTOR REQUIRED
+# illiminate singleton patters for TSplotter in favour of `plot_ts`
+# alternatively make `class TimeSeriesPlot(Axes):` then ax.plot_ts()
+
 import itertools as itt
 
 import numpy as np
-from matplotlib import rcParams
+
+import matplotlib as mpl
+
+mpl.use('Qt5Agg')
+# from matplotlib import rcParams
+
 import matplotlib.pyplot as plt
 # import colormaps as cmaps
 # plt.register_cmap(name='viridis', cmap=cmaps.viridis)
@@ -13,80 +23,86 @@ import matplotlib.pyplot as plt
 from recipes.array import ndgrid
 from recipes.dict import AttrDict
 
-
 # from recipes.string import minlogfmt
 
 from IPython import embed
 
+
 # ****************************************************************************************************
-class TSplotter(object):        # TODO: evolve to multiprocessed TS plotter
-    # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+class TSplotter(object):
+    # TODO: evolve to multiprocessed TS plotter.
+
+    # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     # TODO: Keyword translation!
 
-    # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     figsize = (18, 8)
     maxpoints = 1e4  # TODO
 
     # Set parameter defaults
-    defaults = AttrDict(
-        labels=None,
-        title='',
-        #
-        relative_time=False,
-        timescale='s',
-        start=None,
+    defaults = AttrDict(  # FIXME: eliminate singleton usage pattern
+            labels=None,
+            title='',
+            #
+            relative_time=False,
+            timescale='s',
+            start=None,
 
-        # NOTE: this might get messy! Consider setting up the axes outside and passing
-        ax=None,
-        axlabels=(('t (s)', ''),  # bottom and top x-axes       # TODO: axes_labels
-                  'Counts/s'),
-        # TODO: axes_label_position: (left, right, center, <,>,^)
-        twinx=None,  # Top x-axis display format
-        xscale=None,
-        yscale=None,
-        #
-        colours=[],
-        cmap=None,  # TODO: colormap
-        #
-        show_errors='bar',
-        show_masked=False,
-        show_hist=False,
+            # NOTE: this might get messy! Consider setting up the axes outside and passing
+            ax=None,
+            axlabels=(
+                ('t (s)', ''),
+                # bottom and top x-axes       # TODO: axes_labels
+                'Counts/s'),
+            # TODO: axes_label_position: (left, right, center, <,>,^)
+            twinx=None,  # Top x-axis display format
+            xscale=None,
+            yscale=None,
+            #
+            colours=[],
+            cmap=None,  # TODO: colormap
+            #
+            show_errors='bar',
+            show_masked=False,
+            show_hist=False,
 
-        draggable=True,
-        offsets=None,
+            draggable=True,
+            offsets=None,
 
-        whitefrac=0.025)  # TODO: x,y,upper, lower
+            whitefrac=0.025)  # TODO: x,y,upper, lower
 
     # Default options for plotting related stuff
     default_opts = AttrDict(
-        errorbar=dict(fmt='o',  # TODO: sampled lcs from distribution implied by errorbars
-                      ms=2.5,
-                      mec='none',
-                      capsize=0,
-                      elinewidth=0.5),
-        spans=dict(label='filtered',
-                   alpha=0.2,
-                   color='r'),
-        hist=dict(bins=50,
-                  alpha=0.75,
-                  # color='b',
-                  orientation='horizontal'),
-        legend=dict(loc='upper right',  # TODO: option for no legend
-                    fancybox=True,
-                    framealpha=0.25,
-                    numpoints=1,
-                    markerscale=3)
+            errorbar=dict(fmt='o',
+                          # TODO: sampled lcs from distribution implied by errorbars
+                          ms=2.5,
+                          mec='none',
+                          capsize=0,
+                          elinewidth=0.5),
+            spans=dict(label='filtered',
+                       alpha=0.2,
+                       color='r'),
+            hist=dict(bins=50,
+                      alpha=0.75,
+                      # color='b',
+                      orientation='horizontal'),
+            legend=dict(loc='upper right',  # TODO: option for no legend
+                        fancybox=True,
+                        framealpha=0.25,
+                        numpoints=1,
+                        markerscale=3)
     )
 
-    # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     @staticmethod
     def _set_defaults(props, defaults):
         for k, v in defaults.items():
             props.setdefault(k, v)
 
-    # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     def check_kws(self, kws):
-        allowed_kws = list(self.defaults.keys()) + list(self.default_opts.keys())
+        allowed_kws = list(self.defaults.keys()) + list(
+                self.default_opts.keys())
         opts = self.defaults.copy()
         dopts = self.default_opts.copy()
         for key, val in kws.items():
@@ -100,7 +116,7 @@ class TSplotter(object):        # TODO: evolve to multiprocessed TS plotter
 
         return opts, dopts
 
-    # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     def __call__(self, *data, **kws):  # def __init__(self):
         """
         Plot light curve(s)
@@ -108,7 +124,8 @@ class TSplotter(object):        # TODO: evolve to multiprocessed TS plotter
         Parameters
         ----------
         data        :   tuple of array-likes
-            (signal,)   -   in which case t is infered
+            (signal,)   -   in which case t is implicitly the integers up to
+                            len(signal)
             (t, signal) -   in which case uncertainty is ignored
             (t, signal, uncertainty)
         t           :   (optional; array-like or dict)
@@ -119,6 +136,7 @@ class TSplotter(object):        # TODO: evolve to multiprocessed TS plotter
             standard deviation uncertainty associated with signal
 
         """
+        # FIXME: get this to work with astropy time objects
         # TODO: docstring
         # TODO: astropy.units ??
         # TODO: max points = 1e4 ??
@@ -129,9 +147,10 @@ class TSplotter(object):        # TODO: evolve to multiprocessed TS plotter
         # Check keyword argument validity
         opts, dopts = self.opts, self.dopts = self.check_kws(kws)
 
-        self.show_hist = kws.pop('show_hist', bool(len(self.opts.get('hist', {}))))
+        self.show_hist = kws.pop('show_hist',
+                                 bool(len(self.opts.get('hist', {}))))
 
-        # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+        # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
         # check for structured data (dict keyed on labels and containing data)
         labels = self.opts.labels
         l = [isinstance(d, dict) for d in data]
@@ -148,7 +167,7 @@ class TSplotter(object):        # TODO: evolve to multiprocessed TS plotter
         Times, Signal, Errors = data = self.get_data(data)
         N, _ = Signal.shape
 
-        # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+        # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
         # check labels
         if labels is None:
             labels = []
@@ -156,22 +175,23 @@ class TSplotter(object):        # TODO: evolve to multiprocessed TS plotter
             labels = [labels]  # check if single label given
         labels = labels[:N]
 
-        # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+        # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
         # Ensure we plot with unique colours
         # cmap, colours = self.opts.cmap, self.opts.colours
         if ((not opts.cmap is None)  # colour map given - superceeds colours kw
-            or ((not len(opts.colours)) and len(rcParams['axes.prop_cycle']) < N)):
+                or ((not len(opts.colours)) and
+                    len(mpl.rcParams['axes.prop_cycle']) < N)):
             cm = plt.get_cmap(kws.get('colormap', 'nipy_spectral'))
             opts.colours = cm(np.linspace(0, 1, N))  # linear colour map for ts
 
         elif len(opts.colours) < N:
             'Given colour sequence less than number of time series. Colours will repeat'
 
-        # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-        fig, ax = self.setup_figure_geometry(opts.ax, opts.colours)
+        # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+        fig, ax = self.setup_figure(opts.ax, opts.colours)
 
         # Do the plotting
-        # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+        # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
         plots = []
         _linked = []
 
@@ -180,18 +200,21 @@ class TSplotter(object):        # TODO: evolve to multiprocessed TS plotter
         # Signal = Signal.filled(np.nan)
 
         for i, (t, signal, stddev, label) in enumerate(itt.zip_longest(
-                Times, Signal, Errors, labels)):  # zip_longest in case no Errors are given
-            ebplt = self._plot_ts(ax, t, signal, stddev, label, opts.show_errors)
+                Times, Signal, Errors,
+                labels)):  # zip_longest in case no Errors are given
+            ebplt = self._plot_ts(ax, t, signal, stddev, label,
+                                  opts.show_errors)
             plots.append(ebplt)
 
             if opts.show_masked:
                 col = ebplt[0].get_color()
-                mskplt = self._plot_masked(ax, i, t, signal, col, opts.show_masked)
+                mskplt = self._plot_masked(ax, i, t, signal, col,
+                                           opts.show_masked)
                 if mskplt:
                     plots.append(mskplt)
                     _linked.append((ebplt, mskplt))
 
-        # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+        # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
         axes_labels = self.get_labels(opts.axlabels)
         self._set_labels(ax, opts.title, *axes_labels)
         xlims, ylims = self.get_axes_limits(data)
@@ -199,14 +222,19 @@ class TSplotter(object):        # TODO: evolve to multiprocessed TS plotter
         ax.set_ylim(ylims)
         # self._set_axes_limits(ax,
 
-        # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+        # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
         # Setup plots for canvas interaction
         if opts.draggable and not self.show_hist:
             # make the artists draggable
-            from draggables import DraggableErrorbar
-            plots = DraggableErrorbar(plots, offsets=opts.offsets, linked=_linked,
+            from graphical.draggables import DraggableErrorbar
+            plots = DraggableErrorbar(plots, offsets=opts.offsets,
+                                      linked=_linked,
                                       **dopts.legend)
             # TODO: legend with linked plots!
+
+
+
+
         else:
             self._make_legend(ax, plots, labels)
 
@@ -218,7 +246,7 @@ class TSplotter(object):        # TODO: evolve to multiprocessed TS plotter
     # alias the call method
     plot = __call__
 
-    # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     def _plot_ts(self, ax, t, signal, stddev, label, show_errors):
         # catch in case for some reason the user provides a sequence of empty error sequences
         if not (show_errors and np.size(stddev)):
@@ -238,7 +266,7 @@ class TSplotter(object):        # TODO: evolve to multiprocessed TS plotter
 
         return ebpl
 
-    # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     def _plot_masked(self, ax, i, t, signal, colour, how):
         # Get / Plot GTIs
 
@@ -262,25 +290,28 @@ class TSplotter(object):        # TODO: evolve to multiprocessed TS plotter
 
         return mskplt
 
-    # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     def uncertainty_contours(self, ax, t, signal, stddev, **kws):
         # NOTE: interpret uncertainties as stddev of distribution
         from tsa.tsa import smoother
         c, = ax.plot(t, smoother(signal + 3 * stddev), **kws)
-        colour = self.dopts.errorbar['color'] = c.get_color()  # preserve colour cycle
+        colour = self.dopts.errorbar[
+            'color'] = c.get_color()  # preserve colour cycle
         ax.plot(t, smoother(signal - 3 * stddev), colour, **kws)
 
-        # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+        # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-    # TODO:  handle data of different lenghts!!!!!
+    # TODO:  handle data of different lengths!!!!!
     def get_data(self, data):
         """parse data arguments"""
 
         # signals only
         if len(data) == 1:
-            Signal = np.ma.asarray(data[0])  # Assume each row gives signals for TS
+            # Assume here each row gives individual signal for a TS
+            Signal = np.ma.asarray(data[0])
             Times = []  # No time given, plot by array index
-            # NOTE: Signal here may be non-uniform, so we will set times when we blockify
+            # NOTE: Signal here may be non-uniform, so we will set times when
+            # we blockify
             Errors = []  # No errors given
 
         # times & signals given
@@ -293,26 +324,25 @@ class TSplotter(object):        # TODO: evolve to multiprocessed TS plotter
             Times, Signal, Errors = data
 
         else:
-            raise ValueError('Invalid number of arguments: {}'.format(len(data)))
+            raise ValueError(
+                    'Invalid number of arguments: {}'.format(len(data)))
 
         # Convert to masked and remove unwanted dimensionality
         Signal = np.ma.asarray(Signal).squeeze()
         Times = np.ma.asarray(Times).squeeze()
         Errors = np.array(Errors).squeeze()
 
-        # print('FUCK YOU 1 ' * 10)
-        # embed()
-
-
-        # at this point the data might be a masked_array of arrays (of non-uniform length)
-        # support for non-uniform data length
+        # at this point the data might be a masked_array of arrays
+        # (of non-uniform length)
+        # support for non-uniform data length is a bit of a HACK at the moment
         Times, Signal, Errors = self.blockify(Times, Signal, Errors)
         # print( Signal, Times )
         # print( Signal.shape, Times.shape )
         # print( Signal.size, Times.size )
 
         self.t0 = 0.
-        # NOTE: relative time is ambiguous when multiple time sequences are given
+        # NOTE: relative time is ambiguous when multiple time sequences with
+        # different start times are given
         # we will plot relatively to the minimum of all times
         if self.opts.relative_time:
             self.t0 = np.floor(Times[:, 0].min())
@@ -320,16 +350,17 @@ class TSplotter(object):        # TODO: evolve to multiprocessed TS plotter
 
         return Times, Signal, Errors
 
-    # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     def blockify(self, Times, Signal, Errors):
         """support for non-uniform data length"""
 
         uniform, L = self.is_uniform(Signal)
-        self._original_sizes = L
+        self._original_sizes = np.atleast_1d(L)
 
         if not uniform:
             # deal with non-uniform data
-            Signal = self._blockify(Signal, L)  # TODO: IS THIS REALLY NECESSARY??
+            Signal = self._blockify(Signal, L)
+            # FIXME: IS THIS REALLY NECESSARY??
 
         # at this point Signal is uniform
         # Times might be non-uniform nD or uniform 1D.  Will blockify below
@@ -340,14 +371,16 @@ class TSplotter(object):        # TODO: evolve to multiprocessed TS plotter
             assert np.equal(tL, L).all()
 
             if not uniform:
-                Times = self._blockify(Times, L)  # TODO: IS THIS REALLY NECESSARY??
+                Times = self._blockify(Times,
+                                       L)  # FIXME: IS THIS REALLY NECESSARY??
 
             elif Times.ndim == 1:  # case uniform 1D time array
                 # Assume same times for each sequence of signals
                 Times = self.chronify(Signal, Times)
         else:
             # case for time 0D, signals nD uniform
-            Times = self.chronify(Signal)  # no time array given. use index grid as "time"
+            Times = self.chronify(
+                    Signal)  # no time array given. use index grid as "time"
 
         # embed()
 
@@ -382,7 +415,7 @@ class TSplotter(object):        # TODO: evolve to multiprocessed TS plotter
 
         return Times, Signal, Errors
 
-    # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     @staticmethod
     def _blockify(data, L):
 
@@ -399,7 +432,7 @@ class TSplotter(object):        # TODO: evolve to multiprocessed TS plotter
 
         return ndata
 
-    # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     @staticmethod
     def is_uniform(data):
         """Determine if data arrays are of uniform length"""
@@ -413,26 +446,27 @@ class TSplotter(object):        # TODO: evolve to multiprocessed TS plotter
             uni = np.allclose(L, L[0])
             return uni, L
 
-    # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     @staticmethod
-    def chronify(Signal, Times=None):
+    def chronify(Signal, Times=None):  # FIXME: this is ineffient BAD DESIGN
         """impute time data"""
         if Times is None:
-            return ndgrid.like(Signal)[int(Signal.ndim > 1)]  # Times = #NOTE: may be 1D
+            return ndgrid.like(Signal)[
+                int(Signal.ndim > 1)]  # Times = #NOTE: may be 1D
             # return Times
         else:
             nTimes = np.empty_like(Signal)
             nTimes[:] = Times  # duplicates the Times
             return nTimes
 
-            # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+            # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
             # def _get_twin(self, fig):
             # if self.twin ==
             # 'sexa':DateTimeDualAxes
             #
             # else:
 
-    # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     def get_axes(self, ax):
 
         if ax is not None:
@@ -466,16 +500,19 @@ class TSplotter(object):        # TODO: evolve to multiprocessed TS plotter
 
         else:
             # TODO: centralise error handling
-            raise NotImplementedError('Option %s not understood' % self.opts.twinx)
+            raise NotImplementedError(
+                    'Option %s not understood' % self.opts.twinx)
 
         return fig, ax
 
-    # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-    def setup_figure_geometry(self, ax, colours):
+    # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+    def setup_figure(self, ax, colours):
         # FIXME:  leave space on the right of figure to display offsets
         """Setup figure geometry"""
 
-        rect = left, bottom, right, top = [0.025, 0.01, 0.97, .98]  # TODO:  AUTOMATICALLY DETERMINE THESE VALUES!!
+        rect = left, bottom, right, top = [0.025, 0.01, 0.97, .98]
+        # TODO:  AUTOMATICALLY DETERMINE THESE VALUES!!
         if self.opts.twinx:
             top = .94  # need extra space for the top tick labels
 
@@ -485,7 +522,8 @@ class TSplotter(object):        # TODO: evolve to multiprocessed TS plotter
         if self.show_hist:
             from mpl_toolkits.axes_grid1 import make_axes_locatable
             divider = make_axes_locatable(ax)
-            self.hax = divider.append_axes('right', size='25%', pad=0., sharey=ax)
+            self.hax = divider.append_axes('right', size='25%', pad=0.,
+                                           sharey=ax)
             self.hax.grid()
             self.hax.yaxis.tick_right()
             # ax.set_color_cycle(colours)
@@ -505,7 +543,7 @@ class TSplotter(object):        # TODO: evolve to multiprocessed TS plotter
 
         return fig, ax
 
-    # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     def plot_masked_intervals(self, ax, t, mask):
         """Highlight the masked values within the time series with a span accross the axis"""
         spans = convert_mask_to_intervals(t, mask)
@@ -514,7 +552,7 @@ class TSplotter(object):        # TODO: evolve to multiprocessed TS plotter
 
         self.mask_shown = True  # bool(bti)         #just so we don't make a legend entry for this if it's empty
 
-    # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     def plot_histogram(self, signal, **props):
         # print( 'Plotting H' )
 
@@ -528,7 +566,7 @@ class TSplotter(object):        # TODO: evolve to multiprocessed TS plotter
 
         self.hax.grid(True)
 
-    # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     def get_labels(self, axlabels):
         if len(axlabels) == 0:
             xlabels, ylabel = self.opts.axlabels
@@ -541,7 +579,7 @@ class TSplotter(object):        # TODO: evolve to multiprocessed TS plotter
 
         return xlabels, ylabel
 
-    # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     def _set_labels(self, ax, title, xlabels, ylabel):
         """axis title + labels"""
         title_text = ax.set_title(title, fontweight='bold')
@@ -549,7 +587,8 @@ class TSplotter(object):        # TODO: evolve to multiprocessed TS plotter
         xlb, xlt = xlabels
         ax.set_xlabel(xlb)
         if self.opts.twinx:
-            title_text.set_position((0.5, 1.09))  # make space for the tick labels
+            title_text.set_position(
+                    (0.5, 1.09))  # make space for the tick labels
             if xlt:
                 ax.parasite.set_xlabel(xlt)
         ax.set_ylabel(ylabel)
@@ -561,14 +600,16 @@ class TSplotter(object):        # TODO: evolve to multiprocessed TS plotter
                                      ha='right',
                                      transform=ax.xaxis.label.get_transform())
 
-    # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     def get_axes_limits(self, data):
         """Axes limits"""
         X, Y, E = data
 
         # Fractional 'white space' in figure
         whitefrac = np.atleast_1d(self.opts.whitefrac)
-        xfrac, yfrac = np.r_[whitefrac, whitefrac] if len(whitefrac) == 1 else whitefrac[:2]
+        xfrac, yfrac = np.r_[whitefrac, whitefrac] \
+            if len(whitefrac) == 1 \
+            else whitefrac[:2]
         xl, xu = axes_limit_from_data(X, xfrac)
         yl, yu = ylims = axes_limit_from_data(Y, yfrac, E)
 
@@ -589,7 +630,7 @@ class TSplotter(object):        # TODO: evolve to multiprocessed TS plotter
 
         return (xl, xu), (yl, yu)
 
-    # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     def _make_legend(self, ax, plots, labels):
         """Legend"""
 
@@ -599,7 +640,8 @@ class TSplotter(object):        # TODO: evolve to multiprocessed TS plotter
             if self.mask_shown:
                 from matplotlib.patches import Rectangle
                 span_label = self.span_props.pop('label')
-                r = Rectangle((0, 0), 1, 1, **self.span_props)  # span proxy artist for legend
+                r = Rectangle((0, 0), 1, 1,
+                              **self.span_props)  # span proxy artist for legend
 
                 plots += [r]
                 labels += [span_label]
@@ -607,33 +649,34 @@ class TSplotter(object):        # TODO: evolve to multiprocessed TS plotter
             ax.legend(plots, labels, **self.dopts.legend)
 
 
-# ****************************************************************************************************
-def axes_limit_from_data(x, whitefrac, *e):
+# ******************************************************************************
+def axes_limit_from_data(x, whitefrac, *e, ignore_large_errors=3):
     """
     Return suggested axis limits based on the extrema of x, and the desired
     fractional whitespace on plot.
     whitespace  - can be number, or (bottom, top) tuple
     e - uncertainty
-        can be either single array of same shape as x, or 2 arrays (upper, lower)
+        can be either single array of same shape as x, or 2 arrays (δx+, δx-)
     """
     if np.size(e) == 0:
         el = eu = 0
     elif len(e) == 1:
-        el = eu = e
+        el = eu = e[0] / 2
     elif len(e) == 2:
         el, eu = e
-    else: #basically ignoring any weird e values here
+    else:  # basically ignoring any weird e values here
         el = eu = 0
 
-    #TODO: deal with infs?
-    try:
-        xl, xu = np.nanmin(x - el), np.nanmax(x + eu)
-        xd = xu - xl
-    except Exception as err:
-        # from IPython import embed
-        # embed()
-        print('axes_limit_from_data FAIL.:', str(err))
-        return x.max(), x.min()
+    x = np.ma.MaskedArray(x, np.isnan(x) | np.isinf(x))
+    xl = x.min()
+    xu = x.max()
+    xd = xu - xl
+    ed = eu - el
+
+    # ignore errorbars > than `ignore_large_errors` * data peak to peak
+    if np.any(ed > ignore_large_errors * xd):
+        xu += eu
+        xl -= el
 
     wf = np.empty(2)
     wf[:] = whitefrac
@@ -641,7 +684,7 @@ def axes_limit_from_data(x, whitefrac, *e):
     return xl - wxd[0], xu + wxd[1]
 
 
-# ====================================================================================================
+# ==============================================================================
 def convert_mask_to_intervals(a, mask=None):
     """Return index tuples of contiguous masked values."""
     if mask is None:
@@ -658,10 +701,9 @@ def convert_mask_to_intervals(a, mask=None):
     return a[idx].reshape(-1, 2)
 
 
-# ====================================================================================================
+# ==============================================================================
 
-
-# ****************************************************************************************************
+# ******************************************************************************
 # NOTE: you can probs use the std plt.subplots machinery if you register your axes classes
 
 def time_phase_plot(P, toff=0, **figkws):
@@ -669,11 +711,24 @@ def time_phase_plot(P, toff=0, **figkws):
     from .dualaxes import DualAxes
     fig = plt.figure(**figkws)
 
-
     aux_trans = Affine2D().translate(-toff, 0).scale(P)
     ax = DualAxes(fig, 1, 1, 1, aux_trans=aux_trans)
     ax.setup_ticks()
     ax.parasite.set_xlabel('Orbital Phase')
+    fig.add_subplot(ax)
+
+    return fig, ax
+
+
+def phase_time_plot(P, toff=0, **figkws):
+    from matplotlib.transforms import Affine2D
+    from graphical.dualaxes import DualAxes
+    fig = plt.figure(**figkws)
+
+    aux_trans = Affine2D().translate(-toff, 0).scale(1 / P)
+    ax = DualAxes(fig, 1, 1, 1, aux_trans=aux_trans)
+    ax.setup_ticks()
+    ax.set_xlabel('Orbital Phase')
     fig.add_subplot(ax)
 
     return fig, ax
@@ -700,7 +755,7 @@ def plot_folded_lc(ax, phase, lcdata, P_s, twice=True, orientation='h'):
     else:
         fill_between = ax.fill_between
 
-    #embed()
+    # embed()
 
     lines = []
     for a, colour in zip(args, colours):
@@ -720,30 +775,31 @@ def plot_folded_lc(ax, phase, lcdata, P_s, twice=True, orientation='h'):
         ax.set_ylim(0, (twice + 1) * P_s)
         ax.set_ylabel('t (s)')
 
-    r = Rectangle((0, 0), 1, 1, fc='grey', ec='none')  # rectangle proxy art for legend.
+    r = Rectangle((0, 0), 1, 1, fc='grey',
+                  ec='none')  # rectangle proxy art for legend.
     leg = ax.legend((plm, plmn, r), ('mean', 'extrema', r'$1\sigma$'))
 
     ax.figure.tight_layout()
     # return fig
 
 
-# ====================================================================================================
+# ==============================================================================
 
 
-# ====================================================================================================
+# ==============================================================================
 # initialise
 lcplot = TSplotter()
 
-# ====================================================================================================
+# ==============================================================================
 
 if __name__ == '__main__':
     """tests"""
-    from decor.profiler import profile
+    from motley.profiler import profile
 
     profiler = profile()
 
 
-    @profiler.histogram
+    @profile.histogram
     def tests(**kws):
         # generate some data
         N = 250

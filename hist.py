@@ -126,8 +126,8 @@ def hist(x, bins=100, range=None, normed=False, weights=None, **kws):
             stats[name] = p
 
     if fmt_stats is None:
-        from recipes.string import minfloatfmt
-        fmt_stats = minfloatfmt
+        from recipes.pprint import decimal_repr
+        fmt_stats = decimal_repr
 
     if stats:
         from matplotlib.transforms import blended_transform_factory as btf
