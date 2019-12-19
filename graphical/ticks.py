@@ -8,7 +8,7 @@ from matplotlib.transforms import (Transform,
                                    IdentityTransform,
                                    ScaledTranslation)
 
-from recipes.pprint import decimal_repr, sci_repr
+from recipes import pprint
 
 from .transforms import ReciprocalTransform
 
@@ -79,7 +79,7 @@ class SwitchLogFormatter(ticker.Formatter):
         self.mult_symb = mult_symb
 
     def __call__(self, x, pos=None):
-        return sci_repr(x, self.precision, times=self.mult_symb)
+        return pprint.sci(x, self.precision, times=self.mult_symb)
 
 
 # ****************************************************************************************************
@@ -139,7 +139,7 @@ class TransFormatter(ticker.ScalarFormatter):
                 sign = '-' * int(x < 0)
                 return r'{}$\infty$'.format(sign)
 
-        return decimal_repr(x, self.precision)
+        return pprint.decimal(x, self.precision)
 
 
 # ****************************************************************************************************

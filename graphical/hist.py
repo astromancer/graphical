@@ -41,6 +41,7 @@ def get_bins(x, bins, range=None):
 
     return bins
 
+
 def hist(x, bins=100, range=None, normed=False, weights=None, **kws):
     """
     Plot a nice looking histogram.
@@ -67,7 +68,8 @@ def hist(x, bins=100, range=None, normed=False, weights=None, **kws):
     ax:         axes
     """
 
-    named_quantiles = {25: 'lower  quartile',  # https://en.wikipedia.org/wiki/Quantile#Specialized_quantiles
+    named_quantiles = {25: 'lower  quartile',
+                       # https://en.wikipedia.org/wiki/Quantile#Specialized_quantiles
                        50: 'median',
                        75: 'upper quartile'}
 
@@ -126,22 +128,22 @@ def hist(x, bins=100, range=None, normed=False, weights=None, **kws):
             stats[name] = p
 
     if fmt_stats is None:
-        from recipes.pprint import decimal_repr
-        fmt_stats = decimal_repr
+        from recipes.pprint import decimal as fmt_stats
 
     if stats:
         from matplotlib.transforms import blended_transform_factory as btf
 
-    for key, val in stats.items():
-        c = patches[0].get_facecolor()
-        ax.axvline(val, color=c, alpha=1, ls='--', lw=2)
-        trans = btf(ax.transData, ax.transAxes)
-        if show_stats_labels:
-            txt = '%s = %s' % (key, fmt_stats(val))
-            ax.text(val, 1, txt,
-                    rotation='vertical', transform=trans, va='top', ha='right')
+        for key, val in stats.items():
+            c = patches[0].get_facecolor()
+            ax.axvline(val, color=c, alpha=1, ls='--', lw=2)
+            trans = btf(ax.transData, ax.transAxes)
+            if show_stats_labels:
+                txt = '%s = %s' % (key, fmt_stats(val))
+                ax.text(val, 1, txt,
+                        transform=trans,
+                        rotation='vertical', va='top', ha='right')
 
-        # if 'percentile' in show_stats:
-        # pass
+            # if 'percentile' in show_stats:
+            # pass
 
     return h, ax

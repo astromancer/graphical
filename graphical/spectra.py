@@ -77,7 +77,7 @@ class SpecPlotter(TSplotter):
         kws.setdefault('xscale', 'log')
         kws.setdefault('yscale', 'log')
         res = fig, plots, *stuff = self.plot(*data, **kws)
-        ax = fig.axes[0]
+        ax = kws.get(ax, )
 
         ax.set_xscale('log')        #WARNING: this will change the parasite axes scale, locators, etc..
         ax.set_yscale('log')        #FIXME: figure out how to avoid locators reset

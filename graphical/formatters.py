@@ -11,7 +11,7 @@ from matplotlib.transforms import IdentityTransform, \
     Transform  # , ScaledTranslation
 
 # recipes.pprint import decimal_repr
-from recipes.pprint import decimal_repr, sci_repr
+from recipes import pprint
 
 from .transforms import ReciprocalTransform
 
@@ -47,7 +47,7 @@ class TransFormatter(ticker.ScalarFormatter):
                 sign = '-' * int(x < 0)
                 return r'{}$\infty$'.format(sign)
 
-        return decimal_repr(x, 2)
+        return pprint.decimal(x, 2)
 
 
 # TODO: do this as a proper Scale.
@@ -121,7 +121,7 @@ class SciFormatter(ticker.Formatter):
         self.times = times
 
     def __call__(self, x, pos=None):
-        return sci_repr(x, self.precision, times=self.times)
+        return pprint.sci(x, self.precision, times=self.times)
 
 
 
@@ -135,7 +135,7 @@ class MetricFormatter(ticker.Formatter):
     # the prefix for -6 is the greek letter mu
     # represented here by a TeX string
 
-    # The SI metric prefixes
+    # The SI metric prefixes  # TODO: this now in recipes.pprint
     METRIC_PREFIXES = {-24: "y",
                        -21: "z",
                        -18: "a",

@@ -5,6 +5,7 @@ from copy import deepcopy
 import functools
 import logging
 import warnings
+import time
 from collections import Callable
 
 import numpy as np
@@ -19,7 +20,7 @@ from mpl_toolkits.mplot3d.art3d import Line3DCollection
 from mpl_toolkits.axes_grid1 import AxesGrid, make_axes_locatable
 
 from recipes.logging import LoggingMixin
-from recipes.string import get_module_name
+from recipes.introspection.utils import get_module_name
 # from .zscale import zrange
 from .sliders import TripleSliders
 from .draggables.machinery import Observers
@@ -54,11 +55,10 @@ def move_axes(ax, x, y):
 def get_norm(image, interval, stretch):
     # choose colour interval algorithm based on data type
     if interval is None:
+        interval = 'zscale'
         if image.dtype.kind == 'i':  # integer array
             if image.ptp() < 1000:
                 interval = 'minmax'
-        else:
-            interval = 'zscale'
 
     # determine colour transform from `interval` and `stretch`
     if isinstance(interval, str):
@@ -113,7 +113,7 @@ def get_screen_size_inches():
     # return size_inches
 
 
-def guess_figsize(image, fill_factor=1, min_size=(2.25, 2.25)):
+def guess_figsize(image, fill_factor=0.75, max_pixel_size=0.2):
     """
     Make an educated guess of the size of the figure needed to display the
     image data.
@@ -125,7 +125,9 @@ def guess_figsize(image, fill_factor=1, min_size=(2.25, 2.25)):
     fill_factor: float
         Maximal fraction of screen size allowed in any direction
     min_size: 2-tuple
-        Minimum allowed size (heigh, width) in inches
+        Minimum allowed size (width, height) in inches
+    max_pixel_size: float
+        Maximum allowed pixel size
 
     Returns
     -------
@@ -135,17 +137,25 @@ def guess_figsize(image, fill_factor=1, min_size=(2.25, 2.25)):
 
     """
 
-    #
-    screen_size = np.array(get_screen_size_inches())
-    shape = np.shape(image)[::-1]  # change order since opposite order of
-    # screen dimensions
-    figSize = (shape / np.max(shape)) * screen_size[np.argmax(shape)]
-    figSize *= fill_factor
+    # Sizes reported by mpl figures seem about half the actual size on screen
+    fill_factor *= 2
 
-    # make sure the figure isn't too small
-    figSize = np.where(figSize < min_size, min_size, figSize)
-    logger.debug('Guessed figure size: (%.1f, %.1f)', *figSize)
-    return figSize
+    # screen dimensions
+    screen_size = np.array(get_screen_size_inches())
+    # change order of image dimensions since opposite order of screen
+    shape = np.array(np.shape(image)[::-1])
+    # get upper limit for fig size based on screen and data and fill factor
+    size = ((shape / max(shape)) * screen_size[np.argmax(shape)] * fill_factor)
+    max_size = shape * max_pixel_size
+    if np.any(size > max_size):
+        size = max_size
+
+    # if np.any(size1 < min_size)
+    # other, one dimension might be less than min_size.
+    # if the image is elongated, ie one dimension much smaller than the
+    # figSize = np.where(size1 < min_size, min_size, figSize)
+    logger.debug('Guessed figure size: (%.1f, %.1f)', *size)
+    return size
 
 
 class FromNameMixin(object):
@@ -273,7 +283,6 @@ class ColourHistogram(LoggingMixin):  # ColourBarHistogram
         ax.add_collection(self.bars)
         # TODO:
 
-
         if use_blit:
             # image_plot.set_animated(True)
             self.bars.set_animated(True)
@@ -353,7 +362,6 @@ class ColourHistogram(LoggingMixin):  # ColourBarHistogram
 
 # ****************************************************************************************************
 class ImageDisplay(LoggingMixin):
-    # TODO:  should this be an AxesImage subclass ???
 
     # TODO: move cursor with arrow keys when hovering over figure (like ds9)
     # TODO: optional zoomed image window
@@ -368,7 +376,7 @@ class ImageDisplay(LoggingMixin):
     # TODO: remove ticks on cbar ax
 
     # FIXME: histogram not lining up with slider positions
-
+    # TODO: plot scale func on hist axis
 
     sliderClass = TripleSliders  # AxesSliders
 
@@ -529,7 +537,7 @@ class ImageDisplay(LoggingMixin):
     #     cls = namedtuple('AxesContainer', axmap.keys())
     #     return cls(**axd)
 
-    def guess_figsize(self, data, fill_factor=0.85, min_size=(2.25, 2.25)):
+    def guess_figsize(self, data, fill_factor=0.55, max_pixel_size=0.2):
         """
         Make an educated guess of the size of the figure needed to display the
         image data.
@@ -553,7 +561,7 @@ class ImageDisplay(LoggingMixin):
 
         #
         image = self.data[0] if data is None else data
-        return guess_figsize(image)
+        return guess_figsize(image, fill_factor, max_pixel_size)
 
     def createColorbar(self):
 
@@ -578,7 +586,9 @@ class ImageDisplay(LoggingMixin):
         # data = self.imagePlot.get_array()
 
         clim = self.imagePlot.get_clim()
-        sliders = self.sliderClass(hax, clim, 'y', color='rbg', ms=(2, 1, 2),
+        sliders = self.sliderClass(hax, clim, 'y',
+                                   color='rbg',
+                                   ms=(2, 1, 2),
                                    extra_markers='>s<')
 
         sliders.lower.on_changed.add(self.set_clim)
@@ -753,7 +763,9 @@ class VideoDisplay(ImageDisplay):
 
         kws are passed directly to ImageDisplay.
         """
-        data = np.ma.asarray(data)
+
+        if not isinstance(data, np.ndarray):
+            data = np.ma.asarray(data)
 
         # setup image display
         n = self._frame = 0
@@ -819,9 +831,9 @@ class VideoDisplay(ImageDisplay):
     #                            hbar=gs[:q, 87:],
     #                            fslide=gs[q:, :80])
 
-    def guess_figsize(self, data, fill_factor=0.85, min_size=(2.25, 2.25)):
+    def guess_figsize(self, data, fill_factor=0.55, max_pixel_size=0.2):
         # TODO: inherit docstring
-        size = super().guess_figsize(data, fill_factor, min_size)
+        size = super().guess_figsize(data, fill_factor, max_pixel_size)
         # create a bit more space below the figure for the frame nr indicator
         size[1] += 0.5
         self.logger.debug('Guessed figure size: (%.1f, %.1f)', *size)
@@ -888,17 +900,15 @@ class VideoDisplay(ImageDisplay):
         """
         self.set_frame(i)
 
-        # if self.frame == i:
-        #     # nothing to do
-        #     return
-
         image = self.get_image_data(self.frame)
         # set the image data  TODO: method set_image_data here??
         self.imagePlot.set_data(image)  # does not update normalization
+
         # FIXME: normalizer fails with boolean data
         #  File "/usr/local/lib/python3.6/dist-packages/matplotlib/colorbar.py", line 956, in on_mappable_changed
         #   self.update_normal(mappable)
         # File "/usr/local/lib/python3.6/dist-packages/matplotlib/colorbar.py", line 987, in update_normal
+
         draw_list = [self.imagePlot]
 
         # set the slider axis limits
@@ -923,9 +933,12 @@ class VideoDisplay(ImageDisplay):
                         _sanitize_data(image))
                 bad_clims = (vmin == vmax)
                 if bad_clims:
-                    self.logger.warning('Bad colour interval from %s: '
+                    # self.logger.warning('Bad colour interval from %s: '
+                    #                     '(%.1f, %.1f). Ignoring',
+                    #                     self.imagePlot.norm.interval.__class__,
+                    #                     vmin, vmax)
+                    self.logger.warning('Bad colour interval: '
                                         '(%.1f, %.1f). Ignoring',
-                                        self.imagePlot.norm.interval.__class__,
                                         vmin, vmax)
                 else:
                     self.logger.debug('Auto clims: (%.1f, %.1f)', vmin, vmax)
@@ -954,11 +967,83 @@ class VideoDisplay(ImageDisplay):
         new = self._frame + inc
         if self.use_blit:
             self.frameSlider.drawon = False
-        self.frameSlider.set_val(new)  # calls connected `set_frame`
+        self.frameSlider.set_val(new)  # calls connected `update`
         self.frameSlider.drawon = True
 
         # except Exception as err:
         #     self.logger.exception('Scroll failed:')
+
+    def play(self, start=None, stop=None, pause=0):
+        """
+        Show a video of images in the model space
+
+        Parameters
+        ----------
+        n: int
+            number of frames in the animation
+        pause: int
+            interval between frames in miliseconds
+
+        Returns
+        -------
+
+        """
+
+        if stop is None and start:
+            stop = start
+            start = 0
+        if start is None:
+            start = 0
+        if stop is None:
+            stop = len(self.data)
+
+        # save background for blitting
+        # FIXME: saved bg should be without
+        tmp_inviz = [self.frameSlider.poly, self.frameSlider.valtext]
+        # tmp_inviz.extend(self.histogram.ax.yaxis.get_ticklabels())
+        tmp_inviz.append(self.histogram.bars)
+        for s in tmp_inviz:
+            s.set_visible(False)
+
+        fig = self.figure
+        fig.canvas.draw()
+        self.background = fig.canvas.copy_from_bbox(self.figure.bbox)
+
+        for s in tmp_inviz:
+            s.set_visible(True)
+
+        self.frameSlider.eventson = False
+        self.frameSlider.drawon = False
+
+        # pause: inter-frame pause (milisecond)
+        seconds = pause / 1000
+        i = int(start)
+
+        # note: the fastest frame rate achievable currently seems to be
+        #  around 20 fps
+        try:
+            while i <= stop:
+                self.frameSlider.set_val(i)
+                draw_list = self.update(i)
+                draw_list.extend([self.frameSlider.poly,
+                                  self.frameSlider.valtext])
+
+                fig.canvas.restore_region(self.background)
+
+                # FIXME: self.frameSlider.valtext doesn't dissappear on blit
+
+                for art in draw_list:
+                    self.ax.draw_artist(art)
+
+                fig.canvas.blit(fig.bbox)
+
+                i += 1
+                time.sleep(seconds)
+        except Exception as err:
+            raise err
+        finally:
+            self.frameSlider.eventson = True
+            self.frameSlider.drawon = True
 
     # def blit_setup(self):
 
@@ -1045,10 +1130,12 @@ class VideoDisplayX(VideoDisplay):
         return
 
     def get_coords_internal(self, i):
+        i = int(round(i))
         return self.coords[i, :, ::-1].T
 
     def update(self, i, draw=True):
         # self.logger.debug('update')
+        # i = round(i)
         draw_list = VideoDisplay.update(self, i, False)
         #
         coo = self.get_coords(i)
@@ -1075,26 +1162,18 @@ class VideoDisplayA(VideoDisplayX):
     def __init__(self, data, coords=None, ap_props={}, **kws):
         """"""
         VideoDisplayX.__init__(self, data, coords, **kws)
-        # self.data = data
 
         # create apertures
         props = VideoDisplayA.apProps.copy()
-        props.update(ap_props, animated=self.use_blit)
-        self.aps = ApertureCollection(**props)
+        props.update(ap_props)
+        self.aps = self.create_apertures(**props)
 
-        # self.aps.coords = np.empty((0, 2))
+    def create_apertures(self, **props):
+        props.setdefault('animated', self.use_blit)
+        aps = ApertureCollection(**props)
         # add apertures to axes.  will not display yet if coordinates not given
-        self.aps.add_to_axes(self.ax)
-
-        # # check updater
-        # if (ap_updater is None) or (isinstance(ap_updater, Callable)):
-        #     # check updater working this is a good idea, since matplotlib
-        #     # callbacks will silently ignore Exceptions
-        #     'TODO'
-        # else:
-        #     raise TypeError('Invalid updater.')
-        #
-        # self.ap_updater = ap_updater
+        aps.add_to_axes(self.ax)
+        return aps
 
     def update_apertures(self, i, *args, **kws):
         coords, *_ = args
