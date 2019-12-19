@@ -1,4 +1,4 @@
-import logging
+# import logging
 
 import numpy as np
 import matplotlib.pyplot as plt
@@ -6,7 +6,7 @@ import matplotlib.pyplot as plt
 # from recipes.decor import print_args
 
 from recipes.oo.meta import flaggerFactory
-from recipes.list import flatten
+from recipes.containers.list_ import flatten
 from recipes.logging import LoggingMixin
 
 # from recipes.decor import profile

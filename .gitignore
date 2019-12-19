@@ -1,6 +1,6 @@
 #.gitignore
 
-#kate 
+#kate
 *.kate-swp
 *~
 
@@ -8,7 +8,7 @@
 .idea/
 
 #python
-/__pycache__
+__pycache__
 
 #dev
 /dev

@@ -138,17 +138,21 @@ def guess_figsize(image, fill_factor=0.75, max_pixel_size=0.2):
     """
 
     # Sizes reported by mpl figures seem about half the actual size on screen
-    fill_factor *= 2
+    # fill_factor *=
 
     # screen dimensions
     screen_size = np.array(get_screen_size_inches())
     # change order of image dimensions since opposite order of screen
     shape = np.array(np.shape(image)[::-1])
     # get upper limit for fig size based on screen and data and fill factor
-    size = ((shape / max(shape)) * screen_size[np.argmax(shape)] * fill_factor)
-    max_size = shape * max_pixel_size
-    if np.any(size > max_size):
-        size = max_size
+    max_size = screen_size * fill_factor  # maximal size
+    scale = np.min(shape / max_size)
+    size = shape / scale
+
+    # size = ((shape / max(shape)) * screen_size[np.argmax(shape)] * fill_factor)
+    # max_size = shape * max_pixel_size
+    # if np.any(size > max_size):
+    #     size = max_size
 
     # if np.any(size1 < min_size)
     # other, one dimension might be less than min_size.
@@ -213,7 +217,7 @@ class Stretch(BaseStretch, FromNameMixin):
 #                 self, _sanitize_data(values), clip)
 
 
-class ColourHistogram(LoggingMixin):  # ColourBarHistogram
+class ColourBarHistogram(LoggingMixin):
     """
     Histogram of colour values in an image
     """
@@ -362,12 +366,11 @@ class ColourHistogram(LoggingMixin):  # ColourBarHistogram
 
 # ****************************************************************************************************
 class ImageDisplay(LoggingMixin):
-
     # TODO: move cursor with arrow keys when hovering over figure (like ds9)
     # TODO: optional zoomed image window
 
     # FIXME: Dragging too slow for large images: option for update on release
-    # instead of update on drag!!
+    #  instead of update on drag!!
 
     # TODO: optional Show which region on the histogram corresponds to colorbar
     # TODO: better histogram for integer / binary data with narrow ranges
@@ -385,12 +388,14 @@ class ImageDisplay(LoggingMixin):
         # ax      :       Axes object
         #     Axes on which to display
 
+        self.has_cbar = kws.pop('cbar', True)
         self.has_hist = kws.pop('hist', True)
         self.has_sliders = kws.pop('sliders', True)
+        # fixme: does this make sense without hist ????????????/
         self.use_blit = kws.pop('use_blit', False)
 
         # clim_method = kws.pop('clim', kws.pop('clims', 'percentile'))
-        connect = kws.pop('connect', True)
+        connect = kws.pop('connect', self.has_sliders)
 
         # check data
         image = np.ma.asarray(image).squeeze()  # remove redundant dimensions
@@ -410,7 +415,8 @@ class ImageDisplay(LoggingMixin):
 
         # create the figure if needed
         self.divider = None
-        self.figure, self.ax, kws = self.init_figure(**kws)
+        self.figure, axes, kws = self.init_figure(**kws)
+        self.ax, self.cax, self.hax = axes
         ax = self.ax
 
         # colour transform / normalize
@@ -437,10 +443,13 @@ class ImageDisplay(LoggingMixin):
         self.imagePlot.set_clim(vmin, vmax)
 
         # create the colourbar / histogram / sliders
-        self.cbar = self.createColorbar()
+        self.cbar = None
+        if self.has_cbar:
+            self.cbar = self.make_cbar()
         # create sliders after histogram so they display on top
-        self.sliders, self.histogram = self.createSliders()
+        self.sliders, self.histogram = self.make_sliders()
         # todo: option to turn the sliders off
+
 
         # connect on_draw for debugging
         self._draw_count = 0
@@ -452,22 +461,25 @@ class ImageDisplay(LoggingMixin):
     def init_figure(self, **kws):
 
         ax = kws.pop('ax', None)
+        cax = kws.pop('cax', None)
+        hax = kws.pop('hax', None)
         title = kws.pop('title', None)
-        autoscale_figure = kws.pop('autoscale_figure', True)
+        autosize = kws.pop('autosize', True)
         # sidebar = kws.pop('sidebar', True)
 
         # create axes if required
         if ax is None:
-            if autoscale_figure:
-                # automatically determine the figure size based on the data
-                figsize = self.guess_figsize(self.data)
+            if autosize:
                 # FIXME: the guessed size does not account for the colorbar
                 #  histogram
+
+                # automatically determine the figure size based on the data
+                figsize = self.guess_figsize(self.data)
+
             else:
                 figsize = None
 
             fig = plt.figure(figsize=figsize)
-
             self._gs = gs = GridSpec(1, 1,
                                      left=0.05, right=0.95,
                                      top=0.98, bottom=0.05, )
@@ -487,16 +499,21 @@ class ImageDisplay(LoggingMixin):
             # axes = self.init_axes(fig)
         # else:
         # axes = namedtuple('AxesContainer', ('image',))(ax)
+        if self.has_cbar and (cax is None):
+            self.divider = make_axes_locatable(ax)
+            cax = self.divider.append_axes('right', size=0.2, pad=0)
 
-        self.divider = make_axes_locatable(ax)
+        if self.has_hist and (hax is None):
+            hax = self.divider.append_axes('right', size=1, pad=0.2)
+
         # ax = axes.image
         # set the axes title if given
         if title is not None:
             ax.set_title(title)
 
         # setup coordinate display
-        ax.format_coord = self.cooDisplayFormatter
-        return ax.figure, ax, kws
+        ax.format_coord = self.format_coord
+        return ax.figure, (ax, cax, hax), kws
 
     # def init_axes(self, fig):
     #     gs = GridSpec(100, 100,
@@ -548,8 +565,8 @@ class ImageDisplay(LoggingMixin):
             Sample image
         fill_factor: float
             Maximal fraction of screen size allowed in any direction
-        min_size: 2-tuple
-            Minimum allowed size (heigh, width) in inches
+        max_pixel_size: 2-tuple
+            Maximum allowed pixel size (heigh, width) in inches
 
         Returns
         -------
@@ -563,9 +580,7 @@ class ImageDisplay(LoggingMixin):
         image = self.data[0] if data is None else data
         return guess_figsize(image, fill_factor, max_pixel_size)
 
-    def createColorbar(self):
-
-        cax = self.divider.append_axes('right', size=0.2, pad=0)
+    def make_cbar(self):
         fmt = None
         if self.has_hist:
             # No need for the data labels on the colourbar since it will be on
@@ -574,41 +589,39 @@ class ImageDisplay(LoggingMixin):
             fmt = ticker.NullFormatter()
 
         # cax = self.axes.cbar
-        cbar = self.figure.colorbar(self.imagePlot, cax=cax, format=fmt)
+        cbar = self.figure.colorbar(self.imagePlot, cax=self.cax, format=fmt)
         return cbar
 
-    def createSliders(self):
-
-        if not self.has_sliders:
-            return None, None
-
-        hax = self.divider.append_axes('right', size=1, pad=0.2)
+    def make_sliders(self):
         # data = self.imagePlot.get_array()
+        sliders = None
+        if self.has_sliders:
+            clim = self.imagePlot.get_clim()
+            sliders = self.sliderClass(self.hax, clim, 'y',
+                                       color='rbg',
+                                       ms=(2, 1, 2),
+                                       extra_markers='>s<')
 
-        clim = self.imagePlot.get_clim()
-        sliders = self.sliderClass(hax, clim, 'y',
-                                   color='rbg',
-                                   ms=(2, 1, 2),
-                                   extra_markers='>s<')
+            sliders.lower.on_move.add(self.set_clim)
+            sliders.upper.on_move.add(self.set_clim)
 
-        sliders.lower.on_changed.add(self.set_clim)
-        sliders.upper.on_changed.add(self.set_clim)
+            vmin, vmax = self.imagePlot.get_clim()
+            sliders.min_span = (vmax - vmin) / 100
 
-        chist = None
+        cbh = None
         if self.has_hist:
-            chist = ColourHistogram(hax, self.imagePlot, 'horizontal',
-                                    self.use_blit)
+            cbh = ColourBarHistogram(self.hax, self.imagePlot, 'horizontal',
+                                     self.use_blit)
 
-        # set ylim if reasonable to do so
-        # if data.ptp():
-        #     # avoid warnings in setting upper/lower limits identical
-        #     hax.set_ylim((data.min(), data.max()))
-        # NOTE: will have to change with different orientation
+            # set ylim if reasonable to do so
+            # if data.ptp():
+            #     # avoid warnings in setting upper/lower limits identical
+            #     hax.set_ylim((data.min(), data.max()))
+            # NOTE: will have to change with different orientation
 
-        hax.yaxis.tick_right()
-        hax.grid(True)
-
-        return sliders, chist
+            self.hax.yaxis.tick_right()
+            self.hax.grid(True)
+        return sliders, cbh
 
     # def createHistogram(self, ax, data):
     #     """histogram data on slider axis"""
@@ -660,8 +673,8 @@ class ImageDisplay(LoggingMixin):
 
     def set_clim(self, *xydata):
         """Set colour limits on slider move"""
-        clims = self.sliders.positions
-        self.imagePlot.set_clim(clims)
+        #
+        self.imagePlot.set_clim(self.sliders.positions)
 
         if not self.has_hist:
             return self.imagePlot
@@ -687,7 +700,7 @@ class ImageDisplay(LoggingMixin):
 
     # get_colorscale_limits = get_colourscale_limits
 
-    def cooDisplayFormatter(self, x, y, precision=3, masked_str='masked'):
+    def format_coord(self, x, y, precision=3, masked_str='masked'):
         """
         Create string representation for cursor position in data coordinates
 
@@ -796,7 +809,7 @@ class VideoDisplay(ImageDisplay):
         # make frame slider
         fsax = self.divider.append_axes('bottom', size=0.1, pad=0.3)
         self.frameSlider = Slider(fsax, 'frame', n, len(data), valfmt='%d')
-        self.frameSlider.on_changed(self.update)
+        self.frameSlider.on_move(self.update)
         fsax.xaxis.set_major_locator(ticker.AutoLocator())
 
         if self.use_blit:
@@ -1064,11 +1077,11 @@ class VideoDisplay(ImageDisplay):
     #
     #     fig.canvas.blit(fig.bbox)
 
-    # def cooDisplayFormatter(self, x, y):
-    #     s = ImageDisplay.cooDisplayFormatter(self, x, y)
+    # def format_coord(self, x, y):
+    #     s = ImageDisplay.format_coord(self, x, y)
     #     return 'frame %d: %s' % (self.frame, s)
 
-    # def cooDisplayFormatter(self, x, y):
+    # def format_coord(self, x, y):
     #     col, row = int(x + 0.5), int(y + 0.5)
     #     nrows, ncols, _ = self.data.shape
     #     if (col >= 0 and col < ncols) and (row >= 0 and row < nrows):
@@ -1274,12 +1287,14 @@ class Compare3DImage(LoggingMixin):
                            nrows_ncols=(1, 3),
                            axes_pad=-0.2,
                            label_mode=None,
-                           # This is necessary to avoid AxesGrid._tick_only throwing
+                           # This is necessary to avoid AxesGrid._tick_only
+                           # throwing
                            share_all=True,
                            axes_class=(Axes3D, {}))
 
         for ax, title in zip(grid_3D, self.titles):
-            # pl = ax.plot_wireframe([],[],[])     # since matplotlib 1.5 can no longer initialize this way
+            # pl = ax.plot_wireframe([],[],[])
+            # since matplotlib 1.5 can no longer initialize this way
             pl = Line3DCollection([])
             ax.add_collection(pl)
 
@@ -1456,7 +1471,7 @@ class PSFPlotter(Compare3DImage, VideoDisplay):
         axData = self.grid_images[0]
 
         FitsCubeDisplay.__init__(self, filename, ax=axData, extent=extent,
-                                 sidebar=False, autoscale_figure=False)
+                                 sidebar=False, autosize=False)
         self.update(0)  # FIXME: full frame drawn instead of zoom
         # have to draw here for some bizarre reason
         # self.grid_images[0].draw(self.fig._cachedRenderer)
