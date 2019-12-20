@@ -14,7 +14,7 @@ from matplotlib.lines import Line2D
 
 
 # from .interactive import ConnectionMixin, mpl_connect
-from graphical.draggables.machinery import DragMachinery
+from graphing.draggable.machinery import DragMachinery
 from recipes.iter import flatiter
 
 from IPython import embed
@@ -137,8 +137,8 @@ class AxesSliders(DragMachinery):
                 self[line].link(linked)
 
         # set upper / lower attributes for convenience
-        self.lower = self.draggables[sliders[0]]
-        self.upper = self.draggables[sliders[1]]
+        self.lower = self.draggable[sliders[0]]
+        self.upper = self.draggable[sliders[1]]
         self.lock(self._locked)
 
         # constrain movement
@@ -168,7 +168,7 @@ class AxesSliders(DragMachinery):
         # not a property since it returns a list of artists to draw
         # assert len(values) == len(self.artists)
         draw_list = []
-        for drg, v in zip(self.draggables.values(), values):
+        for drg, v in zip(self.draggable.values(), values):
             new = (v, drg.position[self._ilock])[self._order]
             art = self.update(drg, new, False)
             draw_list.extend(art)
@@ -184,13 +184,10 @@ class AxesSliders(DragMachinery):
         lim = getattr(self.ax, f'get_{self.slide_axis}lim')()
         beyond = relate(self.positions[upper], lim[upper])
         axis = getattr(self.ax, f'{self.slide_axis}axis')
-        # print('expanding', expanding)
-        # print('beyond', beyond)
         if expanding and beyond:
             limits = [None, None]
             limits[upper] = (x, y)[self._ifree]
             # set limits
-            # print('setting', limits)
             getattr(self.ax, f'set_{self.slide_axis}lim')(limits)
             self._changed_axes_lim = True
 
@@ -199,7 +196,6 @@ class AxesSliders(DragMachinery):
         #  axis when initializing and therefore knows to redraw all the ticks
         #  etc
         return axis
-
 
     def set_upper_ymin(self, x, y):
         # pos = self.get_positions()
@@ -256,7 +252,7 @@ class TripleSliders(AxesSliders):  # MinMaxMeanSliders
                              annotate, haunted, use_blit, extra_markers,
                              **props)
         #
-        self.centre = self.draggables[2]
+        self.centre = self.draggable[2]
         self.centre.lock(self._locked)
         # self.lower.on_picked.add(lambda x, y: self.centre.set_animate(True))
 
@@ -298,7 +294,7 @@ class TripleSliders(AxesSliders):  # MinMaxMeanSliders
         logging.debug('centre ymax: %.2f, %.2f', self.centre.ymax, y)
 
     def _animate(self, b):
-        for drg in self.draggables.values():
+        for drg in self.draggable.values():
             drg.set_animated(b)
 
     def animate(self, x, y):
@@ -315,10 +311,10 @@ class TripleSliders(AxesSliders):  # MinMaxMeanSliders
         # print(shift, self.delta)
 
         # upper if moving up else lower. i.e. the one that may get clipped
-        lead = self.draggables[int(up)]
+        lead = self.draggable[int(up)]
         art2 = lead.update(*(lead.position + shift))
 
-        trail = self.draggables[int(not up)]
+        trail = self.draggable[int(not up)]
         art3 = trail.update(*(2 * self.centre.position - lead.position))
 
         return art1 + art2 + art3
@@ -348,7 +344,7 @@ class TripleSliders(AxesSliders):  # MinMaxMeanSliders
             return
 
         if self.selection:
-            draggable = self.draggables[self.selection]
+            draggable = self.draggable[self.selection]
 
             xydisp = event.x, event.y
             xydata = x, y = self.ax.transData.inverted().transform(xydisp)
@@ -375,7 +371,7 @@ class TripleSliders(AxesSliders):  # MinMaxMeanSliders
             x, y = self.ax.transData.inverted().transform(xydisp)  # xydata =
             logging.debug('on_release: delta %s', self.delta)
 
-            draggable = self.draggables[self.selection]
+            draggable = self.draggable[self.selection]
             draw_list = draggable.on_release(x, y)
 
             if draggable is self.centre:
@@ -395,9 +391,9 @@ class TripleSliders(AxesSliders):  # MinMaxMeanSliders
         # super().reset()
         logging.debug('resetting!')
         draw_list = []
-        for draggable, off in zip(self.draggables.values(),
-                                  self._original_offsets):
-            artists = draggable.update(*draggable.ref_point)
+        for art, off in zip(self.draggable.values(),
+                            self._original_offsets):
+            artists = art.update(*art.ref_point)
             draw_list.extend(artists)
 
         # artist = self.centre_moves(*self.centre.position)
