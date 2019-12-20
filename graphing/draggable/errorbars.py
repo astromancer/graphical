@@ -537,7 +537,7 @@ class DraggableErrorbar(ConnectionMixin):  # TODO: rename
         self.figure = ax.figure
 
         # initialize mapping
-        self.draggables = {}  # TODO: make this a indexable Ordered dict
+        self.draggable = {}  # TODO: make this a indexable Ordered dict
 
         # initialize auto-connect
         ConnectionMixin.__init__(self, ax.figure)
@@ -561,16 +561,16 @@ class DraggableErrorbar(ConnectionMixin):  # TODO: rename
             markers, _, _ = draggable
 
             # map Line2D to DraggableErrorbarContainer. The picker returns the markers.
-            self.draggables[markers] = draggable
+            self.draggable[markers] = draggable
 
             # create ghost artists
             draggable.haunt()
 
-        self.lines = list(self.draggables.keys())
+        self.lines = list(self.draggable.keys())
 
         # establish links
         for links in linked:
-            link_set = [self.draggables[m] for m, _, _ in
+            link_set = [self.draggable[m] for m, _, _ in
                         links]  # set of linked DraggableErrorbarContainers
             for i, draggable in enumerate(link_set):
                 draggable.linked = link_set  # each linked artist carries a copy of all those artists linked to it
@@ -585,7 +585,7 @@ class DraggableErrorbar(ConnectionMixin):  # TODO: rename
     def reset(self):
         """reset the plot positions to zero offset"""
         # print('resetting!')
-        for draggable in self.draggables.values():
+        for draggable in self.draggable.values():
             draggable.shift(0)  # NOTE: should this be the original offsets??
 
         self.canvas.draw()
@@ -612,7 +612,7 @@ class DraggableErrorbar(ConnectionMixin):  # TODO: rename
 
         # print('picked', repr(self.selection))
 
-        if event.artist in self.draggables:
+        if event.artist in self.draggable:
             ax = self.ax
             xy = event.mouseevent.xdata, event.mouseevent.ydata
             self.selection = event.artist
@@ -622,7 +622,7 @@ class DraggableErrorbar(ConnectionMixin):  # TODO: rename
             # save the background for blitting
             self.background = self.canvas.copy_from_bbox(self.figure.bbox)
 
-            draggable = self.draggables[self.selection]
+            draggable = self.draggable[self.selection]
             self.select_point = np.subtract(xy,
                                             draggable.offset)  # current_offset = draggable.offset
 
@@ -646,7 +646,7 @@ class DraggableErrorbar(ConnectionMixin):  # TODO: rename
 
             self.canvas.restore_region(self.background)
 
-            draggable = self.draggables[self.selection]
+            draggable = self.draggable[self.selection]
             # print('...')
             for link in draggable.linked:
                 link.ghost.shift(tmp_offset)
@@ -671,7 +671,7 @@ class DraggableErrorbar(ConnectionMixin):  # TODO: rename
             # Remove dragging method for selected artist
             self.remove_connection('motion_notify_event')
 
-            draggable = self.draggables[self.selection]
+            draggable = self.draggable[self.selection]
             for linked in draggable.linked:
                 linked.shift(self.tmp_offset)
                 linked.offset = self.tmp_offset
@@ -687,7 +687,7 @@ class DraggableErrorbar(ConnectionMixin):  # TODO: rename
     # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     def set_annotation(self, TF):
         """enable / disable offset text annotation"""
-        for art in self.draggables.values():
+        for art in self.draggable.values():
             art.annotation.set_visible(TF)
             art.annotated = TF
 

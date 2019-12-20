@@ -31,7 +31,7 @@ logger = logging.getLogger(get_module_name(__file__))
 # ==============================================================================
 def draggable_artist_factory(art, offset, annotate, **kws):
     if isinstance(art, ErrorbarContainer):
-        from graphing.draggables.errorbars import DraggableErrorbarContainer
+        from graphing.draggable.errorbars import DraggableErrorbarContainer
         draggable = DraggableErrorbarContainer(art,
                                                offset=offset,
                                                annotate=annotate,
@@ -410,20 +410,20 @@ class DraggableBase(LoggingMixin):  # TODO: use as mixin?
             return False, {}
         return self.artist.contains(self, event)
 
-    def link(self, *draggables):
+    def link(self, *artists):
         """
         Link another artist or artist to this one to make them co-moving
 
         Parameters
         ----------
-        draggables: a sequence of artists that will be linked to this one
+        artists: a sequence of artists that will be linked to this one
 
         Returns
         -------
 
         """
         linked = []
-        for drg in draggables:
+        for drg in artists:
             if not isinstance(drg, DraggableBase):
                 drg = DraggableBase(drg)
             linked.append(drg)
@@ -431,9 +431,9 @@ class DraggableBase(LoggingMixin):  # TODO: use as mixin?
         self.linked.extend(linked)
         return linked
 
-    def unlink(self, *draggables):
+    def unlink(self, *artists):
         """ """
-        for drg in draggables:
+        for drg in artists:
             if drg in self.linked:
                 i = self.linked.index(drg)
                 self.linked.pop(i)
@@ -639,7 +639,7 @@ class DragMachinery(ConnectionMixin):
         self.delta = np.zeros(2)  # in case of pick without motion
 
         # initialize mapping
-        self.draggables = IndexableOrderedDict()
+        self.draggable = IndexableOrderedDict()
 
         # initialize auto-connect
         ConnectionMixin.__init__(self)
@@ -666,7 +666,7 @@ class DragMachinery(ConnectionMixin):
     def __getitem__(self, key):
         """hack for quick indexing"""
         # OR inherit from dict????
-        return self.draggables[key]
+        return self.draggable[key]
 
     @property
     def offsets(self):
@@ -679,7 +679,7 @@ class DragMachinery(ConnectionMixin):
                                        offset=offset,
                                        annotate=annotate,
                                        haunted=haunted, **kws)
-        self.draggables[key] = drg
+        self.draggable[key] = drg
         self._original_offsets = np.r_['0,2', self._original_offsets, offset]
 
         return drg
@@ -689,10 +689,10 @@ class DragMachinery(ConnectionMixin):
         if self._ax is not None:
             return self._ax
 
-        if len(self.draggables) == 0:
+        if len(self.draggable) == 0:
             raise ValueError('%s does not contain any artists yet.'
                              % self.__class__.__name__)
-        return self.draggables[0].artist.axes
+        return self.draggable[0].artist.axes
 
     @property
     def figure(self):
@@ -704,7 +704,7 @@ class DragMachinery(ConnectionMixin):
 
     @property
     def artists(self):
-        return list(self.draggables.keys())
+        return list(self.draggable.keys())
 
     @property
     def use_blit(self):
@@ -712,11 +712,11 @@ class DragMachinery(ConnectionMixin):
                 self.canvas is not None) and self.canvas.supports_blit
 
     def lock(self, which):
-        for art, drg in self.draggables.items():
+        for art, drg in self.draggable.items():
             drg.lock(which)
 
     def free(self, which):
-        for art, drg in self.draggables.items():
+        for art, drg in self.draggable.items():
             drg.free(which)
 
     def lock_x(self):
@@ -749,13 +749,13 @@ class DragMachinery(ConnectionMixin):
 
         """
         self.logger.debug('limit %s, %s', x, y)
-        for art, drg in self.draggables.items():
+        for art, drg in self.draggable.items():
             drg.limit(x, y)
 
     def reset(self):
         """reset the plot positions to original"""
         self.logger.debug('resetting!')
-        for draggable, off in zip(self.draggables.values(),
+        for draggable, off in zip(self.draggable.values(),
                                   self._original_offsets):
             self.update(draggable, draggable.ref_point)
 
@@ -777,7 +777,7 @@ class DragMachinery(ConnectionMixin):
         if event.mouseevent.button != 1:
             return True
 
-        if event.artist not in self.draggables:
+        if event.artist not in self.draggable:
             return True
 
         # avoid picking multiple artist simultaneously
@@ -800,7 +800,7 @@ class DragMachinery(ConnectionMixin):
 
         # get data coordinates of pick
         self.selection = event.artist
-        draggable = self.draggables[self.selection]
+        draggable = self.draggable[self.selection]
         # get data coordinates
         # xy display coordinate
         xy_disp = event.mouseevent.x, event.mouseevent.y
@@ -857,7 +857,7 @@ class DragMachinery(ConnectionMixin):
 
         if self.selection:
             self.logger.debug('dragging: %s', self.selection)
-            draggable = self.draggables[self.selection]
+            draggable = self.draggable[self.selection]
 
             xy_disp = event.x, event.y
             xy_data = x, y = self.ax.transData.inverted().transform(xy_disp)
@@ -909,7 +909,7 @@ class DragMachinery(ConnectionMixin):
             # xy_data = self.delta + self.ref_point
             self.logger.debug('on_release: delta %s', self.delta)
 
-            draggable = self.draggables[self.selection]
+            draggable = self.draggable[self.selection]
             draw_list = draggable.on_release(x, y)
 
             print('release', draw_list)
@@ -1025,7 +1025,7 @@ class DragMachinery(ConnectionMixin):
     def save_background(self):
         # get all the movable artists by "moving" them with zero offset
         artists = []
-        for drg in self.draggables.values():
+        for drg in self.draggable.values():
             art = drg.update_offset((0, 0))
             artists.extend(art)
 

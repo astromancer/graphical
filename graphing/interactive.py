@@ -490,7 +490,7 @@ class LCFrameDisplay2(PointSelector):
                                  **kw)
         # starplots.connect()
 
-        PointSelector.__init__(self, starplots.draggables)
+        PointSelector.__init__(self, starplots.draggable)
 
         fitsfile = cube.filename
         figure, ax = plt.subplots(tight_layout=True)

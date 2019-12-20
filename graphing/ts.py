@@ -332,7 +332,7 @@ def get_line_colours(n, colours, cmap):
     return colours
 
 
-from obstools.phot.utils import duplicate_if_scalar
+from recipes.misc import duplicate_if_scalar
 
 
 # def get_axes_limits(data, whitespace, offsets=None):
@@ -533,7 +533,7 @@ class TimeSeriesPlot(object):
         if kws.draggable and not show_hist:
             # FIXME: maybe warn if both draggable and show_hist
             # make the artists draggable
-            from graphical.draggables import DraggableErrorbar
+            from graphing.draggable import DraggableErrorbar
             plots = DraggableErrorbar(tsp.art, offsets=kws.offsets,
                                       linked=tsp._linked,
                                       **tsp.styles.legend)
@@ -770,7 +770,7 @@ def time_phase_plot(P, toff=0, **figkws):
 
 def phase_time_plot(P, toff=0, **figkws):
     from matplotlib.transforms import Affine2D
-    from graphical.dualaxes import DualAxes
+    from graphing.dualaxes import DualAxes
     fig = plt.figure(**figkws)
 
     aux_trans = Affine2D().translate(-toff, 0).scale(1 / P)
