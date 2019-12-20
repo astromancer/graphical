@@ -9,7 +9,7 @@
 # @profile.histogram
 
 import numpy as np
-from graphical import ts
+from graphing import ts
 from matplotlib import pyplot as plt
 
 
@@ -79,7 +79,7 @@ def test_plot(**kws):
     # fig, plots, *stuff = ts.plot(t, ym, e,
     # show_masked='span')
     # FIXME:
-    # File "/home/hannes/.local/lib/python3.4/site-packages/draggables/errorbars.py", line 257, in __init__
+    # File "/home/hannes/.local/lib/python3.4/site-packages/draggable/errorbars.py", line 257, in __init__
     # self.to_orig[handel.markers] = NamedErrorbarContainer(origart)
     # AttributeError: 'Rectangle' object has no attribute 'markers'
 
