@@ -23,7 +23,7 @@ from recipes.logging import LoggingMixin
 from recipes.introspection.utils import get_module_name
 # from .zscale import zrange
 from .sliders import TripleSliders
-from .draggables.machinery import Observers
+from .draggable.machinery import Observers
 
 # from astropy.visualization import mpl_normalize  # import ImageNormalize as _
 from astropy.visualization.mpl_normalize import ImageNormalize
@@ -216,6 +216,8 @@ class Stretch(BaseStretch, FromNameMixin):
 #         return mpl_normalize.Normalize.__call__(
 #                 self, _sanitize_data(values), clip)
 
+from recipes.misc import duplicate_if_scalar
+
 
 class ColourBarHistogram(LoggingMixin):
     """
@@ -223,9 +225,9 @@ class ColourBarHistogram(LoggingMixin):
     """
 
     def __init__(self, ax, image_plot, orientation='horizontal', use_blit=True,
-                 **kws):
+                 outside_colour=None, outside_alpha=0.5, **kws):
         """
-        Create a histogram for colour values in an image
+        Display a histogram for colour values in an image.
 
         Parameters
         ----------
@@ -236,11 +238,10 @@ class ColourBarHistogram(LoggingMixin):
         kws
         """
 
+        # TODO: option for dynamic recompute histogram ie on dragging
         # TODO: integrate color stretch functionality
         # from astropy.visualization import (MinMaxInterval, SqrtStretch,
         #                            ImageNormalize)
-
-        # TODO: reset axes limits if slider moves outside of axes.
 
         from matplotlib.collections import PolyCollection
 
@@ -257,33 +258,40 @@ class ColourBarHistogram(LoggingMixin):
         # if use_blit:
 
         cmap = image_plot.get_cmap()
+        self.cmap = cmap.__class__(cmap.colors)
+        # cmap = self.cmap
+        # optionally gray out out-of-bounds values
+        if outside_colour is None:
+            outside_colours = self.cmap([0., 1.])  # note float
+            outside_colours[:, -1] = outside_alpha
+            under, over = outside_colours
+        else:
+            under, over = duplicate_if_scalar(outside_colour)
 
-        # FIXME: outside colours transparent
-
-        # if outside_colour is not None:
-        #     # optionally gray out out-of-bounds values
-        #     cmap = deepcopy(cmap)
-        #     cmap.set_over(outside_colour)
-        #     cmap.set_under(outside_colour)
-        self.cmap = cmap
+        self.cmap.set_over(over)
+        self.cmap.set_under(under)
 
         # compute histogram
         data = image_plot.get_array()
-        self.bins = self._auto_bins()
+        self.bins = self._auto_bins()  # TODO: allow passing
         rng = self._auto_range()
-        counts, bin_edges = np.histogram(_sanitize_data(data), self.bins, rng)
-        self.counts, self.bin_edges = counts, bin_edges
+        self.counts, self.bin_edges = counts, bin_edges = \
+            np.histogram(_sanitize_data(data), self.bins, rng)
+        self.bin_centers = bin_edges[:-1] + np.diff(bin_edges)
+
         # bars
         verts = self.get_verts(counts, bin_edges)
 
         # FIXME: fails for all zero data
         # colours
-        bin_centers = bin_edges[:-1] + np.diff(bin_edges)
-        vm = np.ma.masked_outside(bin_centers, *image_plot.get_clim())
-        array = self.norm(vm)
+
+        # to make oor bars invisible:
+        # vm = np.ma.masked_outside(self.bin_centers, *image_plot.get_clim())
+        # array = self.norm(self.bin_centers)
 
         # create collection
-        self.bars = PolyCollection(verts, cmap=self.cmap, array=array)
+        self.bars = PolyCollection(verts, cmap=self.cmap,
+                                   array=self.norm(self.bin_centers))
         ax.add_collection(self.bars)
         # TODO:
 
@@ -299,9 +307,12 @@ class ColourBarHistogram(LoggingMixin):
             self._autoscale_view()
 
     def get_verts(self, counts, bin_edges):
-        # NOTE: horizontal bars
+        """vertices for horizontal bars"""
+        # FIXME: order swaps for vertical bars
+
         if len(counts) == 0:
-            return []  # empty histogram
+            # empty histogram
+            return []
 
         xmin = 0
         ywidth = np.diff(bin_edges[:2])[0]
@@ -309,31 +320,35 @@ class ColourBarHistogram(LoggingMixin):
                  (xmin, ymin + ywidth),
                  (xmin + xwidth, ymin + ywidth),
                  (xmin + xwidth, ymin),
-                 (xmin, ymin)] for xwidth, ymin in zip(counts, bin_edges)]
+                 (xmin, ymin)]
+                for xwidth, ymin in zip(counts, bin_edges)]
 
-    def update(self, data):
+    def update(self):
 
-        rng = self._auto_range()
+        # data = self.image_plot.get_array()
+        # rng = self._auto_range()
+        #
+        # self.counts, self.bin_edges = counts, bin_edges =\
+        #     np.histogram(_sanitize_data(data), self.bins, rng)
 
-        # FIXME: visible_bins vs invisible ....
+        # verts = self.get_verts(counts, bin_edges)
+        # self.bars.set_verts(verts)
+        #
+        # bin_centers = bin_edges[:-1] + np.diff(bin_edges)
+        # self.bars.set_array(self.norm(self.bin_centers))
+        # note set_array doesn't seem to work correctly. bars outside the
+        #  range get coloured for some reasone
 
-        counts, bin_edges = np.histogram(_sanitize_data(data), self.bins, rng)
-        self.counts, self.bin_edges = counts, bin_edges
-        verts = self.get_verts(counts, bin_edges)
-        self.bars.set_verts(verts)
-
-        bin_centers = bin_edges[:-1] + np.diff(bin_edges)
-        array = self.norm(bin_centers)
-        self.bars.set_array(array)
-
-        return self.bars,  # TODO: xtick labels if necessary
+        self.bars.set_facecolors(self.cmap(self.norm(self.bin_centers)))
+        return self.bars  # TODO: xtick labels if necessary
 
     def _auto_bins(self, n=50):
         bins = n
         data = self.image_plot.get_array()
+        # smart bins for integer arrays containing small range of numbers
         if data.dtype.kind == 'i':  # integer array
-            low, hi = np.nanmin(data), np.nanmax(data)
-            bins = np.arange(min(hi - low, n) + 1)
+            lo, hi = np.nanmin(data), np.nanmax(data)
+            bins = np.arange(min(hi - lo, n) + 1)
         return bins
 
     def _auto_range(self, width=1.2):
@@ -346,7 +361,8 @@ class ColourBarHistogram(LoggingMixin):
             return image.min(), image.max()
 
         # set the axes limits slightly wider than the clims
-        m, w = 0.5 * (vmin + vmax), (vmax - vmin) * width
+        m = 0.5 * (vmin + vmax)
+        w = (vmax - vmin) * width
         return m - w / 2, m + w / 2
 
     def _autoscale_view(self):
@@ -449,7 +465,6 @@ class ImageDisplay(LoggingMixin):
         # create sliders after histogram so they display on top
         self.sliders, self.histogram = self.make_sliders()
         # todo: option to turn the sliders off
-
 
         # connect on_draw for debugging
         self._draw_count = 0
@@ -679,7 +694,7 @@ class ImageDisplay(LoggingMixin):
         if not self.has_hist:
             return self.imagePlot
 
-        self.histogram.update(self.imagePlot.get_array())
+        self.histogram.update()
         return self.imagePlot, self.histogram.bars
 
         # TODO: return COLOURBAR ticklabels?
