@@ -244,6 +244,7 @@ class ColourBarHistogram(LoggingMixin):
         #                            ImageNormalize)
 
         from matplotlib.collections import PolyCollection
+        from matplotlib.colors import ListedColormap
 
         self.log = kws.setdefault('log', True)
         self.ax = ax
@@ -253,12 +254,13 @@ class ColourBarHistogram(LoggingMixin):
         assert orientation.lower().startswith(('h', 'v'))
         self.orientation = orientation
 
-        # if blitting, updating range at every step, so axes labels need to
+        # if bliting, updating range at every step, so axes labels need to
         # be re-drawn
         # if use_blit:
 
         cmap = image_plot.get_cmap()
-        self.cmap = cmap.__class__(cmap.colors)
+        colors = cmap(np.linspace(0, 1, 256))
+        self.cmap = ListedColormap(colors)
         # cmap = self.cmap
         # optionally gray out out-of-bounds values
         if outside_colour is None:
@@ -420,8 +422,7 @@ class ImageDisplay(LoggingMixin):
             image = image.astype(int)
 
         if image.ndim != 2:
-            msg = '`%s` Cannot image %iD data. ' % (
-                self.__class__.__name__, image.ndim)
+            msg = f'{self.__class__.__name__} cannot image {image.ndim}D data.'
             if image.ndim == 3:
                 msg += 'Use `VideoDisplay` class to image 3D data.'
             raise ValueError(msg)
