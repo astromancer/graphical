@@ -10,34 +10,8 @@
 
 import numpy as np
 
-import graphing.utils
 from graphing import ts
 from matplotlib import pyplot as plt
-
-
-def test_plims(data):
-    mn, mx = data.min(), data.max()
-    p20, p30, p50, p80 = np.percentile(data, (20, 30, 50, 80))
-    ptp = mx - mn
-    md = p50 - mn
-
-    expected = {-2.5: mn - (2 * ptp + md),  # :     +4 * mn - 2 * mx - p50
-                -2.0: mn - (2 * ptp),  # :          +3 * mn - 2 * mx
-                -1.5: mn - (1 * ptp + md),  # :     +3 * mn - 1 * mx - p50
-                -1.2: mn - ptp - (p20 - mn),  # :   +3 * mn - 1 * mx - p20
-                -1.0: mn - (1 * ptp),  # :          +2 * mn - 1 * mx
-                -0.5: mn - md,  # :                 +2 * mn - 0 * mx - p50
-                +0.0: mn,  # :                      +1 * mn - 0 * mx
-                +0.3: p30,  # :                     +0 * mn - 0 * mx + p30
-                +0.5: p50,  # :                     +0 * mn - 0 * mx + p50
-                +1.0: mx,  # :                      +0 * mn + 1 * mx
-                +1.2: mx + (mx - p80),  # :         +0 * mn + 2 * mx - p80
-                +1.5: mx + (mx - p50),  # :         +0 * mn + 2 * mx - p50
-                +2.7: mx + ptp + (mx - p30)  # :    -1 * mn + 3 * mx - p30
-                }
-
-    for p, e in expected.items():
-        assert graphing.utils.get_percentile(data, p) == e
 
 
 def test_plot(**kws):
