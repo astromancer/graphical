@@ -6,7 +6,7 @@ import matplotlib.pyplot as plt
 # from recipes.decor import print_args
 
 from recipes.oo.meta import flaggerFactory
-from recipes.containers.list_ import flatten
+from recipes.containers.lists import flatten
 from recipes.logging import LoggingMixin
 
 # from recipes.decor import profile
