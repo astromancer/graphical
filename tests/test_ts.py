@@ -9,6 +9,8 @@
 # @profile.histogram
 
 import numpy as np
+
+import graphing.utils
 from graphing import ts
 from matplotlib import pyplot as plt
 
@@ -35,7 +37,7 @@ def test_plims(data):
                 }
 
     for p, e in expected.items():
-        assert ts.get_percentile(data, p) == e
+        assert graphing.utils.get_percentile(data, p) == e
 
 
 def test_plot(**kws):
