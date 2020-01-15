@@ -53,7 +53,7 @@ def hist(x, bins=100, range=None, normed=False, weights=None, **kws):
 
     Keywords
     --------
-    axlabels:   sequence
+    axes_labels:   sequence
         One or two axis labels (x,y)
     title:      str
         The figure title
@@ -68,15 +68,15 @@ def hist(x, bins=100, range=None, normed=False, weights=None, **kws):
     ax:         axes
     """
 
+    # https://en.wikipedia.org/wiki/Quantile#Specialized_quantiles
     named_quantiles = {25: 'lower  quartile',
-                       # https://en.wikipedia.org/wiki/Quantile#Specialized_quantiles
                        50: 'median',
                        75: 'upper quartile'}
 
     show_stats = kws.pop('show_stats', ())
     show_stats_labels = kws.pop('show_stats_labels', True)
     fmt_stats = kws.pop('fmt_stats', None)
-    lbls = kws.pop('axlabels', ())
+    lbls = kws.pop('axes_labels', ())
     title = kws.pop('title', '')
     alpha = kws.setdefault('alpha', 0.75)
     ax = kws.pop('ax', None)
