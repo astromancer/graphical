@@ -30,6 +30,8 @@ from astropy.visualization.mpl_normalize import ImageNormalize
 from astropy.visualization.interval import BaseInterval
 from astropy.visualization.stretch import BaseStretch
 
+from .utils import get_percentile_limits
+
 # module level logger
 logger = logging.getLogger(get_module_name(__file__))
 
@@ -53,12 +55,22 @@ def move_axes(ax, x, y):
 
 
 def get_norm(image, interval, stretch):
+    """
+
+    Parameters
+    ----------
+    image
+    interval
+    stretch
+
+    Returns
+    -------
+
+    """
     # choose colour interval algorithm based on data type
-    if interval is None:
-        interval = 'zscale'
-        if image.dtype.kind == 'i':  # integer array
-            if image.ptp() < 1000:
-                interval = 'minmax'
+    if image.dtype.kind == 'i':  # integer array
+        if image.ptp() < 1000:
+            interval = 'minmax'
 
     # determine colour transform from `interval` and `stretch`
     if isinstance(interval, str):
@@ -295,7 +307,6 @@ class ColourBarHistogram(LoggingMixin):
         self.bars = PolyCollection(verts, cmap=self.cmap,
                                    array=self.norm(self.bin_centers))
         ax.add_collection(self.bars)
-        # TODO:
 
         if use_blit:
             # image_plot.set_animated(True)
@@ -304,6 +315,7 @@ class ColourBarHistogram(LoggingMixin):
         # set axes limits
         if self.log:
             ax.set_xscale('log')
+
         # rescale if non-empty histogram
         if len(counts):
             self._autoscale_view()
@@ -339,7 +351,7 @@ class ColourBarHistogram(LoggingMixin):
         # bin_centers = bin_edges[:-1] + np.diff(bin_edges)
         # self.bars.set_array(self.norm(self.bin_centers))
         # note set_array doesn't seem to work correctly. bars outside the
-        #  range get coloured for some reasone
+        #  range get coloured for some reason
 
         self.bars.set_facecolors(self.cmap(self.norm(self.bin_centers)))
         return self.bars  # TODO: xtick labels if necessary
@@ -395,11 +407,10 @@ class ImageDisplay(LoggingMixin):
     # TODO: method pixels corresponding to histogram bin?
 
     # TODO: remove ticks on cbar ax
-
-    # FIXME: histogram not lining up with slider positions
     # TODO: plot scale func on hist axis
 
     sliderClass = TripleSliders  # AxesSliders
+    _default_plims = (0.25, 99.75)
 
     def __init__(self, image, *args, **kws):
         """ """
@@ -409,55 +420,38 @@ class ImageDisplay(LoggingMixin):
         self.has_cbar = kws.pop('cbar', True)
         self.has_hist = kws.pop('hist', True)
         self.has_sliders = kws.pop('sliders', True)
-        # fixme: does this make sense without hist ????????????/
         self.use_blit = kws.pop('use_blit', False)
-
-        # clim_method = kws.pop('clim', kws.pop('clims', 'percentile'))
         connect = kws.pop('connect', self.has_sliders)
+        # set origin
+        kws.setdefault('origin', 'lower')
 
         # check data
         image = np.ma.asarray(image).squeeze()  # remove redundant dimensions
-        # convert boolean to integer (for colour scale algorithm)
-        if image.dtype.name == 'bool':
-            image = image.astype(int)
-
         if image.ndim != 2:
             msg = f'{self.__class__.__name__} cannot image {image.ndim}D data.'
             if image.ndim == 3:
                 msg += 'Use `VideoDisplay` class to image 3D data.'
             raise ValueError(msg)
 
+        # convert boolean to integer (for colour scale algorithm)
+        if image.dtype.name == 'bool':
+            image = image.astype(int)
+
         self.data = image
         self.ishape = self.data.shape
 
         # create the figure if needed
         self.divider = None
-        self.figure, axes, kws = self.init_figure(**kws)
+        self.figure, axes = self.init_figure(kws)
         self.ax, self.cax, self.hax = axes
         ax = self.ax
 
-        # colour transform / normalize
-        interval = kws.pop('interval', None)
-        stretch = kws.pop('stretch', 'linear')
-
-        # note: ImageNormalize fills masked values.. WTF?!
-        # HACK: get limits ignoring masked pixels
-        #         # set the slider positions / color limits
-        self.norm = get_norm(image, interval, stretch)
-        # kws['norm'] = norm
-
-        # set origin
-        kws.setdefault('origin', 'lower')
-
         # use imshow to do the plotting
+        clim = self.clim_from_data(_sanitize_data(image), kws)
+        self.logger.debug('Colour limits: (%.1f, %.1f)', *clim)
         self.imagePlot = ax.imshow(image, *args, **kws)
-
-        # note: ImageNormalize fills masked values.. WTF?!
-        # HACK: get limits ignoring masked pixels
-        #         # set the slider positions / color limits
-        vmin, vmax = self.norm.interval.get_limits(_sanitize_data(image))
-        self.logger.debug('Auto clims: (%.1f, %.1f)', vmin, vmax)
-        self.imagePlot.set_clim(vmin, vmax)
+        self.norm = self.imagePlot.norm
+        self.imagePlot.set_clim(*clim)
 
         # create the colourbar / histogram / sliders
         self.cbar = None
@@ -465,7 +459,6 @@ class ImageDisplay(LoggingMixin):
             self.cbar = self.make_cbar()
         # create sliders after histogram so they display on top
         self.sliders, self.histogram = self.make_sliders()
-        # todo: option to turn the sliders off
 
         # connect on_draw for debugging
         self._draw_count = 0
@@ -474,8 +467,23 @@ class ImageDisplay(LoggingMixin):
         if connect:
             self.connect()
 
-    def init_figure(self, **kws):
+    # def _clean_kws(self):
+    #     s = inspect.signature(self.ax.imshow)
+    #     set(s.parameters.keys()) - {'X', 'data', 'kwargs'}
 
+    def init_figure(self, kws):
+        """
+
+        Parameters
+        ----------
+        kws
+
+        Returns
+        -------
+
+        """
+        # note intentionally not unpacking keyword dict so that the keys
+        #  removed here reflect at the calling scope
         ax = kws.pop('ax', None)
         cax = kws.pop('cax', None)
         hax = kws.pop('hax', None)
@@ -486,12 +494,11 @@ class ImageDisplay(LoggingMixin):
         # create axes if required
         if ax is None:
             if autosize:
-                # FIXME: the guessed size does not account for the colorbar
-                #  histogram
-
                 # automatically determine the figure size based on the data
                 figsize = self.guess_figsize(self.data)
 
+                # FIXME: the guessed size does not account for the colorbar
+                #  histogram
             else:
                 figsize = None
 
@@ -499,21 +506,9 @@ class ImageDisplay(LoggingMixin):
             self._gs = gs = GridSpec(1, 1,
                                      left=0.05, right=0.95,
                                      top=0.98, bottom=0.05, )
-            # hspace=0, wspace=0,
-            # height_ratios=(1,1,1))
             ax = fig.add_subplot(gs[0, 0])
-
-            # set tick locators
-            # for i, yx in enumerate('yx'):
-            #     # note these will be slow to draw for large images
-            #     loc = ticker.FixedLocator(np.arange(self.ishape[i]))
-            #     axis = getattr(ax, '%saxis' % yx)
-            #     axis.set_minor_locator(loc)
-
             ax.tick_params('x', which='both', top=True)
 
-            # axes = self.init_axes(fig)
-        # else:
         # axes = namedtuple('AxesContainer', ('image',))(ax)
         if self.has_cbar and (cax is None):
             self.divider = make_axes_locatable(ax)
@@ -522,53 +517,13 @@ class ImageDisplay(LoggingMixin):
         if self.has_hist and (hax is None):
             hax = self.divider.append_axes('right', size=1, pad=0.2)
 
-        # ax = axes.image
         # set the axes title if given
         if title is not None:
             ax.set_title(title)
 
         # setup coordinate display
         ax.format_coord = self.format_coord
-        return ax.figure, (ax, cax, hax), kws
-
-    # def init_axes(self, fig):
-    #     gs = GridSpec(100, 100,
-    #                   left=0.05, right=0.95,
-    #                   top=0.98, bottom=0.05,
-    #                   hspace=0, wspace=0,
-    #                   height_ratios=(1,1,1))
-    #
-    #     ax = fig.add_subplot(gs[:100, :80])
-    #     cax = fig.add_subplot(gs[:100, 80:85])
-    #     hax = fig.add_subplot(gs[:100, 87:])
-    #
-    #     axd = dict(image=ax, cbar=cax, hbar=hax)
-    #
-    #     cls = namedtuple('AxesContainer', axd.keys())
-    #     return cls(**axd)
-    #
-    #     # return self._init_axes(fig,
-    #     #                        image=gs[:100, :80],
-    #     #                        cbar=gs[:100, 80:85],
-    #     #                        hbar=gs[:100, 87:])
-    #
-    # def _init_axes(self, fig, **axmap):
-    #     """
-    #
-    #     Parameters
-    #     ----------
-    #     fig
-    #     axmap: dictionary of named axes, with slices to determine geometry via
-    #             gridspec
-    #
-    #     Returns
-    #     -------
-    #
-    #     """
-    #     axd = {lbl: fig.add_subplot(sps, label=lbl, )
-    #                for lbl, sps in axmap.items()}
-    #     cls = namedtuple('AxesContainer', axmap.keys())
-    #     return cls(**axd)
+        return ax.figure, (ax, cax, hax)
 
     def guess_figsize(self, data, fill_factor=0.55, max_pixel_size=0.2):
         """
@@ -639,53 +594,12 @@ class ImageDisplay(LoggingMixin):
             self.hax.grid(True)
         return sliders, cbh
 
-    # def createHistogram(self, ax, data):
-    #     """histogram data on slider axis"""
-    #     # from matplotlib.collections import PatchCollection
-    #
-    #     h = self.hvals, self.bin_edges, self.patches = \
-    #         ax.hist(_sanitize_data(data),
-    #                 bins=100,
-    #                 log=True,
-    #                 orientation='horizontal')
-    #
-    #     # TODO: use PatchCollection?????
-    #     if self.use_blit:
-    #         for p in self.patches:
-    #             p.set_animated(True)
-    #
-    #     clims = self.imagePlot.get_clim()
-    #     self.updateHistogram(clims)
-    #
-    #     ax.grid(True)
-    #     return h
-    #
-    # def updateHistogram(self, clims):
-    #     """Update histogram colours"""
-    #     for i, (p, c) in enumerate(zip(self.patches, self.get_hcol(clims))):
-    #         p.set_fc(c)
-    #
-    # def get_hcol(self, clims):
-    #     """Get the colours to use for the histogram patches"""
-    #     cmap = self.imagePlot.get_cmap()
-    #     vm = np.ma.masked_outside(self.bin_edges, *clims)
-    #     colours = cmap(scale_unity(vm))
-    #     if np.ma.is_masked(vm):
-    #         # grey out histogram patches outside of colour range
-    #         colours[vm.mask, :3] = 0.25
-    #         colours[vm.mask, -1] = 1
-    #     return colours
-
-    # def get_clim(self, data):
-    #     """Get colour scale limits for data"""
-    #     # remove masked data / nans for scaling algorithm
-    #     data = _sanitize_data(data)
-    #     if np.size(data):
-    #         return self.imagePlot.norm.interval.get_limits(data)
-    #     else:
-    #         self.logger.warning('Insufficient data for determining colour '
-    #                             'interval. Falling back to [0, 1]')
-    #         return 0, 1
+    def clim_from_data(self, data, kws):
+        """Get colour scale limits for data"""
+        # note intentionally not unpacking keyword dict so that the keys
+        #  removed here reflect at the calling scope
+        return get_percentile_limits(data, (),
+                                     kws.pop('plims', self._default_plims))
 
     def set_clim(self, *xydata):
         """Set colour limits on slider move"""
@@ -708,13 +622,6 @@ class ImageDisplay(LoggingMixin):
 
     def _on_first_draw(self, event):
         self.logger.debug('FIRST DRAW')
-
-    # def get_colourscale_limits(self, data, **kws):
-    #     """Get colour scale limits for data"""
-    #     kws = self.get_colour_scaler(data, **kws)
-    #     return kws['vmin'], kws['vmax']
-
-    # get_colorscale_limits = get_colourscale_limits
 
     def format_coord(self, x, y, precision=3, masked_str='masked'):
         """
@@ -764,12 +671,30 @@ class ImageDisplay(LoggingMixin):
         self.sliders.connect()
 
 
+class AstroImageDisplay(ImageDisplay):
+
+    def clim_from_data(self, data, kws):
+        # colour transform / normalize
+        interval = kws.pop('interval', 'zscale')
+        stretch = kws.pop('stretch', 'linear')
+
+        # note: ImageNormalize fills masked values.. this is clearly WRONG
+        #  since it will skew statistics on the image. important that data
+        #  passed to this function has been cleaned of masked values
+        # HACK: get limits ignoring masked pixels
+        #         # set the slider positions / color limits
+
+        self.norm = get_norm(data, interval, stretch)
+        # kws['norm'] = norm
+        clim = self.norm.interval.get_limits(data)
+        return clim
+
+
 # ****************************************************************************************************
 class VideoDisplay(ImageDisplay):
     # FIXME: blitting not working - something is leading to auto draw
     # FIXME: frame slider bar not drawing on blit
     # TODO: lock the sliders in place with button??
-    # TODO:
 
     _scroll_wrap = True  # scrolling past the end leads to the beginning
 
@@ -930,7 +855,8 @@ class VideoDisplay(ImageDisplay):
         self.set_frame(i)
 
         image = self.get_image_data(self.frame)
-        # set the image data  TODO: method set_image_data here??
+        # set the image data
+        # TODO: method set_image_data here??
         self.imagePlot.set_data(image)  # does not update normalization
 
         # FIXME: normalizer fails with boolean data
@@ -957,6 +883,8 @@ class VideoDisplay(ImageDisplay):
 
         if not (self._draw_count % self.clim_every):
             # set the slider positions / color limits
+            # TODO: move to clim_from_data
+
             if getattr(self.norm, 'interval', None):
                 vmin, vmax = self.norm.interval.get_limits(
                         _sanitize_data(image))
@@ -1011,7 +939,7 @@ class VideoDisplay(ImageDisplay):
         n: int
             number of frames in the animation
         pause: int
-            interval between frames in miliseconds
+            interval between frames in milliseconds
 
         Returns
         -------
@@ -1044,7 +972,7 @@ class VideoDisplay(ImageDisplay):
         self.frameSlider.eventson = False
         self.frameSlider.drawon = False
 
-        # pause: inter-frame pause (milisecond)
+        # pause: inter-frame pause (millisecond)
         seconds = pause / 1000
         i = int(start)
 
@@ -1513,72 +1441,3 @@ class PSFPlotter(Compare3DImage, VideoDisplay):
             self.fig.canvas.draw()
 
         return i
-
-
-if __name__ == '__main__':
-    import pylab as plt
-
-    data = np.random.random((100, 100))
-    ImageDisplay(data)
-
-    # TESTS:
-    # all zero data
-
-    # fig, ax = plt.subplots(1,1, figsize=(2.5, 10), tight_layout=True)
-    # ax.set_ylim(0, 250)
-    # sliders = AxesSliders(ax, 0.2, 0.7, slide_axis='y')
-    # sliders.connect()
-
-    plt.show()
-
-# class Imager(Axes):
-
-# def __init__(self, ax, z, x, y):
-# self.ax = ax
-# self.x  = x
-# self.y  = y
-# self.z  = z
-# self.dx = self.x[1] - self.x[0]
-# self.dy = self.y[1] - self.y[0]
-# self.numrows, self.numcols = self.z.shape
-# self.ax.format_coord = self.format_coord
-
-# def format_coord(self, x, y):
-# col = int(x/self.dx+0.5)
-# row = int(y/self.dy+0.5)
-##print "Nx, Nf = ", len(self.x), len(self.y), "    x, y =", x, y, "    dx, dy =", self.dx, self.dy, "    col, row =", col, row
-# xyz_str = ''
-# if (col>=0 and col<self.numcols and row>=0 and row<self.numrows):
-# zij = self.z[row,col]
-##print "zij =", zij, '  |zij| =', abs(zij)
-# if (np.iscomplex(zij)):
-# amp, phs = abs(zij), np.angle(zij) / np.pi
-# signz = '+' if (zij.imag >= 0.0) else '-'
-# xyz_str = 'x=' + str('%.4g' % x) + ', y=' + str('%.4g' % y) + ',' \
-# + ' z=(' + str('%.4g' % zij.real) + signz + str('%.4g' % abs(zij.imag)) + 'j)' \
-# + '=' + str('%.4g' % amp) + r'*exp{' + str('%.4g' % phs) + u' π j})'
-# else:
-# xyz_str = 'x=' + str('%.4g' % x) + ', y=' + str('%.4g' % y) + ', z=' + str('%.4g' % zij)
-# else:
-# xyz_str = 'x=%1.4f, y=%1.4f'%(x, y)
-# return xyz_str
-
-
-# def supershow(ax, x, y, z, *args, **kws):
-
-# assert len(x) == z.shape[1]
-# assert len(y) == z.shape[0]
-
-# dx = x[1] - x[0]
-# dy = y[1] - y[0]
-# zabs = abs(z) if np.iscomplex(z).any() else z
-
-## Use this to center pixel around (x,y) values
-# extent = (x[0]-dx/2.0, x[-1]+dx/2.0, y[0]-dy/2.0, y[-1]+dy/2.0)
-
-# im = ax.imshow(zabs, extent = extent, *args, **kws)
-# imager = Imager(ax, z, x, y)
-# ax.set_xlim((x[0], x[-1]))
-# ax.set_ylim((y[0], y[-1]))
-
-# return im
