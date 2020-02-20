@@ -60,8 +60,8 @@ defaults = AttrDict(
         twinx=None,  # Top x-axis display format
         xscale='linear',
         yscale='linear',
-        plims=((0, 1),  # x-axis
-               (-0.1, 1.01)),  # y-axis
+        plims=((0, 100),  # x-axis
+               (-1, 101)),  # y-axis
         #
         colours=None,
         cmap=None,  # TODO: colormap
@@ -131,7 +131,7 @@ class DataPercentileAxesLimits(object):
     upper = attr(+1.05)
 
     def get(self, data, e=()):
-        return get_percentile_limits(data, e, (self.lower, self.upper))
+        return get_percentile_limits(data, (self.lower, self.upper), e)
 
 
 def _set_defaults(props, defaults):
@@ -157,11 +157,6 @@ def check_kws(kws):
             dopts[key].update(val)
     opts.update(kws)
     return opts, dopts
-
-
-# def atleast_2d(x):
-#     x = np.ma.atleast_2d(x)
-#     if x.mask is False:
 
 
 def get_data(data):
@@ -356,134 +351,6 @@ class TimeSeriesPlot(object):
 
     zorder0 = attr(10, init=False, repr=False)
 
-    @classmethod
-    def plot(cls, *data, **kws):
-        """
-        Plot light curve(s)
-
-        Parameters
-        ----------
-        data:   tuple of array-likes
-            (signal,)   -   in which case t is implicitly the integers up to
-                            len(signal)
-            (t, signal) -   in which case uncertainty is ignored
-            (t, signal, uncertainty)
-            Where:
-                t:   (optional; array-like or dict)
-                    time sequence of corresponding data
-                signal:   (array-like or dict)
-                    time series data values
-                uncertainty :   (optional; array-like or dict)
-                    standard deviation uncertainty associated with signal
-
-        """
-        # FIXME: get this to work with astropy time objects
-        # TODO: docstring
-        # TODO: astropy.units ??
-        # TODO: max points = 1e4 ??
-
-        # Check keyword argument validity
-        kws, styles = check_kws(kws)
-        bool(len(kws.get('hist', {})))
-        show_hist = kws.pop('show_hist') or bool(len(kws.get('hist', {})))
-
-        #
-        tsp = cls(kws, styles)
-
-        # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-        # check for structured data (dict keyed on labels and containing data)
-        labels = kws.labels
-        l = [isinstance(d, dict) for d in data]
-        if any(l):
-            dgen = (list(d.values()) if ll else d for d, ll in zip(data, l))
-            keys = [tuple(data[i].keys()) for i in np.where(l)[0]]
-            data = tuple(dgen)
-            if len(keys) > 1:
-                assert keys[0] == keys[1], "dict keys don't match"
-            if labels is None:
-                labels = keys[0]
-
-        # parse data args
-        times, signals, y_err, x_err = get_data(data)
-        n = len(signals)
-
-        # print(np.shape(times), np.shape(signals),
-        #       np.shape(y_err), np.shape(x_err))
-
-        # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-        # # check labels
-        if labels is None:
-            labels = []
-        elif isinstance(labels, str):
-            labels = [labels]  # check if single label given
-        elif len(labels) > n:
-            raise ValueError('Bad labels')
-
-        # tuple, dict, array...
-
-        colours = get_line_colours(n, kws.colours, kws.cmap)
-        fig, ax = tsp.setup_figure(kws.ax, colours, show_hist)
-
-        # todo ; move to init
-        tsp.plims = kws.plims
-
-        # print('before zip:', len(times), len(signals), len(errors))
-        # Do the plotting
-        # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-        # noinspection NonAsciiCharacters
-        for i, (x, y, σy, σx, label) in enumerate(itt.zip_longest(
-                times, signals, y_err, x_err, labels)):
-            # print(np.shape(x), np.shape(y), np.shape(y_err), np.shape(x_err))
-
-            # zip_longest in case errors or times are empty sequences
-            tsp.plot_ts(ax, x, y, σy, σx, label, kws.show_errors,
-                        kws.show_masked, show_hist, kws.relative_time, styles)
-
-        # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-        # add text labels
-        tsp.set_labels(kws.title, kws.axes_labels,
-                       kws.twinx, kws.relative_time)
-
-        # for lim in (tsp.x_lim, tsp.y_lim):
-        #     lim += np.multiply([-1, 1], (np.ptp(lim) * kws.whitespace / 2))
-
-        # set auto-scale limits
-        # print('setting lims: ', tsp.y_lim)
-
-        if np.isfinite(tsp.x_lim).all():
-            ax.set_xlim(tsp.x_lim)
-        if np.isfinite(tsp.y_lim).all():
-            ax.set_ylim(tsp.y_lim)
-
-        # xlim=tsp.x_lim, ylim=tsp.y_lim,
-        ax.set(xscale=tsp.kws.xscale, yscale=tsp.kws.yscale)
-
-        # tsp.set_axes_limits(data, kws.whitespace, (kws.xscale, kws.yscale),
-        #                     kws.offsets)
-
-        # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-        # Setup plots for canvas interaction
-        if kws.draggable and not show_hist:
-            # FIXME: maybe warn if both draggable and show_hist
-            # make the artists draggable
-            from graphing.draggable import DraggableErrorbar
-            plots = DraggableErrorbar(tsp.art, offsets=kws.offsets,
-                                      linked=tsp._linked,
-                                      **tsp.styles.legend)
-            # TODO: legend with linked plots!
-
-        else:
-            ax.legend(tsp.art, labels, **styles.legend)
-            # self._make_legend(ax, tsp.art, labels)
-
-        return tsp
-
-    @classmethod
-    def loglog(cls, *data, **kws):
-        kws.setdefault('xscale', 'log')
-        kws.setdefault('yscale', 'log')
-        return cls.plot(*data, **kws)
-
     def plot_ts(self, ax, x, y, y_err, x_err, label, show_errors,
                 show_masked, show_hist, relative_time, styles):
 
@@ -508,8 +375,8 @@ class TimeSeriesPlot(object):
         self.art.append(ebar_art)
 
         # set axes limits
-        x_lims = get_percentile_limits(x, x_err, self.plims[0])
-        y_lims = get_percentile_limits(y, y_err, self.plims[1])
+        x_lims = get_percentile_limits(x, self.plims[0], x_err)
+        y_lims = get_percentile_limits(y, self.plims[1], y_err)
         # print('ylims', y_lims)
         # if not np.isfinite([x_lims, y_lims]).all():
         #     print('NON FINITE!')
@@ -670,6 +537,134 @@ class TimeSeriesPlot(object):
                                      transform=ax.xaxis.label.get_transform())
 
 
+def plot(*data, **kws):
+    """
+    Plot light curve(s)
+
+    Parameters
+    ----------
+    data:   tuple of array-likes
+        (signal,)   -   in which case t is implicitly the integers up to
+                        len(signal)
+        (t, signal) -   in which case uncertainty is ignored
+        (t, signal, uncertainty)
+        Where:
+            t:   (optional; array-like or dict)
+                time sequence of corresponding data
+            signal:   (array-like or dict)
+                time series data values
+            uncertainty :   (optional; array-like or dict)
+                standard deviation uncertainty associated with signal
+
+    """
+    # FIXME: get this to work with astropy time objects
+    # TODO: docstring
+    # TODO: astropy.units ??
+    # TODO: max points = 1e4 ??
+
+    # Check keyword argument validity
+    kws, styles = check_kws(kws)
+    bool(len(kws.get('hist', {})))
+    show_hist = kws.pop('show_hist') or bool(len(kws.get('hist', {})))
+
+    #
+    tsp = TimeSeriesPlot(kws, styles)
+
+    # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    # check for structured data (dict keyed on labels and containing data)
+    labels = kws.labels
+    l = [isinstance(d, dict) for d in data]
+    if any(l):
+        dgen = (list(d.values()) if ll else d for d, ll in zip(data, l))
+        keys = [tuple(data[i].keys()) for i in np.where(l)[0]]
+        data = tuple(dgen)
+        if len(keys) > 1:
+            assert keys[0] == keys[1], "dict keys don't match"
+        if labels is None:
+            labels = keys[0]
+
+    # parse data args
+    times, signals, y_err, x_err = get_data(data)
+    n = len(signals)
+
+    # print(np.shape(times), np.shape(signals),
+    #       np.shape(y_err), np.shape(x_err))
+
+    # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    # # check labels
+    if labels is None:
+        labels = []
+    elif isinstance(labels, str):
+        labels = [labels]  # check if single label given
+    elif len(labels) > n:
+        raise ValueError('Bad labels')
+
+    # tuple, dict, array...
+
+    colours = get_line_colours(n, kws.colours, kws.cmap)
+    fig, ax = tsp.setup_figure(kws.ax, colours, show_hist)
+
+    # todo ; move to init
+    tsp.plims = kws.plims
+
+    # print('before zip:', len(times), len(signals), len(errors))
+    # Do the plotting
+    # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    # noinspection NonAsciiCharacters
+    for i, (x, y, σy, σx, label) in enumerate(itt.zip_longest(
+            times, signals, y_err, x_err, labels)):
+        # print(np.shape(x), np.shape(y), np.shape(y_err), np.shape(x_err))
+
+        # zip_longest in case errors or times are empty sequences
+        tsp.plot_ts(ax, x, y, σy, σx, label, kws.show_errors,
+                    kws.show_masked, show_hist, kws.relative_time, styles)
+
+    # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    # add text labels
+    tsp.set_labels(kws.title, kws.axes_labels,
+                   kws.twinx, kws.relative_time)
+
+    # for lim in (tsp.x_lim, tsp.y_lim):
+    #     lim += np.multiply([-1, 1], (np.ptp(lim) * kws.whitespace / 2))
+
+    # set auto-scale limits
+    # print('setting lims: ', tsp.y_lim)
+
+    if np.isfinite(tsp.x_lim).all():
+        ax.set_xlim(tsp.x_lim)
+    if np.isfinite(tsp.y_lim).all():
+        ax.set_ylim(tsp.y_lim)
+
+    # xlim=tsp.x_lim, ylim=tsp.y_lim,
+    ax.set(xscale=tsp.kws.xscale, yscale=tsp.kws.yscale)
+
+    # tsp.set_axes_limits(data, kws.whitespace, (kws.xscale, kws.yscale),
+    #                     kws.offsets)
+
+    # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    # Setup plots for canvas interaction
+    if kws.draggable and not show_hist:
+        # FIXME: maybe warn if both draggable and show_hist
+        # make the artists draggable
+        from graphing.draggable import DraggableErrorbar
+        plots = DraggableErrorbar(tsp.art, offsets=kws.offsets,
+                                  linked=tsp._linked,
+                                  **tsp.styles.legend)
+        # TODO: legend with linked plots!
+
+    else:
+        ax.legend(tsp.art, labels, **styles.legend)
+        # self._make_legend(ax, tsp.art, labels)
+
+    return tsp
+
+
+def loglog(*data, **kws):
+    kws.setdefault('xscale', 'log')
+    kws.setdefault('yscale', 'log')
+    return plot(*data, **kws)
+
+
 def convert_mask_to_intervals(a, mask=None):
     """Return index tuples of contiguous masked values."""
     if mask is None:
@@ -762,8 +757,6 @@ def plot_folded_lc(ax, phase, lcdata, P_s, twice=True, orientation='h'):
     # return fig
 
 
-plot = TimeSeriesPlot.plot
-
 # def plot_masked_intervals(self, ax, t, mask):
 #     """
 #     Highlight the masked values within the time series with a span across
@@ -796,40 +789,4 @@ plot = TimeSeriesPlot.plot
 #         ax.legend(plots, labels, **self.dopts.legend)
 #
 #
-# if __name__ == '__main__':
-#     # generate some data
-#     n = 250
-#     np.random.seed(666)
-#     t = np.linspace(0, 2 * np.pi, n)
-#     y = [3 * np.sin(3 * t),
-#          # np.cos(10*t),
-#          np.cos(10 * np.sqrt(t))]
-#     e = np.random.randn(len(y), n)
-#     m = np.random.rand(len(y), n) > 0.8
-#
-#     kws = {}
-#
-#     # case 1:    bare minimum
-#     print('CASE1')
-#     tsp = plot(y[0], **kws)
-#     #
-#     # # case 2:    multiple series, no time
-#     print('CASE2')
-#     tsp = plot(y, **kws)
-#     #
-#     # # case 3:    multivariate time series
-#     print('CASE3')
-#     tsp = plot(t, y, **kws)
-#
-#     # # case 4:    full args
-#     print('CASE4')
-#     tsp = plot(t, y, e, **kws)
-#     #
-#     # # case 5: masked data
-#     print('CASE5')
-#     ym = np.ma.array(y, mask=m)
-#     tsp = plot(t, ym, e,
-#                show_masked='x',
-#                **kws)
-#
-#     plt.show()
+
