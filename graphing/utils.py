@@ -41,7 +41,7 @@ def get_percentile(data, p):
     # print('p = ', p, 'lim', l, 'expected', expect)
 
 
-def get_percentile_limits(data, e=(), plims=(-5, 105)):
+def get_percentile_limits(data, plims=(-5, 105), e=()):
     """
     Return suggested axis limits based on the extrema of `data`, optional
     errorbars `e`.
