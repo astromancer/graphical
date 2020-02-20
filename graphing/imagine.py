@@ -32,6 +32,8 @@ from astropy.visualization.stretch import BaseStretch
 
 from .utils import get_percentile_limits
 
+import itertools as itt
+
 # module level logger
 logger = logging.getLogger(get_module_name(__file__))
 
@@ -45,7 +47,20 @@ def _sanitize_data(data):
     """
     if np.ma.is_masked(data):
         data = data[~data.mask]
-    return np.asarray(data[~np.isnan(data)])
+    try:
+        return np.asarray(data[~np.isnan(data)])
+    except Exception as err:
+        from IPython import embed
+        from recipes.io.utils import TracebackWrapper
+        import textwrap, traceback
+        embed(header=textwrap.dedent(
+                """\
+                Caught the following:
+                %s
+                %s
+                Exception will be re-raised upon exiting this embedded interpreter.
+                """) % (err, traceback.format_exc()))
+        raise
 
 
 def move_axes(ax, x, y):
@@ -150,16 +165,19 @@ def guess_figsize(image, fill_factor=0.75, max_pixel_size=0.2):
     """
 
     # Sizes reported by mpl figures seem about half the actual size on screen
-    # fill_factor *=
+    shape = np.array(np.shape(image)[::-1])
+    return _guess_figsize(shape, fill_factor, max_pixel_size)
 
+
+def _guess_figsize(image_shape, fill_factor=0.75, max_pixel_size=0.2):
     # screen dimensions
     screen_size = np.array(get_screen_size_inches())
     # change order of image dimensions since opposite order of screen
-    shape = np.array(np.shape(image)[::-1])
+
     # get upper limit for fig size based on screen and data and fill factor
     max_size = screen_size * fill_factor  # maximal size
-    scale = np.min(shape / max_size)
-    size = shape / scale
+    scale = np.min(image_shape / max_size)
+    size = image_shape / scale
 
     # size = ((shape / max(shape)) * screen_size[np.argmax(shape)] * fill_factor)
     # max_size = shape * max_pixel_size
@@ -172,6 +190,173 @@ def guess_figsize(image, fill_factor=0.75, max_pixel_size=0.2):
     # figSize = np.where(size1 < min_size, min_size, figSize)
     logger.debug('Guessed figure size: (%.1f, %.1f)', *size)
     return size
+
+
+def auto_grid(n):
+    x = int(np.floor(np.sqrt(n)))
+    y = int(np.ceil(n / x))
+    return x, y
+
+
+def set_clim_connected(x, y, artist, sliders):
+    artist.set_clim(*sliders.positions)
+    return artist
+
+
+def plot_image_grid(images, layout=(), titles=(), figsize=None, plims=None,
+                    clim_all=False):
+    """
+
+    Parameters
+    ----------
+    images
+    layout
+    titles
+    clim_all:
+        Compute colour limits from the full set of pixel values for all
+        images.  Choose this if your images are all normalised to roughly the
+        same scale. If False clims will be computed individually and the
+        colourbar sliders will be disabled.
+
+    Returns
+    -------
+
+    """
+
+    # TODO: plot individual histograms as well as full hist
+    # todo: guess fig size
+
+    n = len(images)
+    assert n, 'No images to plot!'
+    # assert clim_mode in ('all', 'row')
+
+    import matplotlib.pyplot as plt
+    from matplotlib.gridspec import GridSpec
+
+    # get grid layout
+    if not layout:
+        layout = auto_grid(n)
+    n_rows, n_cols = layout
+
+    # create figure
+    fig = plt.figure(figsize=figsize)
+
+    # Use gridspec rather than ImageGrid since the latter tends to resize
+    # the axes
+    if clim_all:
+        cbar_size, hist_size = 3, 5
+    else:
+        cbar_size = hist_size = 0
+
+    gs = GridSpec(n_rows, n_cols * (100 + cbar_size + hist_size),
+                  hspace=0.005,
+                  wspace=0.005,
+                  left=0.03,  # fixme: need more for ticks
+                  right=0.97,
+                  bottom=0.03,
+                  top=0.98
+                  )  # todo: maybe better with tight layout.
+
+    # create colourbar and pixel histogram axes
+    kws = dict(origin='lower left',
+               cbar=False, sliders=False, hist=False,
+               clim=not clim_all,
+               plims=plims)
+
+    art = []
+    w = len(str(int(n)))
+    axes = np.empty((n_rows, n_cols), 'O')
+    indices = enumerate(np.ndindex(n_rows, n_cols))
+    for (i, (j, k)), title in itt.zip_longest(indices, titles, fillvalue=''):
+        if i == n:
+            break
+
+        # last
+        if (i == n - 1) and clim_all:
+            # do colourbar + pixel histogram if clim all
+            kws.update(cbar=True, sliders=True, hist=True,
+                       cax=fig.add_subplot(
+                               gs[:, -(cbar_size + hist_size) * n_cols:]),
+                       hax=fig.add_subplot(gs[:, -hist_size * n_cols:]))
+
+        # create axes!
+        axes[j, k] = ax = fig.add_subplot(
+                gs[j:j + 1, (100 * k):(100 * (k + 1))])
+
+        # plot image. use imshow for all but last
+
+        imd = ImageDisplay(images[i], ax=ax, **kws)
+        artist = imd.imagePlot
+        # else:
+        #     artist = ax.imshow(images[i], **kws)
+        #
+        art.append(artist)
+
+        # do ticks
+        top = (j == 0)
+        bot = (j == n_rows - 1)
+        # right = (j == n_cols - 1)
+        if k != 0:  # not leftmost
+            ax.set_yticklabels([])
+        if not (bot or top):
+            ax.set_xticklabels([])
+        # if right:
+        #     ax.yaxis.tick_right()
+        if top:
+            ax.xaxis.tick_top()
+
+        # add title text
+        title = title.replace("\n", "\n     ")
+        ax.text(0.025, 0.95, f'{i: <{w}}: {title}',
+                color='w', va='top', fontweight='bold', transform=ax.transAxes)
+
+    # Do colorbar
+    # noinspection PyUnboundLocalVariable
+    # fig.colorbar(imd.imagePlot, cax)
+
+    if clim_all:
+        # connect all image clims to the sliders.
+        for artist in art:
+            # noinspection PyUnboundLocalVariable
+            imd.sliders.lower.on_move.add(set_clim_connected, artist,
+                                          imd.sliders)
+            imd.sliders.upper.on_move.add(set_clim_connected, artist,
+                                          imd.sliders)
+
+        # The same as above can be accomplished in pure matplolib as follows:
+        # https://matplotlib.org/3.1.1/gallery/images_contours_and_fields/multi_image.html
+        # Make images respond to changes in the norm of other images (e.g. via
+        # the "edit axis, curves and images parameters" GUI on Qt), but be
+        # careful not to recurse infinitely!
+        # def update(changed_image):
+        #     for im in art:
+        #         if (changed_image.get_cmap() != im.get_cmap()
+        #                 or changed_image.get_clim() != im.get_clim()):
+        #             im.set_cmap(changed_image.get_cmap())
+        #             im.set_clim(changed_image.get_clim())
+        #
+        # for im in art:
+        #     im.callbacksSM.connect('changed', update)
+
+        # update clim for all plots
+
+        # for the general case where images are non-uniform shape, we have to
+        # flatten them all to get the colour percentile values.
+        # TODO: will be more eficcient for large number of images to sample
+        #  evenly from each image
+        pixels = []
+        for im in images:
+            pixels.extend(im.compressed() if np.ma.isMA(im) else im.ravel())
+        pixels = np.array(pixels)
+
+        clim = imd.clim_from_data(pixels, plims=plims)
+        imd.sliders.set_positions(clim, draw_on=False)  # no canvas yet!
+
+        # Update histogram with data from all images
+        imd.histogram.set_array(pixels)
+        imd.histogram.autoscale_view()
+
+    return fig, axes, imd
 
 
 class FromNameMixin(object):
@@ -231,11 +416,20 @@ class Stretch(BaseStretch, FromNameMixin):
 from recipes.misc import duplicate_if_scalar
 
 
-class ColourBarHistogram(LoggingMixin):
+class ColourBarHistogram(LoggingMixin):  # PixelHistogram
     """
     Histogram of colour values in an image
     """
 
+    # TODO: get to work with RGB data
+
+    _default_n_bins = 50
+
+    @classmethod
+    def from_image(cls, image_artist):
+        pass
+
+    # todo. better with data?
     def __init__(self, ax, image_plot, orientation='horizontal', use_blit=True,
                  outside_colour=None, outside_alpha=0.5, **kws):
         """
@@ -250,10 +444,10 @@ class ColourBarHistogram(LoggingMixin):
         kws
         """
 
-        # TODO: option for dynamic recompute histogram ie on dragging
+        # TODO: dynamic recompute histogram when too few bins are shown..
+
         # TODO: integrate color stretch functionality
-        # from astropy.visualization import (MinMaxInterval, SqrtStretch,
-        #                            ImageNormalize)
+        #  FIXME: fails for all zero data
 
         from matplotlib.collections import PolyCollection
         from matplotlib.colors import ListedColormap
@@ -266,14 +460,11 @@ class ColourBarHistogram(LoggingMixin):
         assert orientation.lower().startswith(('h', 'v'))
         self.orientation = orientation
 
-        # if bliting, updating range at every step, so axes labels need to
-        # be re-drawn
-        # if use_blit:
-
+        # setup colormap
         cmap = image_plot.get_cmap()
         colors = cmap(np.linspace(0, 1, 256))
         self.cmap = ListedColormap(colors)
-        # cmap = self.cmap
+
         # optionally gray out out-of-bounds values
         if outside_colour is None:
             outside_colours = self.cmap([0., 1.])  # note float
@@ -281,31 +472,18 @@ class ColourBarHistogram(LoggingMixin):
             under, over = outside_colours
         else:
             under, over = duplicate_if_scalar(outside_colour)
-
+        #
         self.cmap.set_over(over)
         self.cmap.set_under(under)
 
         # compute histogram
-        data = image_plot.get_array()
-        self.bins = self._auto_bins()  # TODO: allow passing
-        rng = self._auto_range()
-        self.counts, self.bin_edges = counts, bin_edges = \
-            np.histogram(_sanitize_data(data), self.bins, rng)
-        self.bin_centers = bin_edges[:-1] + np.diff(bin_edges)
-
-        # bars
-        verts = self.get_verts(counts, bin_edges)
-
-        # FIXME: fails for all zero data
-        # colours
-
-        # to make oor bars invisible:
-        # vm = np.ma.masked_outside(self.bin_centers, *image_plot.get_clim())
-        # array = self.norm(self.bin_centers)
+        self.bins = self.counts = self.bin_edges = self.bin_centers = ()
+        self.compute(self.get_array())
 
         # create collection
-        self.bars = PolyCollection(verts, cmap=self.cmap,
-                                   array=self.norm(self.bin_centers))
+        self.bars = PolyCollection(self.get_verts(self.counts, self.bin_edges),
+                                   array=self.norm(self.bin_centers),
+                                   cmap=self.cmap)
         ax.add_collection(self.bars)
 
         if use_blit:
@@ -317,8 +495,31 @@ class ColourBarHistogram(LoggingMixin):
             ax.set_xscale('log')
 
         # rescale if non-empty histogram
-        if len(counts):
-            self._autoscale_view()
+        if len(self.counts):
+            self.autoscale_view()
+
+    def get_array(self):
+        return self.image_plot.get_array()
+
+    def set_array(self, data):
+
+        # compute histogram
+        self.compute(data)
+
+        # create collection
+        self.bars.set_verts(self.get_verts(self.counts, self.bin_edges))
+        self.bars.set_array(self.norm(self.bin_centers))
+
+    def compute(self, data, bins=_default_n_bins, range=None):
+
+        # compute histogram
+        self.bins = self._auto_bins(bins)  # TODO: allow passing
+        if range is None:
+            range = self._auto_range()
+
+        self.counts, self.bin_edges = \
+            np.histogram(_sanitize_data(data), self.bins, range)
+        self.bin_centers = self.bin_edges[:-1] + np.diff(self.bin_edges)
 
     def get_verts(self, counts, bin_edges):
         """vertices for horizontal bars"""
@@ -356,30 +557,31 @@ class ColourBarHistogram(LoggingMixin):
         self.bars.set_facecolors(self.cmap(self.norm(self.bin_centers)))
         return self.bars  # TODO: xtick labels if necessary
 
-    def _auto_bins(self, n=50):
+    def _auto_bins(self, n=_default_n_bins):
         bins = n
-        data = self.image_plot.get_array()
-        # smart bins for integer arrays containing small range of numbers
+        data = self.get_array()
+
+        # unit bins for integer arrays containing small range of numbers
         if data.dtype.kind == 'i':  # integer array
             lo, hi = np.nanmin(data), np.nanmax(data)
             bins = np.arange(min(hi - lo, n) + 1)
         return bins
 
-    def _auto_range(self, width=1.2):
+    def _auto_range(self, stretch=1.2):
         # choose range based on image colour limits
         vmin, vmax = self.image_plot.get_clim()
         if vmin == vmax:
             self.logger.warning('Colour range is 0! Falling back to min-max '
                                 'range.')
-            image = self.image_plot.get_array()
+            image = self.get_array()
             return image.min(), image.max()
 
         # set the axes limits slightly wider than the clims
         m = 0.5 * (vmin + vmax)
-        w = (vmax - vmin) * width
+        w = (vmax - vmin) * stretch
         return m - w / 2, m + w / 2
 
-    def _autoscale_view(self):
+    def autoscale_view(self):
 
         # set the axes limits slightly wider than the clims
         # the naming here assumes horizontal histogram orientation
@@ -411,14 +613,39 @@ class ImageDisplay(LoggingMixin):
 
     sliderClass = TripleSliders  # AxesSliders
     _default_plims = (0.25, 99.75)
+    _default_hist_kws = dict(bins=100)
 
     def __init__(self, image, *args, **kws):
-        """ """
+        """
+
+        Parameters
+        ----------
+        image
+        args
+        kws
+
+
+        Keywords
+        --------
+        cbar
+        cax
+        hist
+        hax
+        sliders
+        ax
+
+        remaining keywords passed to ax.imshow
+
+
+        """
         # ax      :       Axes object
         #     Axes on which to display
 
         self.has_cbar = kws.pop('cbar', True)
-        self.has_hist = kws.pop('hist', True)
+        hist_kws = kws.pop('hist', self._default_hist_kws)
+        if hist_kws is True:
+            hist_kws = self._default_hist_kws
+        self.has_hist = bool(hist_kws)
         self.has_sliders = kws.pop('sliders', True)
         self.use_blit = kws.pop('use_blit', False)
         connect = kws.pop('connect', self.has_sliders)
@@ -447,22 +674,23 @@ class ImageDisplay(LoggingMixin):
         ax = self.ax
 
         # use imshow to do the plotting
-        clim = self.clim_from_data(_sanitize_data(image), kws)
-        self.logger.debug('Colour limits: (%.1f, %.1f)', *clim)
+        self.clim_from_data(image, kws)
+
         self.imagePlot = ax.imshow(image, *args, **kws)
         self.norm = self.imagePlot.norm
-        self.imagePlot.set_clim(*clim)
+        # self.imagePlot.set_clim(*clim)
 
         # create the colourbar / histogram / sliders
         self.cbar = None
         if self.has_cbar:
             self.cbar = self.make_cbar()
+
         # create sliders after histogram so they display on top
-        self.sliders, self.histogram = self.make_sliders()
+        self.sliders, self.histogram = self.make_sliders(hist_kws)
 
         # connect on_draw for debugging
         self._draw_count = 0
-        self.cid = ax.figure.canvas.mpl_connect('draw_event', self._on_draw)
+        # self.cid = ax.figure.canvas.mpl_connect('draw_event', self._on_draw)
 
         if connect:
             self.connect()
@@ -473,6 +701,7 @@ class ImageDisplay(LoggingMixin):
 
     def init_figure(self, kws):
         """
+        Create the figure and add the axes
 
         Parameters
         ----------
@@ -563,8 +792,11 @@ class ImageDisplay(LoggingMixin):
         cbar = self.figure.colorbar(self.imagePlot, cax=self.cax, format=fmt)
         return cbar
 
-    def make_sliders(self):
+    def make_sliders(self, hist_kws=None):
         # data = self.imagePlot.get_array()
+
+        # FIXME: This is causing recursive repaint!!
+
         sliders = None
         if self.has_sliders:
             clim = self.imagePlot.get_clim()
@@ -573,16 +805,13 @@ class ImageDisplay(LoggingMixin):
                                        ms=(2, 1, 2),
                                        extra_markers='>s<')
 
-            sliders.lower.on_move.add(self.set_clim)
-            sliders.upper.on_move.add(self.set_clim)
-
-            vmin, vmax = self.imagePlot.get_clim()
-            sliders.min_span = (vmax - vmin) / 100
+            sliders.lower.on_move.add(self.update_clim)
+            sliders.upper.on_move.add(self.update_clim)
 
         cbh = None
         if self.has_hist:
             cbh = ColourBarHistogram(self.hax, self.imagePlot, 'horizontal',
-                                     self.use_blit)
+                                     self.use_blit, **hist_kws)
 
             # set ylim if reasonable to do so
             # if data.ptp():
@@ -594,25 +823,41 @@ class ImageDisplay(LoggingMixin):
             self.hax.grid(True)
         return sliders, cbh
 
-    def clim_from_data(self, data, kws):
+    def clim_from_data(self, data, kws=None, **kws_):
         """Get colour scale limits for data"""
-        # note intentionally not unpacking keyword dict so that the keys
-        #  removed here reflect at the calling scope
-        return get_percentile_limits(data, (),
-                                     kws.pop('plims', self._default_plims))
+        # first arg is dict from which we remove 'extra' keywords that
+        # are not allowed in imshow. This allows a dict friom the calling
+        # scope to be edited here without global statement.
+        # This function can also still be used with unpacked keyword args
+        kws = kws or {}
+        clim = kws.pop('clim', True)
+        plims = kws.pop('plims', None)
+        if clim:
+            plims = kws_.setdefault('plims', plims)
+            if plims is None:
+                kws_['plims'] = self._default_plims
 
-    def set_clim(self, *xydata):
-        """Set colour limits on slider move"""
-        #
-        self.imagePlot.set_clim(self.sliders.positions)
+            clims = get_percentile_limits(_sanitize_data(data), **kws_)
+            self.logger.debug('Colour limits: (%.1f, %.1f)', *clims)
+            kws['vmin'], kws['vmax'] = clims
+            return clims
+        return None, None
+
+    def set_clim(self, *clim):
+        self.imagePlot.set_clim(*clim)
 
         if not self.has_hist:
             return self.imagePlot
 
         self.histogram.update()
-        return self.imagePlot, self.histogram.bars
+        self.sliders.min_span = (clim[0] - clim[1]) / 100
 
         # TODO: return COLOURBAR ticklabels?
+        return self.imagePlot, self.histogram.bars
+
+    def update_clim(self, *xydata):
+        """Set colour limits on slider move"""
+        return self.set_clim(*self.sliders.positions)
 
     def _on_draw(self, event):
         self.logger.debug('DRAW %i', self._draw_count)  # ,  vars(event)
@@ -701,7 +946,6 @@ class VideoDisplay(ImageDisplay):
     def __init__(self, data, **kws):
         """
         Image display for 3D data. Implements frame slider and image scroll.
-        Optionally also displays apertures if coordinates provided.
 
         subclasses optionally implement `update` method
 
@@ -724,14 +968,14 @@ class VideoDisplay(ImageDisplay):
         # setup image display
         n = self._frame = 0
 
-        ndim = data.ndim
-        if data.ndim == 2:
+        n_dim = data.ndim
+        if n_dim == 2:
             warnings.warn('Loading single image frame as 3D data cube. Use '
                           '`ImageDisplay` instead to view single frames.')
             data = np.ma.atleast_3d(data)
 
-        if data.ndim != 3:
-            raise ValueError('Cannot image %iD data' % ndim)
+        if n_dim != 3:
+            raise ValueError('Cannot image %iD data' % n_dim)
 
         #
         self.clim_every = kws.pop('clim_every', 1)
@@ -907,7 +1151,7 @@ class VideoDisplay(ImageDisplay):
 
                     # set the axes limits slightly wider than the clims
                     if self.has_hist:
-                        self.histogram._autoscale_view()
+                        self.histogram.autoscale_view()
 
         #
         if draw:
@@ -1108,16 +1352,15 @@ from obstools.aps import ApertureCollection
 
 
 class VideoDisplayA(VideoDisplayX):
-    """
-
-    """
     # default aperture properties
     apProps = dict(ec='m', lw=1,
                    picker=False,
                    widths=7.5, heights=7.5)
 
     def __init__(self, data, coords=None, ap_props={}, **kws):
-        """"""
+        """
+        Optionally also displays apertures if coordinates provided.
+        """
         VideoDisplayX.__init__(self, data, coords, **kws)
 
         # create apertures
