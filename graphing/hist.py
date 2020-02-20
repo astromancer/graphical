@@ -84,7 +84,7 @@ def hist(x, bins=100, range=None, normed=False, weights=None, **kws):
 
     # Create figure
     if ax is None:
-        _, ax = plt.subplots(tight_layout=1, figsize=(12, 8))
+        _, ax = plt.subplots(tight_layout=True)
         # else:
         # fig = ax.figure
 
@@ -112,14 +112,16 @@ def hist(x, bins=100, range=None, normed=False, weights=None, **kws):
 
     if 'mode' in show_stats:
         from scipy.stats import mode
-        mr = mode(x)
-        xmode = mr.mode.squeeze()
-        stats['mode'] = xmode
+
+        stats['mode'] = mode(x).mode.item()
 
     if 'mean' in show_stats:
         stats['mean'] = x.mean()
     if 'median' in show_stats:
         Q.append(50)
+
+    # if 'percentile' in show_stats:
+    # pass
 
     if len(Q):  # 'percentile' in show_stats:
         P = np.percentile(x, Q)
@@ -142,8 +144,5 @@ def hist(x, bins=100, range=None, normed=False, weights=None, **kws):
                 ax.text(val, 1, txt,
                         transform=trans,
                         rotation='vertical', va='top', ha='right')
-
-            # if 'percentile' in show_stats:
-            # pass
 
     return h, ax
