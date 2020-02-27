@@ -1,9 +1,7 @@
-from math import ceil, floor
-
 import numpy as np
 
 
-def get_percentile(data, p):
+def percentile(data, p, axis=None):
     """
     Get percentile value on (possibly masked) `data`.  Negative values for
     `p` are interpreted as percentile distance below minimum.  Similarly for
@@ -12,44 +10,56 @@ def get_percentile(data, p):
     Parameters
     ----------
     data: array-like
-    p: float
+    p: array-like
+    axis: None, int, tuple
 
     Returns
     -------
 
     """
-    p = p / 100
-    a = abs(p)
-    s = [-1, 1][p > 0]
-    r, q = divmod(a, 1)
-    c = abs(float(p > 1) - s * q) * 100
-    d = 0
-    if c > 0:
-        d = np.percentile(np.ma.compressed(data), c)
 
-    mn, mx, = data.min(), data.max()
-    p1 = int(p > 1)
-    s2 = 1 if 0 < p < 1 else -1
+    data = np.asanyarray(data)
+    signum = np.array([-1, 1])
 
-    # m = p1 - s * ceil(a) + 1
-    # n = p1 + s * floor(a)
-    # for x in 'psrqcmn':
-    #     print(f'{x} = {eval(x):<4g}', end='\t')
-    # print()
+    p = np.array(p, ndmin=1)
+    p = np.divide(p, 100)
+    a = np.abs(p)
+    s = signum[(p > 0).astype(int)]
+    r, q = np.divmod(a, 1)
+    c = np.abs((p > 1).astype(float) - s * q) * 100
 
-    return (p1 - s * ceil(a) + 1) * mn + (p1 + s * floor(a)) * mx + s2 * d
-    # print('p = ', p, 'lim', l, 'expected', expect)
+    # remove masked points
+    if np.ma.is_masked(data):
+        if axis is not None:
+            raise NotImplementedError
+        else:
+            data = np.ma.compressed(data)
+
+    # get shape of output array
+    out_shape = (len(p),)
+    if axis is not None:
+        out_shape += tuple(np.take(data.shape, np.delete(np.arange(data.ndim),
+                                                         axis)))
+    ndo = len(out_shape)
+    #
+    d = np.zeros(out_shape)
+    d[c > 0] = np.percentile(data, c[c > 0], axis)
+
+    mn, mx, = data.min(axis, keepdims=True), data.max(axis, keepdims=True)
+    p1 = (p > 1).astype(int)
+    s2 = np.array(signum[((0 < p) & (p < 1)).astype(int)], ndmin=ndo).T
+    u = np.array(p1 - s * np.ceil(a) + 1, ndmin=ndo).T
+    v = np.array(p1 + s * np.floor(a), ndmin=ndo).T
+    return np.squeeze(u * mn + v * mx + s2 * d)
 
 
-def get_percentile_limits(data, plims=(-5, 105), e=()):
+def get_percentile_limits(data, plims=(-5, 105), e=(), axis=None):
     """
-    Return suggested axis limits based on the extrema of `data`, optional
+    Return suggested axis limits based on the extrema of `data` and optional
     errorbars `e`.
 
     data: array-like
         data on display
-    e - uncertainty (stddev, measurement errors)
-        can be either single array of same shape as x, or 2 arrays (δx+, δx-)
     plims: 2-tuple
         Data limits expressed as percentiles of the data distribution.
         0 corresponds to the 0th percentile, 100 to the 100th percentile.
@@ -57,12 +67,16 @@ def get_percentile_limits(data, plims=(-5, 105), e=()):
         interpreted as distances from the 0th and 100th percentile
         respectively and the unit distance is a 100th of the data peak-to-peak
         distance.
+    e: uncertainty (stddev, measurement errors)
+        can be either single array of same shape as x, or 2 arrays (δx+, δx-)
+    axis: None, int, tuple
+        axis along which to compute percentile
     """
 
     x = get_data_pm_1sigma(data, e)
     lims = np.empty(2, data.dtype)
     for i, (x, p) in enumerate(zip(x, plims)):
-        lims[i] = get_percentile(x, p)
+        lims[i] = percentile(x, p, axis)
 
     return lims
 

@@ -26,8 +26,8 @@ def test_plims(data, tolerance=1e-6):
 
     for p, e in expected.items():
         z = get_percentile(data, p)
-        assert (z - e) < tolerance, f'Expected percentile value of {e:.3f} ' \
-            f'does not match computed {z:.3f}'
+        assert (z - e) < tolerance, (f'Expected percentile value of {e:.3f} '
+                                     f'does not match computed {z:.3f}')
 
 
 if __name__ == '__main__':
