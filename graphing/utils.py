@@ -5,7 +5,7 @@ def percentile(data, p, axis=None):
     """
     Get percentile value on (possibly masked) `data`.  Negative values for
     `p` are interpreted as percentile distance below minimum.  Similarly for
-    values of `p` greater than 100.
+    values of `p` greater than 100. Useful for scaling the axes of plots.
 
     Parameters
     ----------
