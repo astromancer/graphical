@@ -159,105 +159,193 @@ def check_kws(kws):
     return opts, dopts
 
 
-def get_data(data):
+import numbers
+
+
+def is_null(x):
+    if (x is None) or (len(x) == 0):
+        return True
+
+    # check that errors are not all masked. This sometimes happens
+    # when data is read into fields where uncertainties are expected
+    if np.ma.getmask(x).all():
+        logger.info(f'All uncertainties in vector are masked. Ignoring.')
+        return True
+
+    return False
+
+
+def is_uniform(x):
+    return len(set(map(len, x))) == 1
+
+
+def is1d(x):
+    return isinstance(x[0], numbers.Real)
+
+
+def get_data(data, relative_time):
     """parse data arguments"""
+
+    times = y_err = x_err = (None,)
 
     # signals only
     if len(data) == 1:
         # Assume here each row gives individual signal for a TS
-        signals = np.ma.atleast_2d(np.ma.squeeze(data))
-        # No times, plot by array index
-        times, y_err, x_err = np.full((3, len(signals)), None)
+        signals = data[0]
 
-        # times & signals given
+    # times, signals given
     elif len(data) == 2:
-        # times, signals = data
-        times, signals = np.atleast_2d(*data)
-        # signals = np.ma.atleast_2d(np.ma.squeeze(data[1])) #
-        # No errors given
-        y_err, x_err = np.full((2, len(signals)), None)
+        times, signals = data
 
     # times, signals, y-errors given
     elif len(data) == 3:
-        # times, signals, errors = data
-        times, signals, y_err = np.ma.atleast_2d(*data)
-        x_err = np.full(len(signals), None)
+        times, signals, y_err = data
 
     # times, signals, y-errors, x-errors given
     elif len(data) == 4:
-        times, signals, y_err, x_err = np.ma.atleast_2d(*data)
+        times, signals, y_err, x_err = data
 
     else:
         raise ValueError('Invalid number of arguments: %i' % len(data))
 
-    # NOTE: if signals has non-uniform length, these will be arrays with
-    #  dtype object
+    #
+    if is1d(signals):  # is_uniform(signals):
+        signals = np.atleast_2d(signals)  # this may return masked array
 
     # safety breakout for erroneous arguments that can trigger very slow
     # plotting loop
     n = len(signals)
     if n > N_MAX_TS_SAFETY:
         raise TooManyToPlot(
-                'Received %i time series to plot. Safety limit is '
-                'currently set to %i' % (n, N_MAX_TS_SAFETY))
+                'Received %i time series to plot. Refusing since safety limit '
+                'is currently set to %i to avoid accidental compute intensive '
+                'commands from overwhelming system resources.'
+                % (n, N_MAX_TS_SAFETY))
+
+    # get independent variable (time) vectors
+    times_ = []
+    if is_null(times):
+        times = (None,)
+    elif is1d(times):
+        times = np.atleast_2d(times)
+
+    if n < len(times):
+        raise ValueError('Superfluous time vector(s).')
 
     # duplicate times if multivariate implied (without duplicating memory!!)
-    # NOTE: this does not work if the array is a column of a recarray
-    # if (len(times) == 1) & (n > 1):
-    #     times = as_strided(times, (n, times.size), (0, times.itemsize))
-    if (len(times) == 1) & (n > 1):
-        times = itt.repeat(times[0], n)
-
-    return times, signals, y_err, x_err
-
-
-def sanitize_data(t, signal, y_err, x_err, show_errors, relative_time):
-    # catch in case for some reason the user provides a sequence of
-    # empty error sequences
-    # note ax.errorbar borks for empty error sequences
-    n = len(signal)
-    stddevs = []
-    for yx, std in zip('yx', (y_err, x_err)):
-        if std is not None:
-            if show_errors:
-                size = np.size(std)
-                if size == 0:
-                    logger.warning(f'Ignoring empty uncertainties in {xy}.')
-                    std = None
-                elif size != n:
-                    raise ValueError(f'Unequal number of points between data '
-                                     f'({n}) and {yx}-stddev arrays ({size}).')
-                else:
-                    std = np.ma.masked_where(np.isnan(std), std)
-
-                # check that errors are not all masked. This sometimes happens
-                # when data is read into fields where uncertainties are expected
-                if std.mask.all():
-                    logger.warning(f'All uncertainties in {yx} are masked.  '
-                                   f'Ignoring.')
-                    std = None
-
-            else:
-                logger.warning(f'Ignoring uncertainties in {yx} since '
-                               '`show_errors = False`.')
-                std = None
-        # aggregate
-        stddevs.append(std)
-
-    # plot by frame index if no time
-    if (t is None) or (len(t) == 0):
-        t = np.arange(len(signal))
-    else:
-        if len(t) != len(signal):
+    for t, x in itt.zip_longest(times, signals, fillvalue=times[0]):
+        m = len(x)
+        if is_null(t):
+            # plot by frame index if no time
+            t = np.arange(m)
+        elif len(t) != m:
             raise ValueError('Unequal number of points between data and time '
                              'arrays.')
-        # Adjust start time
-        if relative_time:
+        elif relative_time:
+            # Adjust start time
             t = t - t[0]
+        #
+        times_.append(t)
+
+    return times_, signals, y_err, x_err
+
+
+def sanitize_data(t, signal, y_err, x_err):
+    """
+    clean up data for single time series before plot
+
+    Parameters
+    ----------
+    t
+    signal
+    y_err
+    x_err
+    relative_time
+
+    Returns
+    -------
+
+    """
+    n = len(signal)
+    stddevs = [None, None]
+    for i, (yx, std) in enumerate(zip('yx', (y_err, x_err))):
+        if is_null(std):
+            continue
+
+        size = len(std)
+        if size != n:
+            raise ValueError(f'Unequal number of points between data '
+                             f'({n}) and {yx}-stddev arrays ({size}).')
+
+        # aggregate
+        stddevs[i] = std
 
     # mask nans
     signal = np.ma.MaskedArray(signal, ~np.isfinite(signal))
     return (t, signal) + tuple(stddevs)
+
+
+# def sanitize_data(t, signal, y_err, x_err, show_errors, relative_time):
+#     """
+#     clean up data for single time series before plot
+#
+#     Parameters
+#     ----------
+#     t
+#     signal
+#     y_err
+#     x_err
+#     show_errors
+#     relative_time
+#
+#     Returns
+#     -------
+#
+#     """
+#     n = len(signal)
+#     stddevs = []
+#     for yx, std in zip('yx', (y_err, x_err)):
+#         if std is not None:
+#             if show_errors:
+#                 size = np.size(std)
+#                 if size == 0:
+#                     # TODO: these could probably be info
+#                     logger.warning(f'Ignoring empty uncertainties in {yx}.')
+#                     std = None
+#                 elif size != n:
+#                     raise ValueError(f'Unequal number of points between data '
+#                                      f'({n}) and {yx}-stddev arrays ({size}).')
+#                 else:
+#                     std = np.ma.masked_where(np.isnan(std), std)
+#
+#                 # check that errors are not all masked. This sometimes happens
+#                 # when data is read into fields where uncertainties are expected
+#                 if std.mask.all():
+#                     logger.warning(f'All uncertainties in {yx} are masked.  '
+#                                    f'Ignoring.')
+#                     std = None
+#
+#             else:
+#                 logger.warning(f'Ignoring uncertainties in {yx} since '
+#                                '`show_errors = False`.')
+#                 std = None
+#         # aggregate
+#         stddevs.append(std)
+#
+#     # plot by frame index if no time
+#     if (t is None) or (len(t) == 0):
+#         t = np.arange(len(signal))
+#     else:
+#         if len(t) != len(signal):
+#             raise ValueError('Unequal number of points between data and time '
+#                              'arrays.')
+#         # Adjust start time
+#         if relative_time:
+#             t = t - t[0]
+#
+#     # mask nans
+#     signal = np.ma.MaskedArray(signal, ~np.isfinite(signal))
+#     return (t, signal) + tuple(stddevs)
 
 
 def get_line_colours(n, colours, cmap):
@@ -365,27 +453,28 @@ class TimeSeriesPlot(object):
         # x = x.filled(np.nan)
 
         # main plot
-        x, y, y_err, x_err = data = sanitize_data(x, y, y_err, x_err,
-                                                  show_errors,
-                                                  relative_time)
-        # print(np.shape(x), np.shape(y), np.shape(y_err), np.shape(x_err))
+        x, y, y_err, x_err = data = sanitize_data(x, y, y_err, x_err)
 
         ebar_art = ax.errorbar(*data, label=label, zorder=self.zorder0,
                                **styles.errorbar)
+
         self.art.append(ebar_art)
 
         # set axes limits
-        x_lims = get_percentile_limits(x, self.plims[0], x_err)
-        y_lims = get_percentile_limits(y, self.plims[1], y_err)
+        lims = []
+        for xy, p, e in zip((x, y), self.plims, (x_err, y_err)):
+            lims.append(get_percentile_limits(x, p, e))
+
+        # y_lims = get_percentile_limits(y, self.plims[1], y_err)
         # print('ylims', y_lims)
         # if not np.isfinite([x_lims, y_lims]).all():
         #     print('NON FINITE!')
         #     from IPython import embed
         #     embed()
 
-        for lims, xy in zip((x_lims, y_lims), 'xy'):
+        for lim, xy in zip(lims, 'xy'):
             l, u = getattr(self, f'{xy}_lim')
-            new_lims = np.array([min(lims[0], l), max(lims[1], u)])
+            new_lim = np.array([min(lim[0], l), max(lim[1], u)])
 
             scale = self.kws[f'{xy}scale']
             if scale == 'log':
@@ -396,15 +485,15 @@ class TimeSeriesPlot(object):
                 #             'negative points. Switching to symmetric log '
                 #             'scale')
                 #     self.kws[f'{xy}scale'] = 'symlog'
-                if new_lims[0] <= 0:  # FIXME: both could be smaller than 0
+                if new_lim[0] <= 0:  # FIXME: both could be smaller than 0
                     logger.warning(
                             'Requested negative limits on log scaled axis. '
                             'Using smallest positive data element as lower '
                             'limit instead.')
-                    new_lims[0] = y[~neg].min()
+                    new_lim[0] = y[~neg].min()
             # print('new', new_lims)
             # set new limits
-            setattr(self, f'{xy}_lim', new_lims)
+            setattr(self, f'{xy}_lim', new_lim)
 
         # print('YLIMS', y_lims)
         # print('lims', 'x', self.x_lim, 'y', self.y_lim)
@@ -538,6 +627,7 @@ class TimeSeriesPlot(object):
 
 
 def plot(*data, **kws):
+    # fixme: better to have explicit kw_only args for better discoverability...
     """
     Plot light curve(s)
 
@@ -557,6 +647,7 @@ def plot(*data, **kws):
                 standard deviation uncertainty associated with signal
 
     """
+
     # FIXME: get this to work with astropy time objects
     # TODO: docstring
     # TODO: astropy.units ??
@@ -584,11 +675,10 @@ def plot(*data, **kws):
             labels = keys[0]
 
     # parse data args
-    times, signals, y_err, x_err = get_data(data)
+    times, signals, y_err, x_err = get_data(data, kws.relative_time)
     n = len(signals)
 
-    # print(np.shape(times), np.shape(signals),
-    #       np.shape(y_err), np.shape(x_err))
+    # print(list(map(np.shape, (times, signals, y_err, x_err))))
 
     # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     # # check labels
@@ -613,6 +703,7 @@ def plot(*data, **kws):
     # noinspection NonAsciiCharacters
     for i, (x, y, σy, σx, label) in enumerate(itt.zip_longest(
             times, signals, y_err, x_err, labels)):
+
         # print(np.shape(x), np.shape(y), np.shape(y_err), np.shape(x_err))
 
         # zip_longest in case errors or times are empty sequences
@@ -643,6 +734,9 @@ def plot(*data, **kws):
 
     # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     # Setup plots for canvas interaction
+
+    # FIXME: offsets should work even when not draggable!!
+
     if kws.draggable and not show_hist:
         # FIXME: maybe warn if both draggable and show_hist
         # make the artists draggable
@@ -710,52 +804,66 @@ def phase_time_plot(P, toff=0, **figkws):
     return fig, ax
 
 
-def plot_folded_lc(ax, phase, lcdata, P_s, twice=True, orientation='h'):
-    """plot folded lc mean/max/min/std"""
+def plot_folded_lc(ax, phase, stats, p, twice=True, sigma=1., orientation='h',
+                   colours=('b', '0.5', '0.5')):
+    # TODO: PeriodicTS(t, data, p).fold_plot(mean, std, extrema, style='|')
+    #  this would make a neater API
+
+    """
+    plot folded lc mean/max/min/std
+
+    Parameters
+    ----------
+    ax
+    phase
+    stats:
+        mean, min, max, std
+    p: float
+        Period in seconds
+    twice
+    orientation
+
+    Returns
+    -------
+
+    """
 
     from matplotlib.patches import Rectangle
 
-    lcmean, lcmn, lcmx, lcstd = np.tile(lcdata, (twice + 1))
+    mean, mini, maxi, std = np.tile(stats, (twice + 1))
+    line_data = (mean, mini, maxi)
     if twice:
         phase = np.r_[phase, phase + 1]
 
-    t = phase * P_s
-    lcerr = lcmean + lcstd * 1. * np.c_[1, -1].T
+    t = phase * p
+    std = mean + std * sigma * np.c_[1, -1].T
 
-    linedata = (lcmean, lcmn, lcmx)
-    colours = ('b', '0.5', '0.5')
-    args = zip(itt.repeat(t), linedata)
-    if orientation.startswith('v'):
-        args = map(reversed, args)
-        fill_between = ax.fill_betweenx
-    else:
-        fill_between = ax.fill_between
+    # get appropriate fill command / args
+    v = orientation.startswith('v')
+    args = zip((itt.repeat(t), line_data)[::(1, -1)[v]])
+    fill_between = getattr(ax, f'fill_between{"x" * v}')
 
     lines = []
     for a, colour in zip(args, colours):
-        # print(list(map(len, a)))
         pl, = ax.plot(*a, color=colour, lw=1)
         lines.append(pl)
     plm, plmn, plmx = lines
 
-    fill_between(t, *lcerr, color='grey')
+    # fill uncertainty contour
+    fill_between(t, *std, color='grey')
 
-    # ax.hlines(phbins, *ax.get_ylim(), color='g', linestyle='--')
-    ax.grid()
-    if orientation.startswith('h'):
-        ax.set_xlim(0, (twice + 1) * P_s)
-        ax.set_xlabel('t (s)')
-    else:
-        ax.set_ylim(0, (twice + 1) * P_s)
-        ax.set_ylabel('t (s)')
+    # add axis labels  set limits
+    xy = 'xy'[v]
+    ax.set(**{f'{xy}lim': (twice + 1) * p,
+              f'{xy}label': 't (s)'})
 
-    r = Rectangle((0, 0), 1, 1, fc='grey',
-                  ec='none')  # rectangle proxy art for legend.
+    # rectangle proxy art for legend.
+    r = Rectangle((0, 0), 1, 1, fc='grey', ec='none')
     leg = ax.legend((plm, plmn, r), ('mean', 'extrema', r'$1\sigma$'))
 
+    ax.grid()
     ax.figure.tight_layout()
     # return fig
-
 
 # def plot_masked_intervals(self, ax, t, mask):
 #     """
@@ -789,4 +897,3 @@ def plot_folded_lc(ax, phase, lcdata, P_s, twice=True, orientation='h'):
 #         ax.legend(plots, labels, **self.dopts.legend)
 #
 #
-
