@@ -1,45 +1,79 @@
-import six
-
 import numpy as np
 import matplotlib.pyplot as plt
+from recipes.logging import LoggingMixin
+
+from graphing.imagine import _sanitize_data
+from graphing.utils import percentile
 
 
-def get_bins(x, bins, range=None):
-    # if bins is a string, first compute bin edges with the desired heuristic
-    if isinstance(bins, six.string_types):
-        a = np.asarray(x).ravel()
+def get_bins(data, bins, range=None):
+    # superset of the automated binning from astropy / numpy
+    if isinstance(bins, str) and bins in ('blocks', 'knuth', 'freedman'):
+        from astropy.stats import calculate_bin_edges
+        return calculate_bin_edges(data, bins, range)
+    else:
+        return np.histogram_bin_edges(data, bins, range)
 
-        # TODO: if weights is specified, we need to modify things.
-        #       e.g. we could use point measures fitness for Bayesian blocks
-        # if weights is not None:
-        #     raise NotImplementedError("weights are not yet supported "
-        #                               "for the enhanced histogram")
 
-        # if range is specified, we need to truncate the data for
-        # the bin-finding routines
-        if range is not None:
-            a = a[(a >= range[0]) & (a <= range[1])]
+class Histogram(LoggingMixin):
+    """A histogram that carries some state"""
 
-        if bins == 'ptp':
-            # useful for discrete data
-            bins = int(np.floor(a.ptp()))
+    bins = 'auto'
+    range = None
 
-        elif bins == 'blocks':
-            from astropy.stats import bayesian_blocks
-            bins = bayesian_blocks(a)
-        elif bins == 'knuth':
-            from astropy.stats import knuth_bin_width
-            da, bins = knuth_bin_width(a, True)
-        elif bins == 'scott':
-            from astropy.stats import scott_bin_width
-            da, bins = scott_bin_width(a, True)
-        elif bins == 'freedman':
-            from astropy.stats import freedman_bin_width
-            da, bins = freedman_bin_width(a, True)
-        else:
-            raise ValueError("unrecognized bin code: '{}'".format(bins))
+    def __init__(self, data, bins=bins, range=None, plims=None, **kws):
+        # create
+        super().__init__()
+        # run
+        self(data, bins, range, plims, **kws)
 
-    return bins
+    def __call__(self, data, bins=bins, range=None, plims=None, **kws):
+        # compute histogram
+        data = _sanitize_data(data)
+        if plims is not None:
+            # choose range based on data percentile limits
+            range = percentile(data, plims)
+
+        self.bin_edges = self.auto_bins(data, bins, range)
+        self.counts, _ = np.histogram(data, self.bin_edges, range, **kws)
+
+    @property
+    def bin_centers(self):
+        return self.bin_edges[:-1] + np.diff(self.bin_edges)
+
+    @property
+    def n(self):
+        return len(self.counts)
+
+    def auto_bins(self, data, bins=bins, range=None):
+        return get_bins(data, bins, range)
+
+    def get_verts(self):
+        """vertices for vertical bars"""
+        if len(self.counts) == 0:
+            # empty histogram
+            return []
+
+        x01 = [self.bin_edges[:-1], self.bin_edges[1:]]
+        x = x01 + x01[::-1]
+
+        ymin = 0
+        y = list(np.full((2, self.n), ymin)) + [self.counts] * 2
+
+        return np.array([x, y]).T
+
+    def get_bars(self, **kws):
+        # create collection
+
+        from matplotlib.collections import PolyCollection
+        return PolyCollection(self.get_verts(),
+                              array=self.counts / self.counts.max(),
+                              **kws)
+
+    def plot(self, ax, **kws):
+        bars = self.get_bars(**kws)
+        ax.add_collection(bars)
+        return bars
 
 
 def hist(x, bins=100, range=None, normed=False, weights=None, **kws):
