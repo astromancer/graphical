@@ -23,28 +23,27 @@ import operator as op
 
 # from decor import expose
 
-def picker(artist, event):
-    # print(vars(event))
-    mouse_position = (event.xdata, event.ydata)
-    if None in mouse_position:
-        return False, {}
+# def picker(artist, event):
+#     # print(vars(event))
+#     mouse_position = (event.xdata, event.ydata)
+#     if None in mouse_position:
+#         return False, {}
 
-    ax = artist.axes
-    _data2ax_trans = ax.transData + ax.transAxes.inverted()
-    mouse_ax_pos = _data2ax_trans.transform(mouse_position)
+#     ax = artist.axes
+#     _data2ax_trans = ax.transData + ax.transAxes.inverted()
+#     mouse_ax_pos = _data2ax_trans.transform(mouse_position)
 
-    centre = artist.get_centre()
+#     centre = artist.get_centre()
 
-    prox = np.linalg.norm(mouse_ax_pos - centre)
-    hit = prox < 0.5
-    print('mouse_position, mouse_ax_pos,  centre')
-    print(mouse_position, mouse_ax_pos, centre)
-    print('prox', prox)
-    print('hit', hit)
-    return hit, {}
+#     prox = np.linalg.norm(mouse_ax_pos - centre)
+#     hit = prox < 0.5
+#     print('mouse_position, mouse_ax_pos,  centre')
+#     print(mouse_position, mouse_ax_pos, centre)
+#     print('prox', prox)
+#     print('hit', hit)
+#     return hit, {}
 
 
-# ****************************************************************************************************
 class AxesSliders(DragMachinery):
     """
     Class with sliders that set min/max of a value
@@ -64,7 +63,8 @@ class AxesSliders(DragMachinery):
     # marker_size = 10
     # valfmt = '%1.2f',
 
-    def __init__(self, ax, positions, slide_axis='x', dragging=True,
+    def __init__(self, ax, positions, slide_axis='x',
+                 dragging=True,  # FIXME: clarify what this does. is it useful??
                  trapped=False, annotate=False, haunted=False, use_blit=True,
                  extra_markers=(),
                  **props):
@@ -104,11 +104,11 @@ class AxesSliders(DragMachinery):
         if props:
             prop_cycle = cycler(**props)
         else:
-            prop_cycle = [{}] * len(self._original_position)
+            prop_cycle = [{}] * len(positions)
 
         # get transform (like axhline / axvline)
-        get_transform = getattr(ax, f'get_{self.slide_axis}axis_transform')
-        transform = get_transform(which='grid')
+        transform = getattr(ax, f'get_{self.slide_axis}axis_transform')()
+        # transform = get_transform() # which='grid'
 
         # create the dragging UI
         DragMachinery.__init__(self, use_blit=use_blit)
@@ -119,7 +119,9 @@ class AxesSliders(DragMachinery):
         clip_on = use_blit or trapped
         for pos, props in zip(self._original_position, prop_cycle):
             # create sliders Line2D
-            x, y = [[pos], [0, 1]][o]
+            # add middle point to sliders since picking usually happens near the
+            # middle!
+            x, y = [[pos], [0, 0.5, 1]][o]
             line = Line2D(x, y, transform=transform, clip_on=clip_on, **props)
             ax.add_artist(line)
             sliders.append(line)
@@ -129,7 +131,6 @@ class AxesSliders(DragMachinery):
 
             # add some markers for aesthetic           '>s<'
             for x, m in zip(np.linspace(0, 1, nem, 1), extra_markers):
-
                 x, y = [[pos], [x]][o]
                 linked = Line2D(x, y, color=props['color'], marker=m,
                                 transform=transform, clip_on=clip_on)
@@ -162,7 +163,7 @@ class AxesSliders(DragMachinery):
     @property
     def positions(self):
         return self._original_position[self._use_positions] + \
-               self.offsets[self._use_positions, self._ifree]
+            self.offsets[self._use_positions, self._ifree]
 
     def set_positions(self, values, draw_on=True):
         # not a property since it returns a list of artists to draw
@@ -201,13 +202,13 @@ class AxesSliders(DragMachinery):
         # pos = self.get_positions()
         if self.min_span is not None:
             self.upper.ymin = y + self.min_span
-            logging.debug('upper ymin: %.2f, %.2f', self.upper.ymin, y)
+            self.logger.debug('upper ymin: %.2f, %.2f', self.upper.ymin, y)
 
     def set_lower_ymax(self, x, y):
         # pos = self.get_positions()
         if self.min_span is not None:
             self.lower.ymax = y - self.min_span
-            logging.debug('lower ymax: %.2f, %.2f', self.lower.ymax, y)
+            self.logger.debug('lower ymax: %.2f, %.2f', self.lower.ymax, y)
 
     def setup_axes(self, ax):
         """ """
@@ -215,8 +216,6 @@ class AxesSliders(DragMachinery):
 
 
 class TripleSliders(AxesSliders):  # MinMaxMeanSliders
-    # FIXME: middle slider doesn't always drag the range.....
-    # TODO: axes limit changes when moved beyond
     """
     A set of 3 sliders for setting min/max/mean value.  Middle slider is
     linked to both the upper and lower slider and will move both those when
@@ -225,6 +224,8 @@ class TripleSliders(AxesSliders):  # MinMaxMeanSliders
     position of the upper/lower sliders.
     """
     _use_positions = [0, 1]
+
+    # FIXME: middle slider doesn't  drag the range!!!!
 
     def __init__(self, ax, positions, slide_axis='x', dragging=True,
                  trapped=False, annotate=False, haunted=False, use_blit=True,
@@ -245,9 +246,7 @@ class TripleSliders(AxesSliders):  # MinMaxMeanSliders
         kwargs
         """
 
-        xc = np.mean(positions)
-        pos3 = np.hstack([positions, xc])
-
+        pos3 = np.hstack([positions, np.mean(positions)])
         AxesSliders.__init__(self, ax, pos3, slide_axis, dragging, trapped,
                              annotate, haunted, use_blit, extra_markers,
                              **props)
@@ -266,13 +265,13 @@ class TripleSliders(AxesSliders):  # MinMaxMeanSliders
 
         # disconnect links to centre to avoid infinite recursion
         self.centre.on_picked.add(self.deactivate_centre_control)
-
-        # make sure wo draw all the linked artists on center move
-        self.centre.on_move.add(
-                lambda x, y: self.lower.draw_list + self.upper.draw_list)
-
         # re-link to the centre slider
         self.centre.on_release.add(self.activate_centre_control)
+        # make sure we draw all the linked artists on centre move
+        # NOTE: not sure why this is necessary since linking should draw all
+        # linked artists, but trailing slider does not draw...
+        self.centre.on_move.add(
+            lambda x, y: self.lower.draw_list + self.upper.draw_list)
 
     def set_centre(self, x, y):
         """
@@ -286,12 +285,12 @@ class TripleSliders(AxesSliders):  # MinMaxMeanSliders
     def set_centre_min(self, x, y):
         """set minimum position of the central slider"""
         self.centre.ymin = self.lower.ymin + self.min_span / 2
-        logging.debug('centre min: %.2f, %.2f', self.centre.ymin, y)
+        self.logger.debug('centre min: %.2f, %.2f', self.centre.ymin, y)
 
     def set_centre_max(self, x, y):
         """set maximum position of the central slider"""
         self.centre.ymax = self.upper.ymax + self.min_span / 2
-        logging.debug('centre ymax: %.2f, %.2f', self.centre.ymax, y)
+        self.logger.debug('centre ymax: %.2f, %.2f', self.centre.ymax, y)
 
     def _animate(self, b):
         for drg in self.draggable.values():
@@ -304,42 +303,36 @@ class TripleSliders(AxesSliders):  # MinMaxMeanSliders
         self._animate(False)
 
     def centre_moves(self, x, y):
-        up = self.delta[self._ifree] > 0  # True if movement is upwards
+
         pos = self.centre.position  # previous position
         art1 = self.centre.update(x, y)
         shift = self.centre.position - pos
-        # print(shift, self.delta)
+        up = shift[self._ifree] > 0  # True if movement is upwards
 
         # upper if moving up else lower. i.e. the one that may get clipped
         lead = self.draggable[int(up)]
-        art2 = lead.update(*(lead.position + shift))
-
         trail = self.draggable[int(not up)]
-        art3 = trail.update(*(2 * self.centre.position - lead.position))
+
+        art2 = lead.update(*(lead.position + shift))
+        art3 = trail.update(*(trail.position + shift))
 
         return art1 + art2 + art3
 
-    def activate_centre_control(self, x, y):
+    def activate_centre_control(self, x=None, y=None):
         # print('act')
-        self.lower.on_move.active[self._lwr_mv_ctr] = True
-        self.upper.on_move.active[self._upr_mv_ctr] = True
+        self.lower.on_move.activate(self._lwr_mv_ctr)
+        self.upper.on_move.activate(self._upr_mv_ctr)
 
-    def deactivate_centre_control(self, x, y):
+        self.centre.unlink(self.lower, self.upper)
+
+    def deactivate_centre_control(self, x=None, y=None):
         # print('deact')
-        self.lower.on_move.active[self._lwr_mv_ctr] = False
-        self.upper.on_move.active[self._upr_mv_ctr] = False
+        self.lower.on_move.deactivate(self._lwr_mv_ctr)
+        self.upper.on_move.deactivate(self._upr_mv_ctr)
 
-    # def on_pick(self, event):
-    #     if self._ignore_pick(event):
-    #         return
-    #
-    #     self.centre.set_animated(True)
-    #     AxesSliders.on_pick(self, event)
+        self.centre.link(self.lower, self.upper)
 
     def on_motion(self, event):
-
-        # AxesSliders.on_motion(self, event)
-
         if event.button != 1:
             return
 
@@ -347,38 +340,29 @@ class TripleSliders(AxesSliders):  # MinMaxMeanSliders
             draggable = self.draggable[self.selection]
 
             xydisp = event.x, event.y
-            xydata = x, y = self.ax.transData.inverted().transform(xydisp)
+            xydata = self.ax.transData.inverted().transform(xydisp)
             self.delta = xydata - self.ref_point
 
-            # TODO: find a way of using this conditional logic in the update
-            #  method??
-            if draggable is self.centre:
-                draw_list = self.centre_moves(x, y)
-                self.draw(draw_list)
-            else:
-                self.update(draggable, xydata)
+            self.update(draggable, xydata)
 
     def on_release(self, event):
         if event.button != 1:
             return
 
         if self.selection:
-            logging.debug('on_release: %r', self.selection)
+            self.logger.debug('on_release: %r', self.selection)
             # Remove dragging method for selected artist
             self.remove_connection('motion_notify_event')
 
             xydisp = event.x, event.y  # NOTE: may be far outside allowed range
             x, y = self.ax.transData.inverted().transform(xydisp)  # xydata =
-            logging.debug('on_release: delta %s', self.delta)
+            self.logger.debug('on_release: delta %s', self.delta)
 
             draggable = self.draggable[self.selection]
             draw_list = draggable.on_release(x, y)
 
-            if draggable is self.centre:
-                draw_list = self.centre_moves(x, y)
-
-            logging.debug('on_release: offset %s %s', draggable,
-                          draggable.offset)
+            self.logger.debug('on_release: offset %s %s', draggable,
+                              draggable.offset)
 
             if self.use_blit:
                 self.draw_blit(draw_list)
@@ -389,12 +373,12 @@ class TripleSliders(AxesSliders):  # MinMaxMeanSliders
 
     def reset(self):
         # super().reset()
-        logging.debug('resetting!')
+        self.logger.debug('resetting!')
         draw_list = []
         for art, off in zip(self.draggable.values(),
                             self._original_offsets):
             artists = art.update(*art.ref_point)
             draw_list.extend(artists)
 
-        # artist = self.centre_moves(*self.centre.position)
+        #
         self.draw(draw_list)
