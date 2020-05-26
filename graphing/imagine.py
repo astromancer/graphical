@@ -1,29 +1,22 @@
 # TODO: docstrings (when stable)
 # TODO: unit tests
 
-from copy import deepcopy
-import functools
 import logging
 import warnings
 import time
-from collections import Callable
 
 import numpy as np
 import matplotlib.pylab as plt
-from IPython import embed
 from matplotlib import ticker
 from matplotlib.figure import Figure
 from matplotlib.gridspec import GridSpec
 from matplotlib.widgets import Slider
 from mpl_toolkits.mplot3d import Axes3D
-from mpl_toolkits.mplot3d.art3d import Line3DCollection
 from mpl_toolkits.axes_grid1 import AxesGrid, make_axes_locatable
-
 from recipes.logging import LoggingMixin
 from recipes.introspection.utils import get_module_name
 # from .zscale import zrange
 from .sliders import TripleSliders
-from .draggable.machinery import Observers
 
 # from astropy.visualization import mpl_normalize  # import ImageNormalize as _
 from astropy.visualization.mpl_normalize import ImageNormalize
@@ -47,20 +40,7 @@ def _sanitize_data(data):
     """
     if np.ma.is_masked(data):
         data = data[~data.mask]
-    try:
-        return np.asarray(data[~np.isnan(data)])
-    except Exception as err:
-        from IPython import embed
-        from recipes.io.utils import TracebackWrapper
-        import textwrap, traceback
-        embed(header=textwrap.dedent(
-                """\
-                Caught the following:
-                %s
-                %s
-                Exception will be re-raised upon exiting this embedded interpreter.
-                """) % (err, traceback.format_exc()))
-        raise
+    return np.asarray(data[~np.isnan(data)])
 
 
 def move_axes(ax, x, y):
@@ -169,25 +149,24 @@ def guess_figsize(image, fill_factor=0.75, max_pixel_size=0.2):
     return _guess_figsize(shape, fill_factor, max_pixel_size)
 
 
-def _guess_figsize(image_shape, fill_factor=0.75, max_pixel_size=0.2):
+def _guess_figsize(image_shape, fill_factor=0.75, max_pixel_size=0.2,
+                   min_size=(2, 2)):
     # screen dimensions
     screen_size = np.array(get_screen_size_inches())
+
     # change order of image dimensions since opposite order of screen
+    max_size = np.multiply(image_shape, max_pixel_size)
 
     # get upper limit for fig size based on screen and data and fill factor
-    max_size = screen_size * fill_factor  # maximal size
-    scale = np.min(image_shape / max_size)
-    size = image_shape / scale
+    max_size = np.min([max_size, screen_size * fill_factor], 0)
 
-    # size = ((shape / max(shape)) * screen_size[np.argmax(shape)] * fill_factor)
-    # max_size = shape * max_pixel_size
-    # if np.any(size > max_size):
-    #     size = max_size
+    # get size from data
+    aspect = image_shape / image_shape.max()
+    size = max_size[aspect == 1] * aspect
 
-    # if np.any(size1 < min_size)
-    # other, one dimension might be less than min_size.
-    # if the image is elongated, ie one dimension much smaller than the
-    # figSize = np.where(size1 < min_size, min_size, figSize)
+    # enlarge =
+    size *= max(np.max(min_size / size), 1)
+
     logger.debug('Guessed figure size: (%.1f, %.1f)', *size)
     return size
 
@@ -223,7 +202,7 @@ def plot_image_grid(images, layout=(), titles=(), figsize=None, plims=None,
 
     """
 
-    # TODO: plot individual histograms as well as full hist
+    # TODO: plot individual histograms - clim_each
     # todo: guess fig size
 
     n = len(images)
@@ -258,7 +237,7 @@ def plot_image_grid(images, layout=(), titles=(), figsize=None, plims=None,
                   )  # todo: maybe better with tight layout.
 
     # create colourbar and pixel histogram axes
-    kws = dict(origin='lower left',
+    kws = dict(origin='lower',
                cbar=False, sliders=False, hist=False,
                clim=not clim_all,
                plims=plims)
@@ -346,6 +325,7 @@ def plot_image_grid(images, layout=(), titles=(), figsize=None, plims=None,
         #  evenly from each image
         pixels = []
         for im in images:
+            # getattr(im, ('ravel', 'compressed')[np.ma.isMA(im)])()
             pixels.extend(im.compressed() if np.ma.isMA(im) else im.ravel())
         pixels = np.array(pixels)
 
@@ -416,6 +396,7 @@ class Stretch(BaseStretch, FromNameMixin):
 from recipes.misc import duplicate_if_scalar
 
 
+# from .hist import Histogram
 class ColourBarHistogram(LoggingMixin):  # PixelHistogram
     """
     Histogram of colour values in an image
@@ -604,6 +585,8 @@ class ImageDisplay(LoggingMixin):
     # FIXME: Dragging too slow for large images: option for update on release
     #  instead of update on drag!!
 
+    # FIXME: hist: outside alpha changes with middle slider move.....
+
     # TODO: optional Show which region on the histogram corresponds to colorbar
     # TODO: better histogram for integer / binary data with narrow ranges
     # TODO: method pixels corresponding to histogram bin?
@@ -752,6 +735,7 @@ class ImageDisplay(LoggingMixin):
 
         # setup coordinate display
         ax.format_coord = self.format_coord
+        ax.grid(False)
         return ax.figure, (ax, cax, hax)
 
     def guess_figsize(self, data, fill_factor=0.55, max_pixel_size=0.2):
@@ -837,9 +821,19 @@ class ImageDisplay(LoggingMixin):
             if plims is None:
                 kws_['plims'] = self._default_plims
 
+            if np.all(np.ma.getmask(data)):
+                return None, None
+
             clims = get_percentile_limits(_sanitize_data(data), **kws_)
             self.logger.debug('Colour limits: (%.1f, %.1f)', *clims)
             kws['vmin'], kws['vmax'] = clims
+
+            bad_clims = (clims[0] == clims[1])
+            if bad_clims:
+                self.logger.warning('Bad colour interval: (%.1f, %.1f). '
+                                    'Ignoring', *clims)
+                return None, None
+
             return clims
         return None, None
 
@@ -888,6 +882,11 @@ class ImageDisplay(LoggingMixin):
         """
 
         # MASKED_STR = 'masked'
+
+        if not hasattr(self, 'imagePlot'):
+            # prevents a swap of repeated errors flooding the terminal for
+            # mouse over when no image has been drawn
+            return 'no image'
 
         # xy repr
         xs = 'x=%1.{:d}f'.format(precision) % x
@@ -994,7 +993,7 @@ class VideoDisplay(ImageDisplay):
         # make frame slider
         fsax = self.divider.append_axes('bottom', size=0.1, pad=0.3)
         self.frameSlider = Slider(fsax, 'frame', n, len(data), valfmt='%d')
-        self.frameSlider.on_move(self.update)
+        self.frameSlider.on_changed(self.update)
         fsax.xaxis.set_major_locator(ticker.AutoLocator())
 
         if self.use_blit:
@@ -1113,45 +1112,40 @@ class VideoDisplay(ImageDisplay):
         # set the slider axis limits
         if self.sliders:
             # find min / max as float
-            imin, imax = float(np.nanmin(image)), float(np.nanmax(image))
-            self.sliders.ax.set_ylim(imin, imax)
-            self.sliders.valmin, self.sliders.valmax = imin, imax
-            # since we changed the axis limits, need to redraw the tick labels
-            getter = getattr(self.histogram.ax,
-                             'get_%sticklabels' % self.sliders.slide_axis)
-            draw_list.extend(getter())
+            min_max = float(np.nanmin(image)), float(np.nanmax(image))
+            if not np.isnan(min_max).any():
+                self.sliders.ax.set_ylim(min_max)
+                self.sliders.valmin, self.sliders.valmax = min_max
+
+                # since we changed the axis limits, need to redraw tick labels
+                draw_list.extend(
+                        getattr(self.histogram.ax,
+                                f'get_{self.sliders.slide_axis}ticklabels')())
 
         # update histogram
         if self.has_hist:
-            draw_list.extend(self.histogram.update(image))
+            self.histogram.compute(image, self.histogram.bin_edges)
+            draw_list.append(self.histogram.update())
 
         if not (self._draw_count % self.clim_every):
             # set the slider positions / color limits
-            # TODO: move to clim_from_data
+            vmin, vmax = self.clim_from_data(image)
+            self.imagePlot.set_clim(vmin, vmax)
 
-            if getattr(self.norm, 'interval', None):
-                vmin, vmax = self.norm.interval.get_limits(
-                        _sanitize_data(image))
-                bad_clims = (vmin == vmax)
-                if bad_clims:
-                    # self.logger.warning('Bad colour interval from %s: '
-                    #                     '(%.1f, %.1f). Ignoring',
-                    #                     self.imagePlot.norm.interval.__class__,
-                    #                     vmin, vmax)
-                    self.logger.warning('Bad colour interval: '
-                                        '(%.1f, %.1f). Ignoring',
-                                        vmin, vmax)
-                else:
-                    self.logger.debug('Auto clims: (%.1f, %.1f)', vmin, vmax)
-                    self.imagePlot.set_clim(vmin, vmax)
+            if self.sliders:
+                draw_list = self.sliders.set_positions((vmin, vmax),
+                                                       draw_on=False)
 
-                    if self.sliders:
-                        draw_list = self.sliders.set_positions((vmin, vmax),
-                                                               draw_on=False)
+            # set the axes limits slightly wider than the clims
+            if self.has_hist:
+                self.histogram.autoscale_view()
 
-                    # set the axes limits slightly wider than the clims
-                    if self.has_hist:
-                        self.histogram.autoscale_view()
+            # if getattr(self.norm, 'interval', None):
+            #     vmin, vmax = self.norm.interval.get_limits(
+            #             _sanitize_data(image))
+
+            # else:
+            #     self.logger.debug('Auto clims: (%.1f, %.1f)', vmin, vmax)
 
         #
         if draw:
