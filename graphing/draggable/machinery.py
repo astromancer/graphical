@@ -1,3 +1,4 @@
+from collections import defaultdict
 import itertools as itt
 import more_itertools as mit
 from collections import OrderedDict, Callable
@@ -50,38 +51,43 @@ def draggable_artist_factory(art, offset, annotate, **kws):
 
 
 # ==============================================================================
-@expose.args()
+# @expose.args()
 def fpicker(artist, event):
-    """ an artist picker that works for clicks outside the axes"""
-    logger.debug('fpicker: %s', vars(event))
+    """
+    an artist picker that works for clicks outside the axes. ie. artist
+    that are not clipped
+    """
+    logger.debug('fpicker: %s', artist)
 
     if event.button != 1:  # otherwise intended reset will select
         logger.debug('wrong button!')
         return False, {}
 
-        # return artist.contains(event)
-
-        # transformed_path = artist._get_transformed_path()
-        # path, affine = transformed_path.get_transformed_path_and_affine()
-        # path = affine.transform_path(path)
-        # xy = path.vertices
-        # xt, yt = xy.T#[:, 0]
-        # # yt = xy[:, 1]
-        #
-        # # Convert pick radius from points to pixels
-        # pixels = artist.figure.dpi / 72. * artist.pickradius
-        #
-        # xd, yd = xt - event.x, yt - event.y
-        # distance of click from points in pixels (display coords)
-        # prox = np.sqrt(xd ** 2 + yd ** 2)
-        #
-        # picked = prox - pixels < 0 #
-        #
-        # logging.debug('%s', (pixels, prox, artist.pickradius, picked))
-        # props = dict(proximity=prox, hello='world')
-        #
-        # logging.debug('picked: %r: point %s', artist, np.where(picked))
-        # return picked.any(), props
+    tf = artist.contains(event)
+    logger.debug('fpicker: artist.contains(event) %s', tf)
+    return tf
+    #
+    # transformed_path = artist._get_transformed_path()
+    # path, affine = transformed_path.get_transformed_path_and_affine()
+    # path = affine.transform_path(path)
+    # xy = path.vertices
+    # xt, yt = xy.T#[:, 0]
+    # # yt = xy[:, 1]
+    #
+    # # Convert pick radius from points to pixels
+    # pixels = artist.figure.dpi / 72. * artist.pickradius
+    #
+    # xd, yd = xt - event.x, yt - event.y
+    # distance of click from points in pixels (display coords)
+    # prox = np.sqrt(xd ** 2 + yd ** 2)
+    #
+    # picked = prox - pixels < 0 #
+    #
+    # logging.debug('%s', (pixels, prox, artist.pickradius, picked))
+    # props = dict(proximity=prox, hello='world')
+    #
+    # logging.debug('picked: %r: point %s', artist, np.where(picked))
+    # return picked.any(), props
 
 
 def filter_non_artist(objects):
@@ -94,6 +100,22 @@ def filter_non_artist(objects):
 
         # warn if not art
         logger.warning('Object %r is not a matplotlib Artist' % o)
+
+
+def art_summary(artists):
+    col = defaultdict(int)
+    if artists is None:
+        return ''
+    if isinstance(artists, Artist):
+        return {artists: 1}
+
+    for art in artists:
+        col[type(art)] += 1
+    return str(col)
+
+
+def null(_):
+    return ''
 
 
 class IndexableOrderedDict(OrderedDict):
@@ -114,8 +136,8 @@ class Observers(LoggingMixin):
 
     def __repr__(self):
         return '\n'.join(
-                (self.__class__.__name__,
-                 '\n'.join(map(self._repr_observer, self.funcs.keys()))))
+            (self.__class__.__name__,
+             '\n'.join(map(self._repr_observer, self.funcs.keys()))))
 
     def _repr_observer(self, id_):
         f, a, args, kws = self.funcs[id_]
@@ -127,32 +149,77 @@ class Observers(LoggingMixin):
 
     def add(self, func, *args, **kws):
         """
-        Add an observer function for the move event for this artist
+        Add an observer function.
 
         When the artist is moved / picked, *func* will be called with the new
         coordinate position as arguments.  *func* should return any artists
         that it changes. These will be drawn if blitting is enabled.
         The signature of *func* is therefor:
+
             draw_list = func(x, y, *args, **kws)`
 
         Parameters
         ----------
         func
+        args
+        kws
 
         Returns
         -------
         A connection id is returned which can be used to remove the method
         """
-        if not isinstance(func, Callable):
+        if not callable(func):
             raise TypeError('`func` should be callable')
 
         id_ = next(self.counter)
-        self.funcs[id_] = (func, True, args, kws)
+        self.funcs[id_] = (func, args, kws)
+        self.active[func] = True
         return id_
 
     def remove(self, id_):
-        self.active.pop(id_, None)
-        return self.funcs.pop(id_, None)
+        fun, args, kws = self.funcs.pop(id_, None)
+        self.active.pop(fun)
+        return fun
+
+    def activate(self, fun_or_id):
+        """
+        Reactivate a non-active observer.  This method is useful for toggling
+        the active state of an observer function without removing and re-adding
+        it (and it's parameters) to the dict of functions. The function will use
+        parameters and keywords (if any) that were initially passed when it was
+        added.
+
+        Parameters
+        ----------
+        fun_or_id: callable, int
+            The function (or its identifier) that will be activated 
+        """
+        self._set_active(fun_or_id, True)
+
+    def deactivate(self, fun_or_id):
+        """
+        Deactivate an active observer. 
+
+        Parameters
+        ----------
+        fun_or_id: callable, int
+            The function (or its identifier) that will be activated 
+        """
+        self._set_active(fun_or_id, False)
+
+    def _set_active(self, fun_or_id, tf):
+        if not callable(fun_or_id) and fun_or_id in self.funcs:
+            # function id passed instead of function itself
+            fun, *_ = self.funcs[fun_or_id]
+        else:
+            fun = fun_or_id
+
+        if fun in self.active:
+            self.active[fun] = tf
+        else:
+            self.logger.warning(
+                'Function %r is not an observer! Use `add(fun, *args, **kws)'
+                'to make it an observer',  fun)
 
     def __call__(self, x, y):
         """
@@ -166,31 +233,20 @@ class Observers(LoggingMixin):
         -------
         Artists that need to be drawn
         """
-        if self.logger.getEffectiveLevel() >= logging.DEBUG:
-            from collections import defaultdict
-
-            def art_summary(artists):
-                col = defaultdict(int)
-                if artists is None:
-                    return ''
-                if isinstance(artists, Artist):
-                    return {artists: 1}
-
-                for art in artists:
-                    col[type(art)] += 1
-                return str(col)
+        
+        if self.logger.getEffectiveLevel() < logging.DEBUG:
+            _art_summary = null
         else:
-            def art_summary(_):
-                return ''
+            _art_summary = art_summary
 
         # Artists that need to be drawn (from observer functions)
         artists = []
-        for cid, (func, active, args, kws) in self.funcs.items():
-            if active:
+        for cid, (func, args, kws) in self.funcs.items():
+            if self.active[func]:
                 try:
                     art = func(x, y, *args, **kws)
                     self.logger.debug('observer: %s(%.3f, %.3f): %s',
-                                      func.__name__, x, y, art_summary(art))
+                                      func.__name__, x, y, _art_summary(art))
 
                     if isinstance(art, (list, tuple)):  # np.ndarray
                         artists.extend(art)
@@ -199,8 +255,7 @@ class Observers(LoggingMixin):
                         artists.append(art)
 
                 except Exception:
-                    self.logger.exception('observers error')
-                    # logging.exception(traceback.format_exc())
+                    self.logger.exception('Observers error')
 
         return artists
 
@@ -252,7 +307,9 @@ class DraggableBase(LoggingMixin):  # TODO: use as mixin?
 
         # make the lines pickable
         if not artist.get_picker():
-            artist.set_picker(10)  # fpicker
+            # artist.update()
+            artist.set_pickradius(10)
+            artist.set_picker(fpicker)  # fpicker  # set_pickradius
 
         # Manage with ConnectionMixin?
         self.linked = []
@@ -652,7 +709,7 @@ class DragMachinery(ConnectionMixin):
             self.add_artist(art, offset, annotate, haunted)
 
             # TODO:
-            ##enable legend picking
+            # enable legend picking
             # self.legend = None
             # if legendkw or auto_legend:
             # self.legend = DynamicLegend(ax, artists, legendkw)
@@ -709,7 +766,7 @@ class DragMachinery(ConnectionMixin):
     @property
     def use_blit(self):
         return self._use_blit and (
-                self.canvas is not None) and self.canvas.supports_blit
+            self.canvas is not None) and self.canvas.supports_blit
 
     def lock(self, which):
         for art, drg in self.draggable.items():
@@ -765,7 +822,6 @@ class DragMachinery(ConnectionMixin):
     def on_click(self, event):
 
         # print( 'on_click', repr(self.selection ))
-
         """reset plot on middle mouse"""
         if event.button == 2:
             self.reset()
@@ -834,7 +890,7 @@ class DragMachinery(ConnectionMixin):
 
                 # make the ghost artists visible
                 # for link in draggable.linked:
-                ##set the ghost vis same as the original vis for linked
+                # set the ghost vis same as the original vis for linked
                 # for l, g in zip(link.get_children(),
                 # link.ghost.get_children()):
                 # g.set_visible(l.get_visible())
@@ -929,7 +985,7 @@ class DragMachinery(ConnectionMixin):
                     # linked.ghost.set_visible(False)
 
                     # do_legend()
-                    ##self.canvas.draw()
+                    # self.canvas.draw()
                     # if self._draw_on:
                     # if self._use_blit:
                     # self.canvas.restore_region(self.background)
@@ -1004,6 +1060,7 @@ class DragMachinery(ConnectionMixin):
 
     def draw(self, artists):
         # TODO: could set this method dynamically
+        # print('draw')
         if self.use_blit:
             self.draw_blit(artists)
         else:
@@ -1013,7 +1070,7 @@ class DragMachinery(ConnectionMixin):
         self.canvas.restore_region(self.background)
         # TODO: check for uniqueness to prevent unnecessary duplicate draw
         for art in sorted(filter_non_artist(artists), key=Artist.get_zorder):
-            self.logger.debug('drawing: %s' % art)
+            # self.logger.info('drawing: %s' % art)
             art.draw(self.canvas.renderer)
 
         # After rendering all the needed artists, blit each axes individually.
