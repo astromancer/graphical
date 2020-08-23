@@ -17,7 +17,6 @@ from matplotlib.lines import Line2D
 from graphing.draggable.machinery import DragMachinery
 from recipes.iter import flatiter
 
-from IPython import embed
 import operator as op
 
 
