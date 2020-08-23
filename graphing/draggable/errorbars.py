@@ -20,7 +20,7 @@ from graphing.connect import ConnectionMixin, mpl_connect
 # from PyQt4.QtCore import pyqtRemoveInputHook, pyqtRestoreInputHook
 # from decor.misc import unhookPyQt#, expose
 
-from IPython import embed
+# from IPython import embed
 # from pprint import pprint
 
 # TODO: Convenience methods (factory) for draggable artists
