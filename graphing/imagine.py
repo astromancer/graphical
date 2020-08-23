@@ -1,6 +1,6 @@
-# TODO: docstrings (when stable)
-# TODO: unit tests
-
+from recipes.array.neighbours import neighbours
+# from obstools.aps import ApertureCollection
+from recipes.misc import duplicate_if_scalar
 import logging
 import warnings
 import time
@@ -31,7 +31,12 @@ import itertools as itt
 logger = logging.getLogger(get_module_name(__file__))
 
 
+# TODO: docstrings (when stable)
+# TODO: unit tests
 # TODO: maybe display things like contrast ratio ??
+
+# TODO: middle mouse resets axes limits
+
 
 def _sanitize_data(data):
     """
@@ -182,8 +187,8 @@ def set_clim_connected(x, y, artist, sliders):
     return artist
 
 
-def plot_image_grid(images, layout=(), titles=(), figsize=None, plims=None,
-                    clim_all=False):
+def plot_image_grid(images, layout=(), titles=(), title_kws=None, figsize=None,
+                    plims=None, clim_all=False, **kws):
     """
 
     Parameters
@@ -216,9 +221,17 @@ def plot_image_grid(images, layout=(), titles=(), figsize=None, plims=None,
     if not layout:
         layout = auto_grid(n)
     n_rows, n_cols = layout
+    if n_rows == -1:
+        n_rows = int(np.ceil(n / n_cols))
+    if n_cols == -1:
+        n_cols = int(np.ceil(n / n_rows))
 
     # create figure
     fig = plt.figure(figsize=figsize)
+
+    # ticks
+    tick_par = dict(color='w', direction='in',
+                    bottom=1, top=1, left=1, right=1)
 
     # Use gridspec rather than ImageGrid since the latter tends to resize
     # the axes
@@ -237,10 +250,13 @@ def plot_image_grid(images, layout=(), titles=(), figsize=None, plims=None,
                   )  # todo: maybe better with tight layout.
 
     # create colourbar and pixel histogram axes
-    kws = dict(origin='lower',
-               cbar=False, sliders=False, hist=False,
-               clim=not clim_all,
-               plims=plims)
+
+    #
+    kws = {**dict(origin='lower',
+                  cbar=False, sliders=False, hist=False,
+                  clim=not clim_all,
+                  plims=plims),
+           **kws}
 
     art = []
     w = len(str(int(n)))
@@ -255,39 +271,39 @@ def plot_image_grid(images, layout=(), titles=(), figsize=None, plims=None,
             # do colourbar + pixel histogram if clim all
             kws.update(cbar=True, sliders=True, hist=True,
                        cax=fig.add_subplot(
-                               gs[:, -(cbar_size + hist_size) * n_cols:]),
+                           gs[:, -(cbar_size + hist_size) * n_cols:]),
                        hax=fig.add_subplot(gs[:, -hist_size * n_cols:]))
 
         # create axes!
         axes[j, k] = ax = fig.add_subplot(
-                gs[j:j + 1, (100 * k):(100 * (k + 1))])
+            gs[j:j + 1, (100 * k):(100 * (k + 1))])
 
-        # plot image. use imshow for all but last
-
+        # plot image
         imd = ImageDisplay(images[i], ax=ax, **kws)
-        artist = imd.imagePlot
-        # else:
-        #     artist = ax.imshow(images[i], **kws)
-        #
-        art.append(artist)
+        art.append(imd.imagePlot)
 
         # do ticks
         top = (j == 0)
         bot = (j == n_rows - 1)
+        left = (k == 0)  # leftmost
         # right = (j == n_cols - 1)
-        if k != 0:  # not leftmost
-            ax.set_yticklabels([])
-        if not (bot or top):
-            ax.set_xticklabels([])
-        # if right:
-        #     ax.yaxis.tick_right()
-        if top:
-            ax.xaxis.tick_top()
+
+        # set the ticks to white and visible on all spines for aesthetic
+        ax.tick_params('both', **{**dict(labelbottom=bot, labeltop=top,
+                                         labelleft=left, labelright=0),
+                                  **tick_par})
+
+        for lbl, spine in ax.spines.items():
+            spine.set_color('w')
 
         # add title text
         title = title.replace("\n", "\n     ")
         ax.text(0.025, 0.95, f'{i: <{w}}: {title}',
-                color='w', va='top', fontweight='bold', transform=ax.transAxes)
+                **{**dict(color='w',
+                          va='top',
+                          fontweight='bold',
+                          transform=ax.transAxes),
+                   **(title_kws or {})})
 
     # Do colorbar
     # noinspection PyUnboundLocalVariable
@@ -393,8 +409,6 @@ class Stretch(BaseStretch, FromNameMixin):
 #         return mpl_normalize.Normalize.__call__(
 #                 self, _sanitize_data(values), clip)
 
-from recipes.misc import duplicate_if_scalar
-
 
 # from .hist import Histogram
 class ColourBarHistogram(LoggingMixin):  # PixelHistogram
@@ -426,7 +440,6 @@ class ColourBarHistogram(LoggingMixin):  # PixelHistogram
         """
 
         # TODO: dynamic recompute histogram when too few bins are shown..
-
         # TODO: integrate color stretch functionality
         #  FIXME: fails for all zero data
 
@@ -441,10 +454,9 @@ class ColourBarHistogram(LoggingMixin):  # PixelHistogram
         assert orientation.lower().startswith(('h', 'v'))
         self.orientation = orientation
 
-        # setup colormap
+        # setup colormap (copy)
         cmap = image_plot.get_cmap()
-        colors = cmap(np.linspace(0, 1, 256))
-        self.cmap = ListedColormap(colors)
+        self.cmap = ListedColormap(cmap(np.linspace(0, 1, 256)))
 
         # optionally gray out out-of-bounds values
         if outside_colour is None:
@@ -738,7 +750,7 @@ class ImageDisplay(LoggingMixin):
         ax.grid(False)
         return ax.figure, (ax, cax, hax)
 
-    def guess_figsize(self, data, fill_factor=0.55, max_pixel_size=0.2):
+    def guess_figsize(self, data, fill_factor=0.75, max_pixel_size=0.2):
         """
         Make an educated guess of the size of the figure needed to display the
         image data.
@@ -1119,8 +1131,8 @@ class VideoDisplay(ImageDisplay):
 
                 # since we changed the axis limits, need to redraw tick labels
                 draw_list.extend(
-                        getattr(self.histogram.ax,
-                                f'get_{self.sliders.slide_axis}ticklabels')())
+                    getattr(self.histogram.ax,
+                            f'get_{self.sliders.slide_axis}ticklabels')())
 
         # update histogram
         if self.has_hist:
@@ -1314,8 +1326,8 @@ class VideoDisplayX(VideoDisplay):
                 coords = coords[:, None]
             if len(coords) < len(data):
                 self.logger.warning(
-                        'Coordinate array contains fewer points (%i) than '
-                        'the number of frames (%i).', len(coords), len(data))
+                    'Coordinate array contains fewer points (%i) than '
+                    'the number of frames (%i).', len(coords), len(data))
 
             # set for frame 0
             self.marks.set_data(coords[0, :, ::-1].T)
@@ -1342,7 +1354,6 @@ class VideoDisplayX(VideoDisplay):
 
 
 # ****************************************************************************************************
-from obstools.aps import ApertureCollection
 
 
 class VideoDisplayA(VideoDisplayX):
@@ -1496,7 +1507,7 @@ class Compare3DImage(LoggingMixin):
         grid_images = AxesGrid(fig, 212,  # similar to subplot(212)
                                nrows_ncols=(1, 3),
                                axes_pad=0.1,
-                               label_mode='L',  # THIS DOESN'T FUCKING WORK!
+                               label_mode='L',  # THIS DOESN'T WORK!
                                # share_all = True,
                                cbar_location='right',
                                cbar_mode='each',
@@ -1629,14 +1640,13 @@ class Compare3DContours(Compare3DImage):
         # for i,im in enumerate(images):
         # ax = im.axes
         # im.set_clim( zlims if (i+1)%3 else rlims )
-        ##artificially set axes limits --> applies to all since share_all=True in constuctor
+        # artificially set axes limits --> applies to all since share_all=True in constuctor
         # im.set_extent( [X[0,0], X[0,-1], Y[0,0], Y[-1,0]] )
 
         # self.fig.canvas.draw()
 
 
 # from recipes.array import ndgrid
-from recipes.array.neighbours import neighbours
 
 
 class PSFPlotter(Compare3DImage, VideoDisplay):
