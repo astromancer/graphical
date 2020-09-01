@@ -1,7 +1,9 @@
+import copy
 import numpy as np
 from recipes.misc import duplicate_if_scalar
 
 DEFAULT_BINS = 50
+MAX_POINTS = 500
 
 
 def _sanitize_data(data, allow_dim):
@@ -12,12 +14,17 @@ def _sanitize_data(data, allow_dim):
     assert data.shape[-1] == 2
 
     # mask nans
-    data = np.ma.MaskedArray(data, np.isnan(data))
+    # data = np.ma.MaskedArray(data, np.isnan(data))
+    # return data
+
+    # remove nans:
+    data = data[~np.isnan(data).any(1)]
+    assert len(data) > 0
     return data
 
 
 def scatter_density(ax, data, bins=DEFAULT_BINS, range=None, min_count=3,
-                    tessellation='hex', scatter_kws=None,
+                    max_points=MAX_POINTS, tessellation='hex', scatter_kws=None,
                     density_kws=None):
     """
     Point cloud visualization with density map and scatter plot. Regions
@@ -30,11 +37,15 @@ def scatter_density(ax, data, bins=DEFAULT_BINS, range=None, min_count=3,
     data
     bins: int
     range
+    max_points:
+        Maximum number of points to plot. For sets with fewer points than this, 
+        only plot the scatter points, not the denisty map. To always only produce
+        pure scatter plot use `max_points=np.inf`.
     min_count: int
-        point density threshold. Bins with more points than this number will
+        Point density threshold. Bins with more points than this number will
         be plotted as density map. Points not in dense regions will be
         plotted as actual markers. For pure scatter plot set this value `None`
-        or `numpy.inf`.  For pure density map, set `min_count` to 0.
+        or `np.inf`. For pure density map, set `min_count` to 0.
     tessellation
     scatter_kws
     density_kws
@@ -45,6 +56,10 @@ def scatter_density(ax, data, bins=DEFAULT_BINS, range=None, min_count=3,
     """
 
     data = _sanitize_data(data, 2)
+
+    # plot only scatter if small amount of data
+    if len(data) < max_points:
+        min_count = None
 
     # default arg
     # cmap = get_cmap(density_kws.get('cmap', DEFAULT_CMAP))
@@ -77,8 +92,7 @@ def scatter_density(ax, data, bins=DEFAULT_BINS, range=None, min_count=3,
 
 
 def hist2d_scatter(ax, data, bins=DEFAULT_BINS, range=None, min_count=None,
-                   scatter_kws=None,
-                   density_kws=None):
+                   scatter_kws=None, ensity_kws=None):
     """
 
     Parameters
@@ -95,6 +109,8 @@ def hist2d_scatter(ax, data, bins=DEFAULT_BINS, range=None, min_count=None,
     -------
 
     """
+    assert len(data) > 0
+
     do_density_plot = (min_count is not None) and np.isfinite(min_count)
     if do_density_plot:
         density_kws = density_kws or {}
@@ -152,6 +168,8 @@ def hexbin_scatter(ax, data, bins=DEFAULT_BINS, range=None, min_count=None,
     -------
 
     """
+    assert len(data) > 0
+
     scatter_kws = scatter_kws or {}
     do_density_plot = (min_count is not None) and np.isfinite(min_count)
     if do_density_plot:
@@ -180,20 +198,22 @@ def hexbin_scatter(ax, data, bins=DEFAULT_BINS, range=None, min_count=None,
         hvals = polygons.get_array()
         # set default colour of markers to match colormap
         scatter_kws.setdefault('color', polygons.get_cmap()(0))
+
+        # copy the colormap (avoid deprecation warning for mpl 3.3)
+        cm = copy.copy(polygons.get_cmap())
+        # make the bins with few points invisible
+        cm.set_under((1, 1, 1), alpha=1)
+        polygons.set_clim(min_count)
+
     else:
         sparse_point_indices = ...
         hvals = []
         polygons = None
 
     # plot scatter points
-    scatter_kws.setdefault('marker', 'o')
-    scatter_kws.setdefault('ls', '')
-    points = ax.plot(*data[sparse_point_indices].T, **scatter_kws)
+    points = ax.plot(*data[sparse_point_indices].T,
+                     **{**scatter_kws, **dict(marker='o', ls='')})
 
-    # make the bins with few points invisible
-    cm = polygons.get_cmap()
-    cm.set_under((1, 1, 1), alpha=1)
-    polygons.set_clim(min_count)
     return hvals, polygons, points
 
 
