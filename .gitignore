@@ -10,6 +10,9 @@
 #python
 __pycache__
 
+# testing
+/.pytest_cache
+
 #dev
 /dev
 multitab.2d.py
