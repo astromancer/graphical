@@ -13,7 +13,7 @@ from matplotlib.transforms import Affine2D
 import itertools as itt
 import more_itertools as mit
 
-from recipes.containers.lists import flatten
+from recipes.lists import flatten
 
 from graphing.connect import ConnectionMixin, mpl_connect
 

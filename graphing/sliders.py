@@ -12,10 +12,11 @@ from matplotlib.lines import Line2D
 # from matplotlib.transforms import Affine2D
 # from matplotlib.transforms import blended_transform_factory as btf
 
+import more_itertools as mit
 
 # from .interactive import ConnectionMixin, mpl_connect
 from graphing.draggable.machinery import DragMachinery
-from recipes.iter import flatiter
+# from recipes.iter import flatiter
 
 import operator as op
 
@@ -365,7 +366,7 @@ class TripleSliders(AxesSliders):  # MinMaxMeanSliders
 
             if self.use_blit:
                 self.draw_blit(draw_list)
-                for art in filter(None, flatiter(draw_list)):
+                for art in filter(None, mit.collapse(draw_list)):
                     art.set_animated(False)
 
         self.selection = None

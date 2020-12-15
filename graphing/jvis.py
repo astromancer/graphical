@@ -48,7 +48,7 @@ class Jvis():
         self.grid_images = AxesGrid(fig, 212,  # similar to subplot(212)
                                     nrows_ncols=(1, 3),
                                     axes_pad=0.1,
-                                    label_mode="L",  # THIS DOESN'T FUCKING WORK!
+                                    label_mode="L",  # THIS DOESN'T WORK!
                                     # share_all = True,
                                     cbar_location="right",
                                     cbar_mode="edge",

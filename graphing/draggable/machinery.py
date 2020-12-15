@@ -1,7 +1,8 @@
 from collections import defaultdict
 import itertools as itt
 import more_itertools as mit
-from collections import OrderedDict, Callable
+from collections import OrderedDict
+from collections.abc import Callable
 
 import numpy as np
 # from matplotlib.axes import Axes
@@ -16,12 +17,12 @@ from recipes.logging import LoggingMixin
 from recipes.decor import expose
 from recipes import pprint
 
-from recipes.introspection.utils import get_module_name
+from recipes.logging import get_module_logger
 
 import logging
 
 # module level logger
-logger = logging.getLogger(get_module_name(__file__))
+logger = get_module_logger()
 
 
 # from recipes.decor.misc import unhookPyQt

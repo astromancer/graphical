@@ -5,7 +5,7 @@ better corner plots
 import itertools as itt
 from graphing.scatter import scatter_density
 
-from matplotlib import pyplot as    plt
+from matplotlib import pyplot as plt
 from matplotlib.gridspec import GridSpec
 from matplotlib.colors import LinearSegmentedColormap
 import numpy as np
@@ -15,10 +15,11 @@ from .hist import Histogram, get_bins
 from .utils import percentile
 
 import logging
-from recipes.introspection import get_module_name
+from recipes.logging import get_module_logger
+
 
 # module level logger
-logger = logging.getLogger(get_module_name(__file__))
+logger = get_module_logger()
 
 DEFAULT_NBINS = 30
 
@@ -26,8 +27,8 @@ DEFAULT_NBINS = 30
 def truncate_colormap(cmap, lo=0, hi=1, n=255):
     cmap = plt.get_cmap(cmap)
     return LinearSegmentedColormap.from_list(
-            f'{cmap.name}[{lo:.2f}, {lo:.2f}]',
-            cmap(np.linspace(lo, hi, n)))
+        f'{cmap.name}[{lo:.2f}, {lo:.2f}]',
+        cmap(np.linspace(lo, hi, n)))
 
 
 DEFAULT_CMAP = truncate_colormap('magma', 0, 0.9)
@@ -56,7 +57,6 @@ def corner(samples, bins=DEFAULT_NBINS, plims=(0.5, 99.5),
     # use_math_text=False,
     # hist_kwargs=None,
     # **hist2d_kwargs,
-
     """
     WIP
     Better corner plots.
@@ -153,11 +153,12 @@ def corner(samples, bins=DEFAULT_NBINS, plims=(0.5, 99.5),
     logger.debug('Ranges: %s', lims)
 
     # get bins
-    if tessellation is 'hex':
+    if tessellation == 'hex':
         if not isinstance(bins, numbers.Integral):
-            warnings.warn(f'Ignoring bins {bins}, since tessellation is '
-                          f'{tessellation!r}.  Falling back to default bins = '
-                          f'{DEFAULT_NBINS}')
+            warnings.warn(
+                f'Ignoring bins {bins}, since tessellation is {tessellation!r}.'
+                f' Falling back to default bins = {DEFAULT_NBINS}'
+            )
             bins = DEFAULT_NBINS
         bins = np.full(dof, bins)
     else:
@@ -228,9 +229,9 @@ def corner(samples, bins=DEFAULT_NBINS, plims=(0.5, 99.5),
         else:
             # plot scatter / density
             hvals, poly_coll, points = scatter_density(
-                    ax, samples[:, [jj, ii]], (bins[jj], bins[ii]), None,
-                    min_count_density, tessellation, scatter_kws_,
-                    density_kws_)
+                ax, samples[:, [jj, ii]], (bins[jj], bins[ii]), None,
+                min_count_density, tessellation=tessellation,
+                scatter_kws=scatter_kws_, density_kws=density_kws_)
 
             # labels / ticks
             if i == 0:

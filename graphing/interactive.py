@@ -5,8 +5,8 @@ import matplotlib.pyplot as plt
 
 # from recipes.decor import print_args
 
-from recipes.oo.meta import flaggerFactory
-from recipes.containers.lists import flatten
+from recipes.oo.meta import flagger
+from recipes.lists import flatten
 from recipes.logging import LoggingMixin
 
 # from recipes.decor import profile
@@ -15,7 +15,7 @@ from recipes.logging import LoggingMixin
 # from IPython import embed
 
 # *******************************************************************************
-ConnectionManager, mpl_connect = flaggerFactory(collection='_connections')
+ConnectionManager, mpl_connect = flagger.factory(collection='_connections')
 
 
 class ConnectionMixin(ConnectionManager, LoggingMixin):
