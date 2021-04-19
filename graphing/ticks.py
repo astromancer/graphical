@@ -6,56 +6,61 @@ from scipy.stats import mode
 from matplotlib import ticker
 from matplotlib.transforms import (Transform,
                                    IdentityTransform,
-                                   ScaledTranslation)
+                                   ScaledTranslation
+                                   )
 
 from recipes import pprint
 
 from .transforms import ReciprocalTransform
 
 
-# ====================================================================================================
-def formatter_factory(formatter, tolerance=1e-6):  # TODO: formatter_unique_factory     better name for this factory
+# ==============================================================================
+def formatter_factory(formatter, tolerance=1e-6):
+    # TODO: formatter_unique_factory     better name for this factory
     # NOTE: This class is esentially a HACK
-    # NOTE: probably better to have some structure that takes both major and minor locators
+    # NOTE: probably better to have some structure that takes both major and
+    #  minor locators
     # GloballyUniqueLocator?? with  get_ticklocs    method
     """
-    Create a tick formatter class which, when called eliminates duplicates between major/minor
-    ticks (to within given tolerance before invoking the parent formatter's call method.
+    Create a tick formatter class which, when called eliminates duplicates
+    between major/minor ticks (to within given tolerance before invoking the
+    parent formatter's call method.
     """
     FormatterClass = formatter.__class__
 
-    # ****************************************************************************************************
+    # **************************************************************************
     class NoDuplicateTicksFormatter(FormatterClass):
         def __call__(self, x, pos=None):
             """function that eliminates duplicate tick labels"""
 
             if np.any(abs(self.axis.get_ticklocs() - x) < tolerance):
-                # print( x, 'fuckt!'  )
                 return ''
             return super(NoDuplicateTicksFormatter, self).__call__(x, pos)
 
     return NoDuplicateTicksFormatter
 
 
-# TODO: NoOverlappingTicksFormatter.  NOTE: Probably not necessary if you choose appropriate locators
+# TODO: NoOverlappingTicksFormatter.
+#  NOTE: Probably not necessary if you choose appropriate locators
 
-# ====================================================================================================
 def locator_transform_factory(locator, transform):
     """
-    Create a tick formatter class which, when called applies the transformation given in ``transform``
-     before invoking the parent formatter's __call__ method.
+    Create a tick formatter class which, when called applies the transformation
+    given in ``transform`` before invoking the parent formatter's __call__
+    method.
     """
     # _locator = expose.args()(locator)
 
     LocatorClass = locator.__class__
 
-    # ****************************************************************************************************
+    # **************************************************************************
     class TransLocator(LocatorClass):
         def __call__(self):
             locs = locator()
             # try:
             locs = transform.transform(locs)  # [locs > transform.thresh]
-            # FIXME: ValueError: total size of new array must be unchanged. when only a single tick on axis
+            # FIXME: ValueError: total size of new array must be unchanged.
+            #  when only a single tick on axis
             # except ValueError as err:
             #     print('FUCKup:',  locs, err)
             # if np.ma.is_masked(locs):
@@ -70,7 +75,21 @@ def locator_transform_factory(locator, transform):
 locator_factory = locator_transform_factory
 
 
-# ****************************************************************************************************
+class SexagesimalFormatter(ticker.Formatter):
+
+    def __init__(self, precision=None, sep='hms', base_unit='h', short=False,
+                 unicode=False):
+        self.precision = precision
+        self.sep = sep
+        self.base_unit = base_unit
+        self.short = short
+        self.unicode = unicode
+
+    def __call__(self, x, pos=None):
+        return pprint.hms(x, self.precision, self.sep, self.base_unit,
+                          self.short, self.unicode)
+
+
 class SwitchLogFormatter(ticker.Formatter):
     """Switch between log and scalar format based on precision"""
 
@@ -124,12 +143,12 @@ class TransFormatter(ticker.ScalarFormatter):
     def __call__(self, x, pos=None):
         with warnings.catch_warnings():
             warnings.simplefilter("ignore")
-            xt = self._transform.transform(x)
+            x = self._transform.transform(x)
 
-        return super(TransFormatter, self).__call__(xt, pos)
+    #     return super(TransFormatter, self).__call__(xt, pos)
 
-    def pprint_val(self, x):
-        # make infinite if beyond threshold
+    # def pprint_val(self, x):
+    #     # make infinite if beyond threshold
 
         if abs(x) > self.inf:
             x = np.sign(x) * np.inf
