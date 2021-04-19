@@ -19,35 +19,40 @@ class TransFormatter(ticker.ScalarFormatter):
     _transform = IdentityTransform()
 
     def __init__(self, transform=None, infinite=1e15, useOffset=None,
-                 useMathText=True, useLocale=None):
+                 useMathText=None, useLocale=None, precision=3):
         super(TransFormatter, self).__init__(useOffset, useMathText, useLocale)
         self.inf = infinite
+        self.precision = int(precision)
 
         if transform is not None:
             if isinstance(transform, Transform):
                 self._transform = transform
             else:
-                raise ValueError('bork!')
+                raise ValueError('Not a valid transform')
 
     def __call__(self, x, pos=None):
         with warnings.catch_warnings():
             warnings.simplefilter("ignore")
-            xt = self._transform.transform(x)
+            x = self._transform.transform(x)
 
-        return super(TransFormatter, self).__call__(xt, pos)
+        # return super(TransFormatter, self).__call__(xt, pos)
 
-    def pprint_val(self, x):
+    # def pprint_val(self, x):
         # make infinite if beyond threshold
-        # print('PPP')
+
+        # print(1, x)
+
         if abs(x) > self.inf:
             x = np.sign(x) * np.inf
 
+        # print(2, x, abs(x) == np.inf)
         if abs(x) == np.inf:
             if self.useMathText:
                 sign = '-' * int(x < 0)
                 return r'{}$\infty$'.format(sign)
 
-        return pprint.decimal(x, 2)
+        # print(3, x)
+        return pprint.decimal(x, self.precision)
 
 
 # TODO: do this as a proper Scale.

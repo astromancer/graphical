@@ -2,11 +2,15 @@
 Versatile functions for plotting time-series data
 """
 
-# TODO:
-#  alternatively make `class timeseriesPlot(Axes):` then ax.plot_ts()
-# NOTE: you can probs use the std plt.subplots machinery if you register your
-#  axes classes
-
+from matplotlib import ticker
+from matplotlib.transforms import Affine2D
+import numbers
+from .dualaxes import DualAxes, DateTimeDualAxes
+import logging
+from recipes.logging import get_module_logger
+from attr import attrs, attrib as attr  # , astuple
+from recipes.dicts import AttrDict
+import matplotlib.pyplot as plt
 import itertools as itt
 
 import numpy as np
@@ -15,14 +19,18 @@ import matplotlib as mpl
 
 from .utils import get_percentile_limits
 
-mpl.use('Qt5Agg')
+
+# TODO:
+#  alternatively make `class timeseriesPlot(Axes):` then ax.plot_ts()
+# NOTE: you can probs use the std plt.subplots machinery if you register your
+#  axes classes
+
+# mpl.use('Qt5Agg')
 # from matplotlib import rcParams
 
-import matplotlib.pyplot as plt
 # import colormaps as cmaps
 # plt.register_cmap(name='viridis', cmap=cmaps.viridis)
 
-from recipes.containers.dicts import AttrDict
 
 # from recipes.string import minlogfmt
 
@@ -30,12 +38,8 @@ from recipes.containers.dicts import AttrDict
 
 # from dataclasses import dataclass
 
-from attr import attrs, attrib as attr  # , astuple
 
-from recipes.introspection.utils import get_module_name
-import logging
-
-logger = logging.getLogger(get_module_name(__file__))
+logger = get_module_logger()
 
 N_MAX_TS_SAFETY = 50
 
@@ -44,54 +48,54 @@ default_cmap = 'nipy_spectral'
 default_figsize = (14, 8)
 
 defaults = AttrDict(
-        labels=(),
-        title='',
-        #
-        relative_time=False,
-        timescale='s',
-        start=None,
+    labels=(),
+    title='',
+    #
+    relative_time=False,
+    timescale='s',
+    start=None,
 
-        # NOTE: this might get messy! Consider setting up the axes outside
-        #  and always passing?
-        ax=None,
-        axes_labels=(('t (s)', ''),  # bottom and top x-axes
-                     'Counts'),
-        # TODO: axes_label_position: (left, right, center, <,>,^)
-        twinx=None,  # Top x-axis display format
-        xscale='linear',
-        yscale='linear',
-        plims=((0, 100),  # x-axis
-               (-1, 101)),  # y-axis
-        #
-        colours=None,
-        cmap=None,  # TODO: colormap
-        #
-        show_errors='bar',
-        show_masked=False,
-        show_hist=False,
+    # NOTE: this might get messy! Consider setting up the axes outside
+    #  and always passing?
+    ax=None,
+    axes_labels=(('t (s)', ''),  # bottom and top x-axes
+                 'Counts'),
+    # TODO: axes_label_position: (left, right, center, <,>,^)
+    twinx=None,  # Top x-axis display format
+    xscale='linear',
+    yscale='linear',
+    plims=((0, 100),  # x-axis
+           (-1, 101)),  # y-axis
+    #
+    colours=None,
+    cmap=None,  # TODO: colormap
+    #
+    show_errors='bar',
+    show_masked=False,
+    show_hist=False,
 
-        draggable=False,
-        offsets=None,
+    draggable=False,
+    offsets=(),
 
-        whitespace=0.025)  # TODO: x, y, upper, lower
+    whitespace=0.025)  # TODO: x, y, upper, lower
 
 # Default options for plotting related stuff
 default_opts = AttrDict(
-        errorbar=dict(fmt='o',
+    errorbar=dict(fmt='o',
                       # TODO: sampled lcs from distribution implied by
                       #  errorbars ?  simulate_samples
                       ms=2.5,
                       mec='none',
                       capsize=0,
                       elinewidth=0.5),
-        spans=dict(label='filtered',
-                   alpha=0.2,
-                   color='r'),
-        hist=dict(bins=50,
-                  alpha=0.75,
-                  # color='b',
-                  orientation='horizontal'),
-        legend=dict(loc='upper right',  # TODO: option for no legend
+    spans=dict(label='filtered',
+               alpha=0.2,
+               color='r'),
+    hist=dict(bins=50,
+              alpha=0.75,
+              # color='b',
+              orientation='horizontal'),
+    legend=dict(loc='upper right',  # TODO: option for no legend
                     fancybox=True,
                     framealpha=0.25,
                     numpoints=1,
@@ -101,7 +105,6 @@ default_opts = AttrDict(
 allowed_kws = list(defaults.keys())
 allowed_kws.extend(default_opts.keys())
 
-from .dualaxes import DateTimeDualAxes
 
 TWIN_AXES_CLASSES = {'sexa': DateTimeDualAxes}
 
@@ -159,9 +162,6 @@ def check_kws(kws):
     return opts, dopts
 
 
-import numbers
-
-
 def is_null(x):
     if (x is None) or (len(x) == 0):
         return True
@@ -217,10 +217,10 @@ def get_data(data, relative_time):
     n = len(signals)
     if n > N_MAX_TS_SAFETY:
         raise TooManyToPlot(
-                'Received %i time series to plot. Refusing since safety limit '
-                'is currently set to %i to avoid accidental compute intensive '
-                'commands from overwhelming system resources.'
-                % (n, N_MAX_TS_SAFETY))
+            'Received %i time series to plot. Refusing since safety limit '
+            'is currently set to %i to avoid accidental compute intensive '
+            'commands from overwhelming system resources.'
+            % (n, N_MAX_TS_SAFETY))
 
     # get independent variable (time) vectors
     times_ = []
@@ -454,7 +454,6 @@ class TimeSeriesPlot(object):
 
         # main plot
         x, y, y_err, x_err = data = sanitize_data(x, y, y_err, x_err)
-
         ebar_art = ax.errorbar(*data, label=label, zorder=self.zorder0,
                                **styles.errorbar)
 
@@ -463,19 +462,13 @@ class TimeSeriesPlot(object):
         # set axes limits
         lims = []
         for xy, p, e in zip((x, y), self.plims, (x_err, y_err)):
-            lims.append(get_percentile_limits(x, p, e))
-
-        # y_lims = get_percentile_limits(y, self.plims[1], y_err)
-        # print('ylims', y_lims)
-        # if not np.isfinite([x_lims, y_lims]).all():
-        #     print('NON FINITE!')
-        #     from IPython import embed
-        #     embed()
+            lims.append(get_percentile_limits(xy, p, e))
 
         for lim, xy in zip(lims, 'xy'):
             l, u = getattr(self, f'{xy}_lim')
             new_lim = np.array([min(lim[0], l), max(lim[1], u)])
 
+            # check compat with scale
             scale = self.kws[f'{xy}scale']
             if scale == 'log':
                 neg = ([x, y][xy == 'y'] <= 0)
@@ -487,9 +480,9 @@ class TimeSeriesPlot(object):
                 #     self.kws[f'{xy}scale'] = 'symlog'
                 if new_lim[0] <= 0:  # FIXME: both could be smaller than 0
                     logger.warning(
-                            'Requested negative limits on log scaled axis. '
-                            'Using smallest positive data element as lower '
-                            'limit instead.')
+                        'Requested negative limits on log scaled axis. '
+                        'Using smallest positive data element as lower '
+                        'limit instead.')
                     new_lim[0] = y[~neg].min()
             # print('new', new_lims)
             # set new limits
@@ -542,7 +535,7 @@ class TimeSeriesPlot(object):
     def plot_histogram(self, signal, **props):
         #
         self.hist.append(
-                self.hax.hist(np.ma.compressed(signal), **props)
+            self.hax.hist(np.ma.compressed(signal), **props)
         )
 
         self.hax.grid(True)
@@ -674,9 +667,9 @@ def plot(*data, **kws):
         if labels is None:
             labels = keys[0]
 
-    # parse data args
-    times, signals, y_err, x_err = get_data(data, kws.relative_time)
-    n = len(signals)
+    # parse data args: times, signals, y_err, x_err
+    data = get_data(data, kws.relative_time)
+    n = len(data[1])  # signals
 
     # print(list(map(np.shape, (times, signals, y_err, x_err))))
 
@@ -700,13 +693,12 @@ def plot(*data, **kws):
     # print('before zip:', len(times), len(signals), len(errors))
     # Do the plotting
     # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-    # noinspection NonAsciiCharacters
-    for i, (x, y, σy, σx, label) in enumerate(itt.zip_longest(
-            times, signals, y_err, x_err, labels)):
-
+    # zip_longest in case errors or times are empty sequences
+    for i, (x, y, σy, σx, label, yo) in enumerate(itt.zip_longest(
+            *data, labels, kws.offsets)):
         # print(np.shape(x), np.shape(y), np.shape(y_err), np.shape(x_err))
-
-        # zip_longest in case errors or times are empty sequences
+        # if yo:
+        #     y = y + yo
         tsp.plot_ts(ax, x, y, σy, σx, label, kws.show_errors,
                     kws.show_masked, show_hist, kws.relative_time, styles)
 
@@ -741,9 +733,9 @@ def plot(*data, **kws):
         # FIXME: maybe warn if both draggable and show_hist
         # make the artists draggable
         from graphing.draggable import DraggableErrorbar
-        plots = DraggableErrorbar(tsp.art, offsets=kws.offsets,
-                                  linked=tsp._linked,
-                                  **tsp.styles.legend)
+        tsp.plots = DraggableErrorbar(tsp.art, offsets=kws.offsets,
+                                      linked=tsp._linked,
+                                      **tsp.styles.legend)
         # TODO: legend with linked plots!
 
     else:
@@ -777,38 +769,39 @@ def convert_mask_to_intervals(a, mask=None):
 
 
 def time_phase_plot(P, toff=0, **figkws):
-    from matplotlib.transforms import Affine2D
-    from .dualaxes import DualAxes
+
     fig = plt.figure(**figkws)
 
     aux_trans = Affine2D().translate(-toff, 0).scale(P)
     ax = DualAxes(fig, 1, 1, 1, aux_trans=aux_trans)
     ax.setup_ticks()
-    ax.parasite.set_xlabel('Orbital Phase')
     fig.add_subplot(ax)
+
+    ax.parasite.yaxis.offsetText.set_visible(False)
+    ax.parasite.set_xlabel('Time (s)')
+    ax.set_xlabel('Orbital Phase')
 
     return fig, ax
 
 
 def phase_time_plot(P, toff=0, **figkws):
-    from matplotlib.transforms import Affine2D
-    from graphing.dualaxes import DualAxes
     fig = plt.figure(**figkws)
 
     aux_trans = Affine2D().translate(-toff, 0).scale(1 / P)
     ax = DualAxes(fig, 1, 1, 1, aux_trans=aux_trans)
     ax.setup_ticks()
-    ax.set_xlabel('Orbital Phase')
     fig.add_subplot(ax)
+
+    ax.set_xlabel('Orbital Phase')
 
     return fig, ax
 
 
+# TODO: PeriodicTS(t, data, p).fold_plot(mean, std, extrema, style='|')
+#  this would make a neater API
+
 def plot_folded_lc(ax, phase, stats, p, twice=True, sigma=1., orientation='h',
                    colours=('b', '0.5', '0.5')):
-    # TODO: PeriodicTS(t, data, p).fold_plot(mean, std, extrema, style='|')
-    #  this would make a neater API
-
     """
     plot folded lc mean/max/min/std
 
@@ -865,6 +858,7 @@ def plot_folded_lc(ax, phase, stats, p, twice=True, sigma=1., orientation='h',
     ax.figure.tight_layout()
     # return fig
 
+
 # def plot_masked_intervals(self, ax, t, mask):
 #     """
 #     Highlight the masked values within the time series with a span across
@@ -897,3 +891,161 @@ def plot_folded_lc(ax, phase, stats, p, twice=True, sigma=1., orientation='h',
 #         ax.legend(plots, labels, **self.dopts.legend)
 #
 #
+
+#
+# def sexa(h, pos=None):
+#     m = abs((h - int(h)) * 60)
+#     sign = '-' if h < 0 else ''
+#     return '{}{:2,d}ʰ{:02,d}ᵐ'.format(sign, abs(int(h)), int(m))
+
+
+def make_twin(ax, tick_label_angle=0, period=1):
+    from graphing.ticks import SexagesimalFormatter
+
+    # make transform
+    axp = ax.twin(Affine2D().translate(0, 0).scale(1 / period / 86400))  # / 24
+    # make ticks
+    axp.xaxis.set_major_locator(ticker.MultipleLocator(30 * 60))
+    axp.xaxis.set_major_formatter(
+        SexagesimalFormatter(precision='m0', unicode=True))
+    ax.xaxis.set_ticklabels([])
+    axp.yaxis.set_ticks([])
+
+    if tick_label_angle:
+        axp.tick_params(pad=0)
+        ticklabels = axp.xaxis.get_majorticklabels()
+        for label in ticklabels:
+            label.set_ha('left')
+            label.set_rotation(tick_label_angle)
+            label.set_rotation_mode('anchor')
+
+    return axp
+
+
+def phased_multi_axes(times, data, std, ephemeris, thin=1,
+                      colours='midnightblue', ylim_shrink=0.8,
+                      subplot_kw=None, gridspec_kw=None, **kws):
+    """
+
+    Parameters
+    ----------
+    times
+    data
+    std
+    ephemeris
+    thin
+    colours
+    subplot_kw
+    gridspec_kw
+
+    Returns
+    -------
+
+    """
+    from mpl_toolkits.axes_grid1.parasite_axes import SubplotHost
+
+    # sharex=True, # not sharing x since it shares
+    # all the ticks which is NOT desired here.
+    # instead set range for all
+    # NOTE: could try:
+    # for tck in ax.xaxis.get_major_ticks():
+    #       tck.label1.set_visible(True)
+
+    n = len(times)
+    fig, axes = plt.subplots(n, 1,
+                             sharey=True,
+
+                             subplot_kw=subplot_kw,
+                             gridspec_kw=gridspec_kw
+                             )
+
+    # hack to get dual axes on topmost
+    pos = axes[0].get_position()
+    axes[0].remove()
+
+    ax = fig.axes[0] = axes[0] = SubplotHost(fig, n, 1, 1, **subplot_kw)
+    axp = make_twin(ax, 45, ephemeris.P)
+    fig.add_subplot(ax)
+    ax.set_position(pos)
+
+    # get colours
+    if not isinstance(colours, (list, tuple, np.ndarray)):
+        colours = [colours] * n
+
+    # plot options
+    opts = dict(fmt='o', ms=1, alpha=0.75, clip_on=False)
+    opts.update(**kws)
+
+    # do plotting
+    s = np.s_[::thin]
+    xlim = [np.inf, -np.inf]
+    ylim = [np.inf, -np.inf]
+    for i, (ax, t, y, u) in enumerate(zip(axes, times, data, std)):
+        first = (i == 0)
+        last = (i == n - 1)
+
+        #
+        phase = ephemeris.phase(t)
+        phase -= max(np.floor(phase[0]) + 1, 0)
+        if np.all(phase < 0):
+            phase += 1
+
+        ebc = ax.errorbar(phase[s], y[s], u if u is None else u[s],
+                          color=colours[i], **opts)
+
+        xlim = [min(xlim[0], phase[0]),
+                max(xlim[1], phase[-1])]
+        ylim = [min(ylim[0], y.min()),
+                max(ylim[1], y.max())]
+
+        # ticks
+        ax.tick_params('y', which='minor', length=2.5, left=True, right=True)
+        ax.tick_params('y', which='major', length=5, left=True, right=True)
+        ax.yaxis.set_minor_locator(ticker.AutoMinorLocator())
+
+        if last:
+            ax.tick_params('x', which='minor', length=2.5, bottom=(not first),
+                           top=(not last))
+            ax.tick_params('x', which='major', length=5, bottom=(not first),
+                           top=(not last))
+            ax.xaxis.set_minor_locator(ticker.AutoMinorLocator())
+        else:
+            ax.tick_params('x', length=0)
+
+        # remove top & bottom spines
+        if not first:
+            ax.spines['top'].set_visible(False)
+
+        if not last:
+            ax.spines['bottom'].set_visible(False)
+            ax.xaxis.set_ticklabels([])
+
+        ax.tick_params(labelright=True, labelleft=True)
+        ax.grid(True)
+
+    # axes limits
+    stretch = np.ptp(xlim) * 0.025
+    xlim = np.add(xlim, [-stretch, stretch])
+    ylim[1] *= ylim_shrink
+    for ax in axes:
+        ax.set(xlim=xlim, ylim=ylim)
+
+    # axes[0].set_ylim(-0.15, 1.65)
+
+    # x label
+    axes_label_font_spec = dict(weight='bold', size=14)
+    ax.set_xlabel('Orbital Phase', fontdict=axes_label_font_spec)
+
+    # y label
+    y_middle = 0.5  # (fig.subplotpars.top - fig.subplotpars.bottom) / 2
+    for x, va in zip((0.01, 1), ('top', 'bottom')):
+        fig.text(x, y_middle, 'Relative Flux', axes_label_font_spec,
+                 rotation=90, rotation_mode='anchor',
+                 ha='center', va=va)
+
+    # top ticks
+    # axp.xaxis.set_ticks(np.r_[-2.5:3.5:0.5])
+    axp.set_xlabel('Time (hours)', fontdict=dict(weight='bold'))
+    axp.tick_params('x', which='minor', length=2.5, bottom=False,
+                    top=True)
+    return fig

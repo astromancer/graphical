@@ -1,7 +1,11 @@
+
+import datetime
 from matplotlib import ticker
 from matplotlib import scale as mscale
-from matplotlib.transforms import (blended_transform_factory as btf,
-                                   IdentityTransform)
+from matplotlib.dates import AutoDateFormatter, AutoDateLocator
+from matplotlib.dates import date2num
+from matplotlib.transforms import (IdentityTransform, Affine2D,
+                                   blended_transform_factory as btf,)
 from mpl_toolkits.axes_grid1.parasite_axes import SubplotHost
 
 # from recipes.decor import expose
@@ -12,7 +16,6 @@ from graphing.ticks import locator_factory, formatter_factory, AutoMinorLocator
 from .transforms import ReciprocalTransform
 
 
-# ****************************************************************************************************
 class ReciprocalScale(mscale.ScaleBase):  # FIXME
     """
     Scales data in range (0, inf) using a reciprocal scale.
@@ -53,7 +56,8 @@ class ReciprocalScale(mscale.ScaleBase):  # FIXME
         """
         Override to set up the locators and formatters to use with the
         scale.  This is only required if the scale requires custom
-        locators and formatters."""
+        locators and formatters.
+        """
 
         majloc = axis.major.locator
 
@@ -82,19 +86,21 @@ class ReciprocalScale(mscale.ScaleBase):  # FIXME
 # mscale.register_scale( ReciprocalScale )
 
 
-# ****************************************************************************************************
 class DualAxes(SubplotHost):
-    # NOTE: there are 2 options for how to tick / format the parasite axis. Independently, or based on
+    # NOTE: there are 2 options for how to tick / format the parasite axis.
+    # Independently, or based on
     # NOTE:  the aux_trnas.  TODO: Make the option explicit...
     def __init__(self, *args, **kws):
 
         # self.xtrans =  kws.pop( 'xtrans', IdentityTransform() )
         # self.ytrans =  kws.pop( 'ytrans', IdentityTransform() )
-        aux_trans = kws.pop('aux_trans', btf(IdentityTransform(), IdentityTransform()))
-        SubplotHost.__init__(self, *args, **kws)  # self.__class__, self
+        # btf(IdentityTransform(), IdentityTransform()
+        aux_trans = kws.pop('aux_trans', Affine2D.identity())
+        super().__init__(*args, **kws)  # self.__class__, self
 
         # Initialize the parasite axis
-        self.parasite = self.twin(aux_trans)  # ax2 is responsible for "top" axis and "right" axis
+        self.parasite = self.twin(aux_trans)
+        # ax2 is responsible for "top" axis and "right" axis
 
     def setup_ticks(self, minor=False):
 
@@ -134,7 +140,8 @@ class DualAxes(SubplotHost):
         # similarly for the minor locator
         # TransMinorLocator = locator_factory( self.xaxis.get_minor_locator(),
         #                                     self.transAux )
-        self.parasite.xaxis.set_minor_locator(AutoMinorLocator(2))  # TransMinorLocator() )
+        self.parasite.xaxis.set_minor_locator(
+            AutoMinorLocator(2))  # TransMinorLocator() )
 
     def set_formatters(self):
 
@@ -150,7 +157,8 @@ class DualAxes(SubplotHost):
         # Set the minor tick formatter#
         MinorScalarFormatter = formatter_factory(
             ticker.ScalarFormatter(useOffset=False))
-        msf = ticker.ScalarFormatter(useOffset=False)  # MinorScalarFormatter()                  #instance
+        # MinorScalarFormatter()                  #instance
+        msf = ticker.ScalarFormatter(useOffset=False)
         self.xaxis.set_minor_formatter(msf)
         self.parasite.xaxis.set_minor_formatter(MinorScalarFormatter())
 
@@ -175,7 +183,6 @@ class DualAxes(SubplotHost):
     # return 'x=%s y=%s y`=%s' % (xs, ys, yps)
 
 
-# ****************************************************************************************************
 class ResiDualAxes(DualAxes):
     def setup_ticks(self):
         # Tick setup for both axes
@@ -196,7 +203,6 @@ class ResiDualAxes(DualAxes):
         self.set_formatters()
 
 
-# ****************************************************************************************************
 class TimePhaseDualAxes(DualAxes):  # NOTE: might be better as a function?
     """ """
 
@@ -227,28 +233,24 @@ class PhaseTimeDualAxes(DualAxes):
 # return '{:02,d}:{:02,d}:{:02,d}'.format(int(h),int(m),int(s))
 
 
-##****************************************************************************************************
+# ****************************************************************************************************
 # from matplotlib.ticker import FuncFormatter
 
 # class SexaTimeDualAxes( DualAxes ):
-##def __init__(self, *args, **kw):
+# def __init__(self, *args, **kw):
 
 # DualAxes.__init__( self, *args, **kw )
 
 # fmt = FuncFormatter(sexa)
 # self.parasite.xaxis.set_major_formatter(fmt)
 
-##def setup_ticks(self):
+# def setup_ticks(self):
 # for label in self.parasite.get_xticklabels():
 # label.set_ha('left')
 # label.set_rotation(30)
 
 
 # ****************************************************************************************************
-import datetime
-from matplotlib.dates import date2num
-from matplotlib.dates import AutoDateFormatter, AutoDateLocator
-from matplotlib.transforms import Affine2D
 
 
 # from IPython import embed
@@ -256,7 +258,7 @@ from matplotlib.transforms import Affine2D
 # class HackedDateLocator(AutoDateLocator):
 # """AutoDateLocator borks on viewlim_to_dt"""
 # def viewlim_to_dt(self):
-##embed()
+# embed()
 # vi = self.axis.get_view_interval()[None].T
 # xy = np.c_[vi, np.zeros_like(vi)]
 # vpi = self.axis.axes.transAux.inverted().transform(xy).T[0]
@@ -265,7 +267,6 @@ from matplotlib.transforms import Affine2D
 # print(  num2date(vpi) )
 # return num2date(vpi)
 
-# ****************************************************************************************************
 class DateTimeDualAxes(DualAxes):  # TODO: get a better descriptive name
     scales = {'s': 24 * 60 * 60,
               'm': 24 * 60,
@@ -337,8 +338,8 @@ class DateTimeDualAxes(DualAxes):  # TODO: get a better descriptive name
         # for label in ticklabels:
         # bbox = label.get_window_extent()
         # canvas.restore_region(patch, bbox)
-        ##label.set_visible(False)
-        ##label.draw(self.figure._cachedRenderer)
+        # label.set_visible(False)
+        # label.draw(self.figure._cachedRenderer)
         # canvas.blit(bbox)
 
         # label.set_visible(True)
@@ -354,10 +355,6 @@ class DateTimeDualAxes(DualAxes):  # TODO: get a better descriptive name
         # canvas.mpl_disconnect(self.cid)  #disconnect callback.
 
 
-# ****************************************************************************************************
-
-
-# ****************************************************************************************************
 class TimeFreqDualAxes(SubplotHost):
     def __init__(self, *args, **kw):
         xax = kw.pop('xax', 'f')
@@ -403,8 +400,8 @@ class TimeFreqDualAxes(SubplotHost):
         # return 'f = {}; p = {};\ty = {}'.format( x, p, y )
 
 
-# ****************************************************************************************************
-class TimeFreqDualAxes2(DualAxes):  # TODO: rename PeriodFrequencyDual? also FrequencyPeriodDual??
+# TODO: rename PeriodFrequencyDual? also FrequencyPeriodDual??
+class TimeFreqDualAxes2(DualAxes):
     # FIXME: TICKS BREAK WHEN RANGE SPANS 0
     def __init__(self, *args, **kw):
 
@@ -413,7 +410,8 @@ class TimeFreqDualAxes2(DualAxes):  # TODO: rename PeriodFrequencyDual? also Fre
         aux_trans = kw.pop('aux_trans', btf(ReciprocalTransform(),
                                             IdentityTransform()))
 
-        DualAxes.__init__(self, *args, aux_trans=aux_trans, **kw)  # self.__class__, self
+        DualAxes.__init__(self, *args, aux_trans=aux_trans,
+                          **kw)  # self.__class__, self
 
         if xax.lower().startswith('f'):
             self.frequency_axis, self.period_axis = self.xaxis, self.parasite.xaxis
@@ -445,10 +443,10 @@ class TimeFreqDualAxes2(DualAxes):  # TODO: rename PeriodFrequencyDual? also Fre
 
         # Set the minor tick formatter#
         # class MajorPerFormatter(ticker.ScalarFormatter):
-        ##def __call__(self, x, pos=None):
+        # def __call__(self, x, pos=None):
 
         # def set_locs(self, locs):
-        ##print(locs)
+        # print(locs)
         # 'set the locations of the ticks'
         # locs = locs[~np.isinf(locs)]
         # super(MajorPerFormatter, self).set_locs(locs)

@@ -14,21 +14,21 @@ from matplotlib import use
 use('QT5Agg')
 
 from matplotlib.backends.backend_qt5 import (
-    FigureCanvasQT as FigureCanvas, NavigationToolbar2QT as NavigationToolbar)
+    FigureCanvasQT as FigureCanvas, NavigationToolbar2QT as NavigationToolbar
+)
 from matplotlib.figure import Figure
 from matplotlib import pyplot as plt
 
+import numpy as np
+
 # from PyQt5 import QtCore, QtGui, QtWidgets
 SIGNAL = QtCore.Signal
-
-import numpy as np
 
 
 # from decor import expose, profile
 
 # __all__ = []
 
-# ****************************************************************************************************
 class MultiTabNavTool(QtWidgets.QWidget):
     def __init__(self, canvases, tabs, parent=None):
         """
@@ -67,46 +67,37 @@ class MultiTabNavTool(QtWidgets.QWidget):
 
 class MplMultiTab(QtWidgets.QMainWindow):
 
-    def __init__(self, parent=None, figures=[], labels=[], title=None):
+    def __init__(self, parent=None, figures=(), labels=(), title=None):
         QtWidgets.QMainWindow.__init__(self, parent)
         title = title or 'MplMultiTab'
         self.setWindowTitle(title)
 
+        #
         self.canvases = []
 
+        self.main_frame = QtWidgets.QWidget()
+        self.tabWidget = QtWidgets.QTabWidget(self.main_frame)
+
+        # Create the navigation toolbar - still empty
+        self.mpl_toolbar = MultiTabNavTool(self.canvases, self.tabWidget,
+                                           self.main_frame)
+
+        self.create_tabs(figures, labels)
+
+        self.vbox = QtWidgets.QVBoxLayout()
+        self.vbox.addWidget(self.mpl_toolbar)
+        self.vbox.addWidget(self.tabWidget)
+        # vbox.addLayout(hbox)
+
+        self.main_frame.setLayout(self.vbox)
+        self.setCentralWidget(self.main_frame)
+
         # self.create_menu()
-        self.create_main_frame(figures, labels)
-        self.create_status_bar()
+        # self.create_main_frame(figures, labels)
+        # self.create_status_bar()
 
         # self.textbox.setText('1 2 3 4')
         # self.on_draw()
-
-    def save_plots(self, filenames, path=''):
-        import os
-        # file_choices = "PNG (*.png)|*.png"
-        # path = str(QFileDialog.getSaveFileName(self,
-        # 'Save file', '',
-        # file_choices))
-        path = os.path.realpath(path) + os.path.sep
-        ntabs = len(self.canvases)
-        if isinstance(filenames, str):
-            if not '{' in filenames:  # no format str specifier
-                filenames = filenames + '{}'  # append numerical
-            filenames = [filenames.format(i) for i in range(ntabs)]
-
-        for i, canvas in enumerate(self.canvases):
-            filename = filenames[i]
-            root, name = os.path.split(filename)
-            if root:
-                savename = filename
-            else:
-                savename = os.path.join(path, filename)
-
-            canvas.figure.savefig(savename)
-
-        # if path:
-        # self.canvas.print_figure(path, dpi=self.dpi)
-        # self.statusBar().showMessage('Saved to %s' % path, 2000)
 
     def on_about(self):
         msg = """ doom dooom doom... doom di doom DOOOOOOM!!!!
@@ -212,7 +203,6 @@ class MplMultiTab(QtWidgets.QMainWindow):
         # vbox.addLayout(hbox)
 
         self.main_frame.setLayout(vbox)
-
         self.setCentralWidget(self.main_frame)
 
     # @print_args()
@@ -238,17 +228,17 @@ class MplMultiTab(QtWidgets.QMainWindow):
 
         return canvas
 
-    def add_figure(self):
-        """
-        Create a figure from data and add_tab.  To be over-written by subclass.
-        Useful when multiple figures of the same kind populate the tabs.
-        """
-        fig = Figure()
-        fig.add_subplot(111)
-        # Since we have only one plot, we can use add_axes instead of add_subplot, but then the subplot
-        # configuration tool in the navigation toolbar wouldn't  work.
-
-        self.add_tab(fig)
+    # def add_figure(self):
+    #     """
+    #     Create a figure from data and add_tab.  To be over-written by subclass.
+    #     Useful when multiple figures of the same kind populate the tabs.
+    #     """
+    #     fig = Figure()
+    #     fig.add_subplot(111)
+    #     # Since we have only one plot, we can use add_axes instead of add_subplot, but then the subplot
+    #     # configuration tool in the navigation toolbar wouldn't  work.
+    #
+    #     self.add_tab(fig)
 
     def create_status_bar(self):
         self.status_text = QtWidgets.QLabel("This is a demo")
@@ -297,6 +287,40 @@ class MplMultiTab(QtWidgets.QMainWindow):
     #         action.setCheckable(True)
     #     return action
 
+    def save_figures(self, template=None, filenames=(), path=''):
+        """
+
+        Parameters
+        ----------
+        template
+        filenames
+        path
+
+        Returns
+        -------
+
+        """
+        from pathlib import Path
+
+        # file_choices = "PNG (*.png)|*.png"
+        # path = str(QFileDialog.getSaveFileName(self, 'Save file', '',
+        #            file_choices))
+        path = Path(path)
+        n_tabs = len(self.canvases)
+        if not filenames and template:
+            filenames = list(map(template.format, range(n_tabs)))
+
+        for i, canvas in enumerate(self.canvases):
+            filename = Path(filenames[i])
+            if not filename.is_absolute():
+                filename = path / filename
+
+            canvas.figure.savefig(filename)
+
+        # if path:
+        # self.canvas.print_figure(path, dpi=self.dpi)
+        # self.statusBar().showMessage('Saved to %s' % path, 2000)
+
 
 class MplMultiTab2D(QtWidgets.QMainWindow):
     """Combination tabs display matplotlib canvas"""
@@ -326,10 +350,9 @@ class MplMultiTab2D(QtWidgets.QMainWindow):
 
         # create the tab bars
         self.tabbars = []
-        for loc, lbls in zip(
-                (QtWidgets.QTabBar.RoundedWest, QtWidgets.QTabBar.RoundedNorth),
-                self.labels):
-            tabs = self._create_tabs(loc, lbls)
+        wn = (QtWidgets.QTabBar.RoundedWest, QtWidgets.QTabBar.RoundedNorth)
+        for loc, labels in zip(wn, self.labels):
+            tabs = self._create_tabs(loc, labels)
             tabs.currentChanged.connect(self.tab_change)
             self.tabbars.append(tabs)
         self.tabsWest, self.tabsNorth = self.tabbars
@@ -350,9 +373,9 @@ class MplMultiTab2D(QtWidgets.QMainWindow):
                 # print(self._rows*i + j)
                 # print(fig)
                 canvas = fig.canvas
-                navtool = NavigationToolbar(canvas, self.toolstack)
+                nav_tool = NavigationToolbar(canvas, self.toolstack)
                 self.stack.addWidget(canvas)
-                self.toolstack.addWidget(navtool)
+                self.toolstack.addWidget(nav_tool)
 
                 plt.close()
 
@@ -370,8 +393,8 @@ class MplMultiTab2D(QtWidgets.QMainWindow):
     def tab_change(self):
         """Called upon change of tab"""
         i, j = self.tabsWest.currentIndex(), self.tabsNorth.currentIndex()
-        nrows, ncols = self.figures.shape
-        ix = i * ncols + j
+        n_rows, n_cols = self.figures.shape
+        ix = i * n_cols + j
         # print( 'shape:', self.figures.shape )
         # print(i,j, ix)
         # print()
@@ -390,64 +413,16 @@ class MplMultiTab2D(QtWidgets.QMainWindow):
         # 'Save file', '',
         # file_choices))
         path = os.path.realpath(path) + os.path.sep
-        ntabs = len(self.canvases)
+        n_tabs = len(self.canvases)
         if isinstance(filenames, str):
-            if not '{' in filenames:  # no format str specifier
+            if '{' not in filenames:  # no format str specifier
                 filenames = filenames + '{}'  # append numerical
-            filenames = [filenames.format(i) for i in range(ntabs)]
+            filenames = [filenames.format(i) for i in range(n_tabs)]
 
         for i, canvas in enumerate(self.canvases):
             filename = filenames[i]
             root, name = os.path.split(filename)
-            if root:
-                savename = filename
-            else:
-                savename = os.path.join(path, filename)
+            if not root:
+                filename = os.path.join(path, filename)
 
-            canvas.figure.savefig(savename)
-
-
-if __name__ == "__main__":
-    import numpy as np
-
-    # Example use
-    colours = 'rgb'
-    figures, labels = [], []
-    for i in range(3):
-        fig, ax = plt.subplots()
-        ax.plot(np.random.randn(100), colours[i])
-        figures.append(fig)
-        labels.append('Tab %i' % i)
-
-    app = QtWidgets.QApplication(sys.argv)
-    ui = MplMultiTab(figures=figures, labels=labels)
-    ui.show()
-    # from IPython import embed
-    # embed()
-    sys.exit(app.exec_())
-
-    # main()
-
-    # # FIXME: doesn't seem to work!!
-    # # import numpy as np
-    # from matplotlib import cm
-    #
-    # # Example use
-    # r, c, N = 4, 3, 100
-    # colours = iter(cm.spectral(np.linspace(0, 1, r * c)))
-    # figures = []
-    # row_labels, col_labels = [], []
-    # for i in range(r):
-    #     for j in range(c):
-    #         fig, ax = plt.subplots()
-    #         ax.plot(np.random.randn(N), color=next(colours))
-    #         figures.append(fig)
-    #
-    # row_labels = ['Row %i' % i for i in range(r)]
-    # col_labels = ['Col %i' % i for i in range(c)]
-    # labels = row_labels, col_labels
-    #
-    # app = QtGui.QApplication(sys.argv)
-    # ui = MplMultiTab2D(figures, labels, shape=(r, c))
-    # ui.show()
-    # sys.exit(app.exec_())
+            canvas.figure.savefig(filename)
