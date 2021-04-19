@@ -1,3 +1,4 @@
+import more_itertools as mit
 from recipes.array.neighbours import neighbours
 # from obstools.aps import ApertureCollection
 from recipes.misc import duplicate_if_scalar
@@ -13,8 +14,7 @@ from matplotlib.gridspec import GridSpec
 from matplotlib.widgets import Slider
 from mpl_toolkits.mplot3d import Axes3D
 from mpl_toolkits.axes_grid1 import AxesGrid, make_axes_locatable
-from recipes.logging import LoggingMixin
-from recipes.introspection.utils import get_module_name
+from recipes.logging import LoggingMixin, get_module_logger
 # from .zscale import zrange
 from .sliders import TripleSliders
 
@@ -28,7 +28,7 @@ from .utils import get_percentile_limits
 import itertools as itt
 
 # module level logger
-logger = logging.getLogger(get_module_name(__file__))
+logger = get_module_logger()
 
 
 # TODO: docstrings (when stable)
@@ -413,13 +413,13 @@ class FromNameMixin(object):
         Construct derived subtype from `method` string and `kws`
         """
 
-        from recipes.iter import itersubclasses
+        from recipes.oo import iter_subclasses
 
         if not isinstance(method, str):
             raise TypeError('method should be a string.')
 
         allowed_names = set()
-        for sub in itersubclasses(cls.__bases__[0]):
+        for sub in iter_subclasses(cls.__bases__[0]):
             name = sub.__name__
             if name.lower().startswith(method.lower()):
                 break
@@ -497,7 +497,7 @@ class ColourBarHistogram(LoggingMixin):  # PixelHistogram
         from matplotlib.collections import PolyCollection
         from matplotlib.colors import ListedColormap
 
-        self.log = kws.setdefault('log', True)
+        self.log = kws.pop('log', True)
         self.ax = ax
         self.image_plot = image_plot
         self.norm = image_plot.norm
@@ -521,7 +521,8 @@ class ColourBarHistogram(LoggingMixin):  # PixelHistogram
         self.cmap.set_under(under)
 
         # compute histogram
-        self.bins = self.counts = self.bin_edges = self.bin_centers = ()
+        self.bins = kws.pop('bins', self._default_n_bins)
+        self.counts = self.bin_edges = self.bin_centers = ()
         self.compute(self.get_array())
 
         # create collection
@@ -554,15 +555,15 @@ class ColourBarHistogram(LoggingMixin):  # PixelHistogram
         self.bars.set_verts(self.get_verts(self.counts, self.bin_edges))
         self.bars.set_array(self.norm(self.bin_centers))
 
-    def compute(self, data, bins=_default_n_bins, range=None):
+    def compute(self, data, bins=None, range=None):
 
         # compute histogram
-        self.bins = self._auto_bins(bins)  # TODO: allow passing
-        if range is None:
+        self.bins = self._auto_bins(bins or self.bins)
+        if range is None:  # FIXME: should be included in bins vector
             range = self._auto_range()
 
-        self.counts, self.bin_edges = \
-            np.histogram(_sanitize_data(data), self.bins, range)
+        self.counts, self.bin_edges = np.histogram(
+            _sanitize_data(data), self.bins, range)
         self.bin_centers = self.bin_edges[:-1] + np.diff(self.bin_edges)
 
     def get_verts(self, counts, bin_edges):
@@ -590,9 +591,10 @@ class ColourBarHistogram(LoggingMixin):  # PixelHistogram
         # self.counts, self.bin_edges = counts, bin_edges =\
         #     np.histogram(_sanitize_data(data), self.bins, rng)
 
-        # verts = self.get_verts(counts, bin_edges)
-        # self.bars.set_verts(verts)
-        #
+        self.bars.set_verts(
+            self.get_verts(self.counts, self.bin_edges)
+        )
+
         # bin_centers = bin_edges[:-1] + np.diff(bin_edges)
         # self.bars.set_array(self.norm(self.bin_centers))
         # note set_array doesn't seem to work correctly. bars outside the
@@ -601,14 +603,15 @@ class ColourBarHistogram(LoggingMixin):  # PixelHistogram
         self.bars.set_facecolors(self.cmap(self.norm(self.bin_centers)))
         return self.bars  # TODO: xtick labels if necessary
 
-    def _auto_bins(self, n=_default_n_bins):
-        bins = n
+    def _auto_bins(self, n=None):
+        bins = n or self.bins
         data = self.get_array()
 
         # unit bins for integer arrays containing small range of numbers
         if data.dtype.kind == 'i':  # integer array
             lo, hi = np.nanmin(data), np.nanmax(data)
             bins = np.arange(min(hi - lo, n) + 1)
+            # NOTE: this actually sets the range as well...
         return bins
 
     def _auto_range(self, stretch=1.2):
@@ -978,29 +981,30 @@ class ImageDisplay(LoggingMixin):
         self.sliders.connect()
 
 
-class AstroImageDisplay(ImageDisplay):
+# class AstroImageDisplay(ImageDisplay):
 
-    def clim_from_data(self, data, kws):
-        # colour transform / normalize
-        interval = kws.pop('interval', 'zscale')
-        stretch = kws.pop('stretch', 'linear')
+#     def clim_from_data(self, data, kws):
+#         # colour transform / normalize
+#         interval = kws.pop('interval', 'zscale')
+#         stretch = kws.pop('stretch', 'linear')
 
-        # note: ImageNormalize fills masked values.. this is clearly WRONG
-        #  since it will skew statistics on the image. important that data
-        #  passed to this function has been cleaned of masked values
-        # HACK: get limits ignoring masked pixels
-        #         # set the slider positions / color limits
+#         # note: ImageNormalize fills masked values.. this is clearly WRONG
+#         #  since it will skew statistics on the image. important that data
+#         #  passed to this function has been cleaned of masked values
+#         # HACK: get limits ignoring masked pixels
+#         #         # set the slider positions / color limits
 
-        self.norm = get_norm(data, interval, stretch)
-        # kws['norm'] = norm
-        clim = self.norm.interval.get_limits(data)
-        return clim
+#         self.norm = get_norm(data, interval, stretch)
+#         # kws['norm'] = norm
+#         clim = self.norm.interval.get_limits(data)
+#         return clim
 
 
 # ****************************************************************************************************
 class VideoDisplay(ImageDisplay):
     # FIXME: blitting not working - something is leading to auto draw
     # FIXME: frame slider bar not drawing on blit
+    # FIXME: HISTOGRAM values not updating on scroll
     # TODO: lock the sliders in place with button??
 
     _scroll_wrap = True  # scrolling past the end leads to the beginning
@@ -1233,7 +1237,7 @@ class VideoDisplay(ImageDisplay):
 
     def play(self, start=None, stop=None, pause=0):
         """
-        Show a video of images in the model space
+        Show a video of images in the stack
 
         Parameters
         ----------
