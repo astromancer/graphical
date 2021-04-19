@@ -1,7 +1,7 @@
-from recipes.oo.meta import flaggerFactory
+from recipes.oo.meta import flagger
 
 #
-ConnectionManager, mpl_connect = flaggerFactory(collection='_connections')
+ConnectionManager, mpl_connect = flagger.factory(collection='_connections')
 
 
 class ConnectionMixin(ConnectionManager):
