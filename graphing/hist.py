@@ -2,8 +2,8 @@ import numpy as np
 import matplotlib.pyplot as plt
 from recipes.logging import LoggingMixin
 
-from graphing.imagine import _sanitize_data
-from graphing.utils import percentile
+from scrawl.imagine import _sanitize_data
+from scrawl.utils import percentile
 
 
 def get_bins(data, bins, range=None):

@@ -3,7 +3,7 @@ better corner plots
 """
 
 import itertools as itt
-from graphing.scatter import scatter_density
+from scrawl.scatter import scatter_density
 
 from matplotlib import pyplot as plt
 from matplotlib.gridspec import GridSpec

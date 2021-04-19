@@ -10,7 +10,7 @@
 
 import numpy as np
 
-from graphing import ts
+from scrawl import ts
 from matplotlib import pyplot as plt
 import pytest
 
@@ -31,8 +31,10 @@ m = np.random.rand(len(y), n) > 0.8
 ym = np.ma.array(y, mask=m)
 
 
+# @pytest.mark.mpl_image_compare(baseline_dir = 'images',
+#                                 remove_text = True)
 @pytest.mark.parametrize(
-        "args",
+        'args',
         [  # basic
             (y[0],),
             # multiple series by index
@@ -63,7 +65,7 @@ def test_plot(args, **kws):
 #               **kws)
 
 
-plt.show()
+# plt.show()
 # raise err
 
 # TODO: more tests

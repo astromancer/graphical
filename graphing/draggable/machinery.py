@@ -12,7 +12,7 @@ from matplotlib.container import ErrorbarContainer
 from matplotlib.transforms import Affine2D, blended_transform_factory as btf
 from matplotlib.artist import Artist
 
-from graphing.interactive import ConnectionMixin, mpl_connect
+from scrawl.interactive import ConnectionMixin, mpl_connect
 from recipes.logging import LoggingMixin
 from recipes.decor import expose
 from recipes import pprint
@@ -33,7 +33,7 @@ logger = get_module_logger()
 # ==============================================================================
 def draggable_artist_factory(art, offset, annotate, **kws):
     if isinstance(art, ErrorbarContainer):
-        from graphing.draggable.errorbars import DraggableErrorbarContainer
+        from scrawl.draggable.errorbars import DraggableErrorbarContainer
         draggable = DraggableErrorbarContainer(art,
                                                offset=offset,
                                                annotate=annotate,
@@ -44,7 +44,7 @@ def draggable_artist_factory(art, offset, annotate, **kws):
         # returns the markers.
 
     if isinstance(art, Line2D):
-        # from graphing.draggable.lines import DraggableLine
+        # from scrawl.draggable.lines import DraggableLine
         return art, DraggableBase(art, offset, annotate, **kws)
 
     else:

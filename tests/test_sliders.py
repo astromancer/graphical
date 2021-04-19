@@ -4,7 +4,7 @@ import logging
 import numpy as np
 import matplotlib.pyplot as plt
 
-from graphing.sliders import ColourSliders
+from scrawl.sliders import ColourSliders
 
 root = logging.getLogger()
 # root.setLevel(logging.DEBUG)

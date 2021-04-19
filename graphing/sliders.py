@@ -15,7 +15,7 @@ from matplotlib.lines import Line2D
 import more_itertools as mit
 
 # from .interactive import ConnectionMixin, mpl_connect
-from graphing.draggable.machinery import DragMachinery
+from scrawl.draggable.machinery import DragMachinery
 # from recipes.iter import flatiter
 
 import operator as op

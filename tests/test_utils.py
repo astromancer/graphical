@@ -1,6 +1,6 @@
 import numpy as np
 
-from graphing.utils import get_percentile
+from scrawl.utils import get_percentile
 
 
 def test_plims(data, tolerance=1e-6):

@@ -1,1 +1,1 @@
-from graphing.draggable.errorbars import *
+from .draggable.errorbars import *

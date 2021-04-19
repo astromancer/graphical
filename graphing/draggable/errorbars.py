@@ -15,7 +15,7 @@ import more_itertools as mit
 
 from recipes.lists import flatten
 
-from graphing.connect import ConnectionMixin, mpl_connect
+from scrawl.connect import ConnectionMixin, mpl_connect
 
 # from PyQt4.QtCore import pyqtRemoveInputHook, pyqtRestoreInputHook
 # from decor.misc import unhookPyQt#, expose

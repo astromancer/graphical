@@ -732,7 +732,7 @@ def plot(*data, **kws):
     if kws.draggable and not show_hist:
         # FIXME: maybe warn if both draggable and show_hist
         # make the artists draggable
-        from graphing.draggable import DraggableErrorbar
+        from scrawl.draggable import DraggableErrorbar
         tsp.plots = DraggableErrorbar(tsp.art, offsets=kws.offsets,
                                       linked=tsp._linked,
                                       **tsp.styles.legend)
@@ -900,7 +900,7 @@ def plot_folded_lc(ax, phase, stats, p, twice=True, sigma=1., orientation='h',
 
 
 def make_twin(ax, tick_label_angle=0, period=1):
-    from graphing.ticks import SexagesimalFormatter
+    from scrawl.ticks import SexagesimalFormatter
 
     # make transform
     axp = ax.twin(Affine2D().translate(0, 0).scale(1 / period / 86400))  # / 24

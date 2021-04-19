@@ -1,5 +1,5 @@
 import pylab as plt
-from graphing.imagine import ImageDisplay
+from scrawl.imagine import ImageDisplay
 import numpy as np
 
 data = np.random.random((100, 100))
@@ -13,4 +13,4 @@ ImageDisplay(data)
 # sliders = AxesSliders(ax, 0.2, 0.7, slide_axis='y')
 # sliders.connect()
 
-plt.show()
+# plt.show()
