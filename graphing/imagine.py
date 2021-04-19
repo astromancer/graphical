@@ -352,7 +352,58 @@ def plot_image_grid(images, layout=(), titles=(), title_kws=None, figsize=None,
         imd.histogram.set_array(pixels)
         imd.histogram.autoscale_view()
 
-    return fig, axes, imd
+    return ImageGrid(fig, axes, imd)
+
+
+class ImageGrid:
+    def __init__(self, fig, axes, imd):
+        self.fig = fig
+        self.axes = axes
+        self.imd = imd
+
+    def __iter__(self):
+        yield from (self.fig, self.axes, self.imd)
+
+    def save(self, filenames):
+        from matplotlib.transforms import Bbox
+
+        fig = self.fig
+
+        assert len(filenames) == self.axes.size
+
+        ax_per_image = (len(fig.axes) // self.axes.size)
+        # axit = mit.chunked(self.fig.axes, ax_per_image)
+
+        for ax, name in zip(self.axes.ravel(), filenames):
+            mn, mx = (np.inf, np.inf), (0, 0)
+            # for ax in axes[::-1]:
+            #     # Save just the portion _inside_ the second axis's boundaries
+            #     mn1, mx1 = ax.get_window_extent().transformed(
+            #         fig.dpi_scale_trans.inverted()).get_points()
+            #     mn = np.min((mn, mn1), 0)
+            #     mx = np.max((mx, mx1), 0)
+
+            #     ticklabels = ax.xaxis.get_ticklabels() + ax.yaxis.get_ticklabels()
+            #     for txt in ticklabels:
+            #         mn1, mx1 = txt.get_window_extent().transformed(
+            #         fig.dpi_scale_trans.inverted()).get_points()
+            #         mn = np.min((mn, mn1), 0)
+            #         mx = np.max((mx, mx1), 0)
+
+            # remove ticks
+            # ax.set_axis_off()
+            if len(ax.texts):
+                ax.texts[0].set_visible(False)
+                
+            fig.savefig(name, bbox_inches=ax.get_window_extent().transformed(
+                fig.dpi_scale_trans.inverted()).expanded(1.2, 1))
+
+        # Pad the saved area by 10% in the x-direction and 20% in the y-direction
+        # fig.savefig('ax2_figure_expanded.png', bbox_inches=extent.expanded(1.1, 1.2))
+
+    @property
+    def images(self):
+        return [ax.images[0].get_array() for ax in self.fig.axes]
 
 
 class FromNameMixin(object):
