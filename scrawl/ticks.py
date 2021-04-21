@@ -1,44 +1,26 @@
+
+"""
+Additional matplotlib axes tick formatters
+"""
+
+
 import warnings
 
 import numpy as np
 from scipy.stats import mode
-
 from matplotlib import ticker
 from matplotlib.transforms import (Transform,
                                    IdentityTransform,
-                                   ScaledTranslation
-                                   )
+                                   ScaledTranslation)
 
-from recipes import pprint
+from recipes import pprint as ppr
 
 from .transforms import ReciprocalTransform
 
 
-# ==============================================================================
-def formatter_factory(formatter, tolerance=1e-6):
-    # TODO: formatter_unique_factory     better name for this factory
-    # NOTE: This class is esentially a HACK
-    # NOTE: probably better to have some structure that takes both major and
-    #  minor locators
-    # GloballyUniqueLocator?? with  get_ticklocs    method
-    """
-    Create a tick formatter class which, when called eliminates duplicates
-    between major/minor ticks (to within given tolerance before invoking the
-    parent formatter's call method.
-    """
-    FormatterClass = formatter.__class__
-
-    # **************************************************************************
-    class NoDuplicateTicksFormatter(FormatterClass):
-        def __call__(self, x, pos=None):
-            """function that eliminates duplicate tick labels"""
-
-            if np.any(abs(self.axis.get_ticklocs() - x) < tolerance):
-                return ''
-            return super(NoDuplicateTicksFormatter, self).__call__(x, pos)
-
-    return NoDuplicateTicksFormatter
-
+# ---------------------------------------------------------------------------- #
+# Locators                                                                     #
+# ---------------------------------------------------------------------------- #
 
 # TODO: NoOverlappingTicksFormatter.
 #  NOTE: Probably not necessary if you choose appropriate locators
@@ -51,18 +33,14 @@ def locator_transform_factory(locator, transform):
     """
     # _locator = expose.args()(locator)
 
-    LocatorClass = locator.__class__
-
     # **************************************************************************
-    class TransLocator(LocatorClass):
+    class TransLocator(locator.__class__):
         def __call__(self):
             locs = locator()
-            # try:
             locs = transform.transform(locs)  # [locs > transform.thresh]
             # FIXME: ValueError: total size of new array must be unchanged.
             #  when only a single tick on axis
-            # except ValueError as err:
-            #     print('FUCKup:',  locs, err)
+
             # if np.ma.is_masked(locs):
             # return locs[~locs.mask]
 
@@ -73,6 +51,75 @@ def locator_transform_factory(locator, transform):
 
 
 locator_factory = locator_transform_factory
+
+
+class AutoMinorLocator(ticker.AutoMinorLocator):
+    """
+    For some reason ticker.AutoMinorLocator does not remove overlapping minor ticks
+    adequately.  This class explicitly removes minor ticks that are in the same
+    location as major ticks.
+    """
+    tolerance = 1e-6
+
+    def __call__(self):
+        """
+        Return unique minor tick locations (ensure no duplicates with major ticks)
+        """
+        majorlocs = self.axis.get_majorticklocs()
+        locs = super().__call__()
+        kill = np.any(np.abs(majorlocs[:, None] - locs) < self.tolerance, 0)
+        return locs[~kill]
+
+
+class OffsetLocator(ticker.MaxNLocator):
+    """
+    Get the same tick locations as you would if plotting the variables with
+    offset subtracted
+    """
+    def __call__(self):
+        """Return the locations of the ticks."""
+        # Note, these are untransformed coordinates
+        off = self.axis.major.formatter.offset or 0
+        vmin, vmax = self.axis.get_view_interval() - off
+        return self.tick_values(vmin, vmax) + off
+
+
+# ---------------------------------------------------------------------------- #
+# Formatters                                                                   #
+# ---------------------------------------------------------------------------- #
+
+def formatter_factory(formatter, tolerance=1e-6):
+    """
+    Create a tick formatter class which, when called eliminates duplicates
+    between major/minor ticks (to within given tolerance before invoking the
+    parent formatter's call method.
+    """
+
+    # TODO: formatter_unique_factory     better name for this factory
+    # NOTE: This class is esentially a HACK
+    # NOTE: probably better to have some structure that takes both major and
+    #  minor locators
+    # GloballyUniqueLocator?? with  get_ticklocs    method
+
+    class NoDuplicateTicksFormatter(formatter.__class__):
+        def __call__(self, x, pos=None):
+            """function that eliminates duplicate tick labels"""
+
+            if np.any(abs(self.axis.get_ticklocs() - x) < tolerance):
+                return ''
+            return super().__call__(x, pos)
+
+    return NoDuplicateTicksFormatter
+
+
+class DegreeFormatter(ticker.Formatter):
+    def __init__(self, precision=0, radians=False):
+        self.precision = precision
+        self.scale = 180. / np.pi if radians else 1
+
+    def __call__(self, x, pos=None):
+        # \u00b0 : unicode degree symbol
+        return '{:.{}f}\u00b0'.format(x * self.scale, self.precision)
 
 
 class SexagesimalFormatter(ticker.Formatter):
@@ -86,34 +133,30 @@ class SexagesimalFormatter(ticker.Formatter):
         self.unicode = unicode
 
     def __call__(self, x, pos=None):
-        return pprint.hms(x, self.precision, self.sep, self.base_unit,
-                          self.short, self.unicode)
+        return ppr.hms(x, self.precision, self.sep, self.base_unit,
+                       self.short, self.unicode)
 
 
-class SwitchLogFormatter(ticker.Formatter):
-    """Switch between log and scalar format based on precision"""
-
-    def __init__(self, precision=2, mult_symb=r'\times'):
-        self.precision = int(precision)
-        self.mult_symb = mult_symb
+class InfiniteAwareness:
+    """
+    Mixin class for TransFormatters that handles representations for
+    infinity ∞
+    """
+    unicode = True
+    latex = False
 
     def __call__(self, x, pos=None):
-        return pprint.sci(x, self.precision, times=self.mult_symb)
+        xs = super(InfiniteAwareness, self).__call__(x, pos)
+
+        if xs == 'inf':
+            if self.latex:
+                return r'$\infty$'
+            if self.unicode:
+                return '∞'
+            return 'inf'
+        return xs  #
 
 
-# ****************************************************************************************************
-# class TransFormatter(ticker.ScalarFormatter):
-# _transform = IdentityTransform()
-
-# def __call__(self, x, pos=None):
-# with warnings.catch_warnings():
-# warnings.simplefilter("ignore")
-# xt = self._transform.transform(x)
-
-# return decimal_repr(xt, 3)
-
-
-# ****************************************************************************************************
 class TransFormatter(ticker.ScalarFormatter):
     _transform = IdentityTransform()
 
@@ -148,8 +191,7 @@ class TransFormatter(ticker.ScalarFormatter):
     #     return super(TransFormatter, self).__call__(xt, pos)
 
     # def pprint_val(self, x):
-    #     # make infinite if beyond threshold
-
+        # make infinite if beyond threshold
         if abs(x) > self.inf:
             x = np.sign(x) * np.inf
 
@@ -158,42 +200,58 @@ class TransFormatter(ticker.ScalarFormatter):
                 sign = '-' * int(x < 0)
                 return r'{}$\infty$'.format(sign)
 
-        return pprint.decimal(x, self.precision)
+        return ppr.decimal(x, self.precision)
 
 
-# ****************************************************************************************************
-class InfiniteAwareness(object):
-    """
-    Mixin class that formats inf as infinity symbol using either TeX or unicode
-    """
+# TODO: do this as a proper Scale.
+#  then ax.set_yscale('linear_rescale', scale=5)
+# or even ax.set_yscale('translate', offset=5)
 
-    def __call__(self, x, pos=None):
-        xs = super(InfiniteAwareness, self).__call__(x, pos)
-        if xs == 'inf':
-            return r'$\infty$'  # NOTE: unicode infinity:  u'\u221E'
-        else:
-            return xs  #
+
+class LinearScaleTransform(Transform):
+    input_dims = 1
+    output_dims = 1
+    is_separable = False
+    has_inverse = True
+
+    def __init__(self, scale):
+        Transform.__init__(self, 'scaled')
+        self.scale = float(scale)
+
+    def transform_affine(self, x):
+        return x * self.scale
+
+
+class LinearRescaleFormatter(TransFormatter):
+    def __init__(self, scale=1., infinite=1e15, useOffset=None,
+                 useMathText=True, useLocale=None):
+
+        tr = LinearScaleTransform(scale)
+        TransFormatter.__init__(self, tr, infinite, useOffset, useMathText,
+                                useLocale)
+
+        # FIXME: tick locations now at arb positions. re-locate...
 
 
 class ReciprocalFormatter(InfiniteAwareness, TransFormatter):
+    """
+    Reciprocal transform f(x) -> 1 / x
+    Useful for quantities that are inversely related. Like period - frequency
+    """
     _transform = ReciprocalTransform()
 
 
-# ****************************************************************************************************
-class DegreeFormatter(ticker.Formatter):
-    def __init__(self, precision=0, radians=False):
-        self.precision = precision
-        if radians:
-            self.scale = 180. / np.pi
-        else:
-            self.scale = 1
+class SciFormatter(ticker.Formatter):
+    """Switch between scientific and decimal formatting based on precision"""
+
+    def __init__(self, precision=2, times=r'\times'):
+        self.precision = int(precision)
+        self.times = times
 
     def __call__(self, x, pos=None):
-        # \u00b0 : unicode degree symbol
-        return '{:.{}f}\u00b0'.format(x * self.scale, self.precision)
+        return ppr.sci(x, self.precision, times=self.times)
 
 
-# ****************************************************************************************************
 class MetricFormatter(ticker.Formatter):
     """
     Formats axis values using metric prefixes to represent powers of 1000,
@@ -203,7 +261,7 @@ class MetricFormatter(ticker.Formatter):
     # the prefix for -6 is the greek letter mu
     # represented here by a TeX string
 
-    # The SI metric prefixes
+    # The SI metric prefixes  # TODO: this now in recipes.pprint
     METRIC_PREFIXES = {-24: "y",
                        -21: "z",
                        -18: "a",
@@ -259,33 +317,14 @@ class MetricFormatter(ticker.Formatter):
         # self.unitlabel.set_text( self.unit )
         if self.uselabel:
             label = self.axis.label.get_text()
-            if not self.unit in label:
+            if self.unit not in label:
                 ix = label.find('(') if '(' in label else None
                 label = label[:ix].strip()
-                self.axis.label.set_text('{}    ({})'.format(label, self.unit))
+                self.axis.label.set_text('{} ({})'.format(label, self.unit))
 
     def metric_format(self, num):
 
-        mant = num / (10 ** self.pow10)
+        mant = num / (10. ** self.pow10)
         formatted = self.format_str.format(mant)
 
         return formatted.strip()
-
-
-# ****************************************************************************************************
-class AutoMinorLocator(ticker.AutoMinorLocator):
-    """
-    For some reason ticker.AutoMinorLocator does not remove overlapping minor ticks
-    adequately.  This class explicitly removes minor ticks that are in the same
-    location as major ticks.
-    """
-    tolerance = 1e-6
-
-    def __call__(self):
-        """
-        Return unique minor tick locations (ensure no duplicates with major ticks)
-        """
-        majorlocs = self.axis.get_majorticklocs()
-        locs = super(self.__class__, self).__call__()
-        kill = np.any(np.abs(majorlocs[:, None] - locs) < self.tolerance, 0)
-        return locs[~kill]

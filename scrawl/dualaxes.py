@@ -10,8 +10,8 @@ from mpl_toolkits.axes_grid1.parasite_axes import SubplotHost
 
 # from recipes.decor import expose
 
-from scrawl.formatters import MetricFormatter
-from scrawl.ticks import locator_factory, formatter_factory, AutoMinorLocator
+from scrawl.ticks import (MetricFormatter, AutoMinorLocator, locator_factory, 
+                          formatter_factory)
 
 from .transforms import ReciprocalTransform
 
