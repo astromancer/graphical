@@ -1,11 +1,7 @@
 # Things specific to this project #
 ###################################
 dev/
-multitab.2d.py
-multitab_test.py
-lc.py
-sliders_test.py
-graphing/rainbow.py
+rainbow.py
 
 #########################################
 # Editor temporary/working/backup files #
