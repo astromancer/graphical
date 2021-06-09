@@ -125,21 +125,25 @@ disable=print-statement,
         invalid-str-codec,
         sys-max-int,
         bad-python3-import,
-        #deprecated-string-function,
-        #deprecated-str-translate-call,
-        #deprecated-itertools-function,
-        #deprecated-types-field,
+        deprecated-string-function,
+        deprecated-str-translate-call,
+        deprecated-itertools-function,
+        deprecated-types-field,
         next-method-defined,
         dict-items-not-iterating,
         dict-keys-not-iterating,
         dict-values-not-iterating,
-        #deprecated-operator-function,
-        #deprecated-urllib-function,
+        deprecated-operator-function,
+        deprecated-urllib-function,
         xreadlines-attribute,
         deprecated-sys-function,
         exception-escape,
         comprehension-escape,
-        invalid-name
+        import-outside-toplevel,
+        non-ascii-name,
+        too-many-instance-attributes,
+        too-many-arguments,
+        too-many-lines
 
 # Enable the message, report, category or checker with the given id(s). You can
 # either give multiple identifier separated by comma (,) or put this option
@@ -384,11 +388,34 @@ function-naming-style=snake_case
 #function-rgx=
 
 # Good variable names which should always be accepted, separated by a comma.
-good-names=
+good-names=i,
+           j,
+           k,
+           l,
+           ex,
+           Run,
+           _,
+           n,
+           m,
+           p,
+           s,
+           t,
+           u,
+           w,
+           x,
+           y,
+           z,
+           ra,
+           jd,
+           fp,
+           nr,
+           dt,
+           df,
+           fs
 
 # Good variable names regexes, separated by a comma. If names match any regex,
 # they will always be accepted
-# good-names-rgxs=[a-z]{1,2}
+good-names-rgxs=
 
 # Include a hint for the correct naming format with invalid-name.
 include-naming-hint=no
@@ -420,7 +447,7 @@ name-group=
 
 # Regular expression which should only match function or class names that do
 # not require a docstring.
-no-docstring-rgx=^_
+no-docstring-rgx=^(_|[tT]est_)
 
 # List of decorators that produce properties, such as abc.abstractproperty. Add
 # to this list to register other decorators that produce valid properties.
@@ -432,7 +459,7 @@ variable-naming-style=snake_case
 
 # Regular expression matching correct variable names. Overrides variable-
 # naming-style.
-# variable-rgx=[a-z_][a-z0-9_]{0,2}$
+variable-rgx=[a-z_][a-z0-9_]{0,30}$
 
 
 [SPELLING]
