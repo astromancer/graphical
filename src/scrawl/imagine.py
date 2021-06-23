@@ -1,34 +1,45 @@
-import more_itertools as mit
-from recipes.array.neighbours import neighbours
-# from obstools.aps import ApertureCollection
-from recipes.misc import duplicate_if_scalar
+"""
+Routines for displaying images and video
+"""
+
+# std libs
+import time
 import logging
 import warnings
-import time
+import itertools as itt
 
+# third-party libs
 import numpy as np
-import matplotlib.pylab as plt
 from matplotlib import ticker
+import matplotlib.pylab as plt
 from matplotlib.figure import Figure
-from matplotlib.gridspec import GridSpec
 from matplotlib.widgets import Slider
+from matplotlib.gridspec import GridSpec
+from astropy.visualization.stretch import BaseStretch
+from astropy.visualization.interval import BaseInterval
+from astropy.visualization.mpl_normalize import ImageNormalize
 from mpl_toolkits.mplot3d import Axes3D
 from mpl_toolkits.axes_grid1 import AxesGrid, make_axes_locatable
+
+# local libs
+from recipes.misc import duplicate_if_scalar
+from recipes.array.neighbours import neighbours
 from recipes.logging import LoggingMixin, get_module_logger
-# from .zscale import zrange
+
+# relative libs
 from .sliders import TripleSliders
+from .utils import get_percentile_limits
+# from obstools.aps import ApertureCollection
+
+# from .zscale import zrange
 
 # from astropy.visualization import mpl_normalize  # import ImageNormalize as _
-from astropy.visualization.mpl_normalize import ImageNormalize
-from astropy.visualization.interval import BaseInterval
-from astropy.visualization.stretch import BaseStretch
 
-from .utils import get_percentile_limits
-
-import itertools as itt
 
 # module level logger
 logger = get_module_logger()
+logging.basicConfig()
+logger.setLevel(logging.INFO)
 
 
 # TODO: docstrings (when stable)
@@ -257,6 +268,10 @@ def plot_image_grid(images, layout=(), titles=(), title_kws=None, figsize=None,
                   clim=not clim_all,
                   plims=plims),
            **kws}
+    title_kws = {**dict(color='w',
+                        va='top',
+                        fontweight='bold'),
+                 **(title_kws or {})}
 
     art = []
     w = len(str(int(n)))
@@ -299,60 +314,15 @@ def plot_image_grid(images, layout=(), titles=(), title_kws=None, figsize=None,
         # add title text
         title = title.replace("\n", "\n     ")
         ax.text(0.025, 0.95, f'{i: <{w}}: {title}',
-                **{**dict(color='w',
-                          va='top',
-                          fontweight='bold',
-                          transform=ax.transAxes),
-                   **(title_kws or {})})
+                transform=ax.transAxes, **title_kws)
 
     # Do colorbar
     # noinspection PyUnboundLocalVariable
     # fig.colorbar(imd.imagePlot, cax)
-
+    img = ImageGrid(fig, axes, imd)
     if clim_all:
-        # connect all image clims to the sliders.
-        for artist in art:
-            # noinspection PyUnboundLocalVariable
-            imd.sliders.lower.on_move.add(set_clim_connected, artist,
-                                          imd.sliders)
-            imd.sliders.upper.on_move.add(set_clim_connected, artist,
-                                          imd.sliders)
-
-        # The same as above can be accomplished in pure matplolib as follows:
-        # https://matplotlib.org/3.1.1/gallery/images_contours_and_fields/multi_image.html
-        # Make images respond to changes in the norm of other images (e.g. via
-        # the "edit axis, curves and images parameters" GUI on Qt), but be
-        # careful not to recurse infinitely!
-        # def update(changed_image):
-        #     for im in art:
-        #         if (changed_image.get_cmap() != im.get_cmap()
-        #                 or changed_image.get_clim() != im.get_clim()):
-        #             im.set_cmap(changed_image.get_cmap())
-        #             im.set_clim(changed_image.get_clim())
-        #
-        # for im in art:
-        #     im.callbacksSM.connect('changed', update)
-
-        # update clim for all plots
-
-        # for the general case where images are non-uniform shape, we have to
-        # flatten them all to get the colour percentile values.
-        # TODO: will be more eficcient for large number of images to sample
-        #  evenly from each image
-        pixels = []
-        for im in images:
-            # getattr(im, ('ravel', 'compressed')[np.ma.isMA(im)])()
-            pixels.extend(im.compressed() if np.ma.isMA(im) else im.ravel())
-        pixels = np.array(pixels)
-
-        clim = imd.clim_from_data(pixels, plims=plims)
-        imd.sliders.set_positions(clim, draw_on=False)  # no canvas yet!
-
-        # Update histogram with data from all images
-        imd.histogram.set_array(pixels)
-        imd.histogram.autoscale_view()
-
-    return ImageGrid(fig, axes, imd)
+        img._clim_all(images, plims)
+    return img
 
 
 class ImageGrid:
@@ -394,16 +364,57 @@ class ImageGrid:
             # ax.set_axis_off()
             if len(ax.texts):
                 ax.texts[0].set_visible(False)
-                
+
+            # Pad the saved area by 10% in the x-direction and 20% in the y-direction
             fig.savefig(name, bbox_inches=ax.get_window_extent().transformed(
                 fig.dpi_scale_trans.inverted()).expanded(1.2, 1))
-
-        # Pad the saved area by 10% in the x-direction and 20% in the y-direction
-        # fig.savefig('ax2_figure_expanded.png', bbox_inches=extent.expanded(1.1, 1.2))
 
     @property
     def images(self):
         return [ax.images[0].get_array() for ax in self.fig.axes]
+
+    def _clim_all(art, imd, images, plims):
+        # connect all image clims to the sliders.
+        for image in art:
+            # noinspection PyUnboundLocalVariable
+            imd.sliders.lower.on_move.add(set_clim_connected, image,
+                                          imd.sliders)
+            imd.sliders.upper.on_move.add(set_clim_connected, image,
+                                          imd.sliders)
+
+        # The same as above can be accomplished in pure matplolib as follows:
+        # https://matplotlib.org/3.1.1/gallery/images_contours_and_fields/multi_image.html
+        # Make images respond to changes in the norm of other images (e.g. via
+        # the "edit axis, curves and images parameters" GUI on Qt), but be
+        # careful not to recurse infinitely!
+        # def update(changed_image):
+        #     for im in art:
+        #         if (changed_image.get_cmap() != im.get_cmap()
+        #                 or changed_image.get_clim() != im.get_clim()):
+        #             im.set_cmap(changed_image.get_cmap())
+        #             im.set_clim(changed_image.get_clim())
+        #
+        # for im in art:
+        #     im.callbacksSM.connect('changed', update)
+
+        # update clim for all plots
+
+        # for the general case where images are non-uniform shape, we have to
+        # flatten them all to get the colour percentile values.
+        # TODO: will be more efficient for large number of images to sample
+        #  evenly from each image
+        pixels = []
+        for im in images:
+            # getattr(im, ('ravel', 'compressed')[np.ma.isMA(im)])()
+            pixels.extend(im.compressed() if np.ma.isMA(im) else im.ravel())
+        pixels = np.array(pixels)
+
+        clim = self.imd.clim_from_data(pixels, plims=plims)
+        self.imd.sliders.set_positions(clim, draw_on=False)  # no canvas yet!
+
+        # Update histogram with data from all images
+        self.imd.histogram.set_array(pixels)
+        self.imd.histogram.autoscale_view()
 
 
 class FromNameMixin(object):
@@ -766,19 +777,16 @@ class ImageDisplay(LoggingMixin):
         cax = kws.pop('cax', None)
         hax = kws.pop('hax', None)
         title = kws.pop('title', None)
-        autosize = kws.pop('autosize', True)
+        figsize = kws.pop('figsize', 'auto')
         # sidebar = kws.pop('sidebar', True)
 
         # create axes if required
         if ax is None:
-            if autosize:
+            if figsize == 'auto':
                 # automatically determine the figure size based on the data
                 figsize = self.guess_figsize(self.data)
-
                 # FIXME: the guessed size does not account for the colorbar
                 #  histogram
-            else:
-                figsize = None
 
             fig = plt.figure(figsize=figsize)
             self._gs = gs = GridSpec(1, 1,
@@ -1717,7 +1725,7 @@ class PSFPlotter(Compare3DImage, VideoDisplay):
         axData = self.grid_images[0]
 
         FitsCubeDisplay.__init__(self, filename, ax=axData, extent=extent,
-                                 sidebar=False, autosize=False)
+                                 sidebar=False, figsize=None)
         self.update(0)  # FIXME: full frame drawn instead of zoom
         # have to draw here for some bizarre reason
         # self.grid_images[0].draw(self.fig._cachedRenderer)
