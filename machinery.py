@@ -1,77 +1,96 @@
-import numpy as np
 
+# std libs
 import logging
-import traceback
 import itertools as itt
-from collections import OrderedDict, Callable
-# from matplotlib.offsetbox import DraggableBase
+from collections import defaultdict, OrderedDict
 
-# from matplotlib.axes import Axes
+# third-party libs
+import numpy as np
+import more_itertools as mit
 from matplotlib.lines import Line2D
+from matplotlib.artist import Artist
 from matplotlib.container import ErrorbarContainer
 from matplotlib.transforms import Affine2D, blended_transform_factory as btf
 
-from grafico.interactive import ConnectionMixin, mpl_connect
-from recipes.iter import flatiter
-from decor import expose
+# local libs
+from scrawl.connect import ConnectionMixin, mpl_connect
+from recipes import pprint
+from recipes.logging import LoggingMixin, get_module_logger
 
-# from decor.misc import unhookPyQt
+# from matplotlib.axes import Axes
+# from matplotlib.offsetbox import DraggableBase
 
-logging.basicConfig(level=logging.DEBUG)
+
+# module level logger
+logger = get_module_logger()
+logging.basicConfig()
+logger.setLevel(logging.INFO)
 
 
-# ====================================================================================================
+# from recipes.decor.misc import unhookPyQt
+
+# logging.basicConfig(level=logging.DEBUG)
+
+
+# ==============================================================================
 def draggable_artist_factory(art, offset, annotate, **kws):
     if isinstance(art, ErrorbarContainer):
-        from draggables.errorbars import DraggableErrorbarContainer
+        from scrawl.draggable.errorbars import DraggableErrorbarContainer
         draggable = DraggableErrorbarContainer(art,
                                                offset=offset,
                                                annotate=annotate,
                                                **kws)
         markers, _, _ = draggable
-        return markers, draggable  # map Line2D to DraggableErrorbarContainer. The picker unavoidably returns the markers.
+        return markers, draggable
+        # map Line2D to DraggableErrorbarContainer. The picker unavoidably
+        # returns the markers.
 
     if isinstance(art, Line2D):
-        # from draggables.lines import DraggableLine
+        # from scrawl.draggable.lines import DraggableLine
         return art, DraggableBase(art, offset, annotate, **kws)
 
     else:
         raise ValueError
 
 
-# ====================================================================================================
-@expose.args()
+# ==============================================================================
+# @expose.args()
 def fpicker(artist, event):
-    """ an artist picker that works for clicks outside the axes"""
-    logging.debug('fpicker: %s', vars(event))
+    """
+    an artist picker that works for clicks outside the axes. ie. artist
+    that are not clipped
+    """
+    logger.debug('fpicker: %s', artist)
 
     if event.button != 1:  # otherwise intended reset will select
-        logging.debug('wrong button!')
+        logger.debug('wrong button!')
         return False, {}
 
-        # return artist.contains(event)
-
-
-
-        # transformed_path = artist._get_transformed_path()
-        # path, affine = transformed_path.get_transformed_path_and_affine()
-        # path = affine.transform_path(path)
-        # xy = path.vertices
-        # xt, yt = xy.T#[:, 0]
-        # # yt = xy[:, 1]
-        #
-        # # Convert pick radius from points to pixels
-        # pixels = artist.figure.dpi / 72. * artist.pickradius
-        #
-        # xd, yd = xt - event.x, yt - event.y
-        # prox = np.sqrt(xd ** 2 + yd ** 2)  # distance of click from points in pixels (display coords)
-        # picked = prox - pixels < 0 #
-        #
-        # logging.debug('%s', (pixels, prox, artist.pickradius, picked))
-        # props = dict(proximity=prox, hello='world')
-        #
-        # logging.debug('picked: %r: point %s', artist, np.where(picked))
-        # return picked.any(), props
+    tf = artist.contains(event)
+    logger.debug('fpicker: artist.contains(event) %s', tf)
+    return tf
+    #
+    # transformed_path = artist._get_transformed_path()
+    # path, affine = transformed_path.get_transformed_path_and_affine()
+    # path = affine.transform_path(path)
+    # xy = path.vertices
+    # xt, yt = xy.T#[:, 0]
+    # # yt = xy[:, 1]
+    #
+    # # Convert pick radius from points to pixels
+    # pixels = artist.figure.dpi / 72. * artist.pickradius
+    #
+    # xd, yd = xt - event.x, yt - event.y
+    # distance of click from points in pixels (display coords)
+    # prox = np.sqrt(xd ** 2 + yd ** 2)
+    #
+    # picked = prox - pixels < 0 #
+    #
+    # logging.debug('%s', (pixels, prox, artist.pickradius, picked))
+    # props = dict(proximity=prox, hello='world')
+    #
+    # logging.debug('picked: %r: point %s', artist, np.where(picked))
+    # return picked.any(), props
 
 
 # ****************************************************************************************************
@@ -154,8 +173,9 @@ class Observers():
         return artists
 
 
-# ****************************************************************************************************
-class DraggableBase():  # TODO: use as mixin?
+# ******************************************************************************
+class DraggableBase(LoggingMixin):  # TODO: use as mixin?
+    """base class for draggable artists"""
 
     annotation_format = '[%+3.2f]'
 
@@ -164,9 +184,8 @@ class DraggableBase():  # TODO: use as mixin?
     #     # construct from data?
     #     raise NotImplementedError
 
-
-    def __init__(self, artist, offset=(0., 0.), annotate=False, haunted=False, trapped=False,
-                 **kws):
+    def __init__(self, artist, offset=(0., 0.), annotate=False, haunted=False,
+                 trapped=False, **kws):
         """
 
         Parameters
@@ -193,24 +212,27 @@ class DraggableBase():  # TODO: use as mixin?
         self.ref_point = np.array([artist.get_xdata()[0],
                                    artist.get_ydata()[0]])
         # NOTE: this method of getting a reference point is not appropriate for
-        # all artists
+        #  all artists
 
+        #
         self.annotated = annotate
-        # haunted =
+        self.ghost = None
 
         # make the lines pickable
         if not artist.get_picker():
-            artist.set_picker(10)  # fpicker
+            # artist.update()
+            artist.set_pickradius(10)
+            artist.set_picker(fpicker)  # fpicker  # set_pickradius
 
         # Manage with ConnectionMixin?
         self.linked = []
         self.on_picked = Observers()
-        self.on_changed = Observers()  # on_move may be more descriptive
+        self.on_move = Observers()
         self.on_release = Observers()
         # self.on_clipped = Observers()
 
         # add the shift method to observers
-        self.on_changed.add(self.move_to)
+        self.on_move.add(self.move_to)
         self.on_release.add(self.update)
 
         # control whether linked artists are updated when the parent is updated
@@ -222,7 +244,7 @@ class DraggableBase():  # TODO: use as mixin?
             self.text_trans = btf(ax.transAxes, ax.transData)
             self.ytxt = np.mean(artist.get_ydata())
             self.annotation = ax.text(1.005, self.ytxt, '')
-            # self.on_changed(self.shift_text)
+            # self.on_move(self.shift_text)
 
         if haunted:
             self.haunt()
@@ -236,7 +258,8 @@ class DraggableBase():  # TODO: use as mixin?
         return self._offset
 
     def set_offset(self, offset):
-        self._offset = np.where(np.isnan(self._locked_at), offset, self._locked_at)
+        self._offset = np.where(np.isnan(self._locked_at), offset,
+                                self._locked_at)
 
     offset = property(get_offset, set_offset)
 
@@ -353,24 +376,24 @@ class DraggableBase():  # TODO: use as mixin?
 
     def contains(self, event):
         if event.button != 1:  # otherwise intended reset will select
-            logging.debug('wrong button for picking!')
+            self.logger.debug('wrong button for picking!')
             return False, {}
         return self.artist.contains(self, event)
 
-    def link(self, *draggables):
+    def link(self, *artists):
         """
-        Link another artist or arsitst to this one to make them co-moving
+        Link another artist or artist to this one to make them co-moving
 
         Parameters
         ----------
-        artist
+        artists: a sequence of artists that will be linked to this one
 
         Returns
         -------
 
         """
         linked = []
-        for drg in draggables:
+        for drg in artists:
             if not isinstance(drg, DraggableBase):
                 drg = DraggableBase(drg)
             linked.append(drg)
@@ -378,9 +401,9 @@ class DraggableBase():  # TODO: use as mixin?
         self.linked.extend(linked)
         return linked
 
-    def unlink(self, *draggables):
+    def unlink(self, *artists):
         """ """
-        for drg in draggables:
+        for drg in artists:
             if drg in self.linked:
                 i = self.linked.index(drg)
                 self.linked.pop(i)
@@ -391,21 +414,21 @@ class DraggableBase():  # TODO: use as mixin?
         self.clipped = False
         xlim = xmin, xmax = self.xlim
         if not np.isnan(xlim).all():
-            logging.debug('clipping %s: x [%.2f, %.2f]', self, xmin, xmax)
+            self.logger.debug('clipping %s: x [%.2f, %.2f]', self, xmin, xmax)
             x = np.clip(x, xmin, xmax)
             if x in xlim:
                 self.clipped = True
 
         ylim = ymin, ymax = self.ylim
         if not np.isnan(ylim).all():
-            logging.debug('clipping %s: y [%.2f, %.2f]', self, ymin, ymax)
+            self.logger.debug('clipping %s: y [%.2f, %.2f]', self, ymin, ymax)
             y = np.clip(y, ymin, ymax)
             if y in ylim:
                 self.clipped = True
 
         return x, y
 
-    def move_to(self, x, y, propagate=None):
+    def move_to(self, x, y):
         """
         Shift the artist to the position (x, y) in data coordinates.  Note
         the input position will be changed before applying the shift if the
@@ -424,9 +447,9 @@ class DraggableBase():  # TODO: use as mixin?
         x, y = self.clip(x, y)
         offset = np.subtract((x, y), self.ref_point)
 
-        logging.debug('shifting %s to (%.3f, %.3f)', self, x, y)
+        self.logger.debug('shifting %s to (%.3f, %.3f)', self, x, y)
         self.move_by(offset)
-        logging.debug('offset %s is (%.3f, %.3f)', self, *self.offset)
+        self.logger.debug('offset %s is (%.3f, %.3f)', self, *self.offset)
 
         return self.artist
 
@@ -437,7 +460,6 @@ class DraggableBase():  # TODO: use as mixin?
         Parameters
         ----------
         offset
-        observers_active
 
         Returns
         -------
@@ -445,7 +467,7 @@ class DraggableBase():  # TODO: use as mixin?
         """
 
         self.offset = offset  # will adhere to positional locks
-        logging.debug('moving: %s %s', self, offset)
+        self.logger.debug('moving: %s %s', self, offset)
 
         # add the offset with transform
         offset_trans = Affine2D().translate(*self.offset)
@@ -453,14 +475,14 @@ class DraggableBase():  # TODO: use as mixin?
         self.artist.set_transform(trans)
 
     def update(self, x, y):
-        logging.debug('update: %r', self)
+        self.logger.debug('update: %r', self)
 
         # Artists that need to be drawn (from observers)
         pos = self.position
-        draw_list = self.on_changed(x, y)
+        draw_list = self.on_move(x, y)
         # get the actual delta (respecting position locks etc)
         delta = self.position - pos
-        logging.debug('DELTA %s', delta)
+        self.logger.debug('DELTA %s', delta)
 
         # if propagate:
         for lnk in self.linked:
@@ -473,9 +495,12 @@ class DraggableBase():  # TODO: use as mixin?
 
     def update_offset(self, offset):
         xy = self.position + offset  # new position
-        # logging.debug('update_offset %s to (%.3f, %.3f)', lnk, x, y)
+        # self.logger.debug('update_offset %s to (%.3f, %.3f)', lnk, x, y)
         return self.update(*xy)
 
+    # def set_axes_lim(self):
+    #     self.position
+    #
     # NOTE: this function can be avoided if you make a DraggableText?
     # def shift_text(self, offset):
     #     """Shift the annotation by an offset"""
@@ -495,7 +520,7 @@ class DraggableBase():  # TODO: use as mixin?
         self.ghost = self.__class__(self.artist, offset=self.offset,
                                     annotate=self.annotated)
 
-        self.ghost.set_alpha(alpha)
+        self.ghost.artist.set_alpha(alpha)
         self.ghost.set_visible(False)
         self.artist.axes.add_artist(self.ghost)
 
@@ -524,7 +549,7 @@ class DraggableBase():  # TODO: use as mixin?
 
         self.artist.set_animated(b)
         for drg in self.linked:
-            drg.set_animated(b)  # note recurence
+            drg.set_animated(b)  # note recurrence
 
     def draw(self, renderer=None):
         if renderer is None:
@@ -534,10 +559,11 @@ class DraggableBase():  # TODO: use as mixin?
 
 # ****************************************************************************************************
 class DragMachinery(ConnectionMixin):
+    # TODO: some of the functionality here belongs in BlitHelper class
     """
-    Methods for managing draggable artists.  Artists are moved by applying a
+    Class for managing draggable artists.  Artists are moved by applying a
     translation (transform) in the data space. This allows objects that live
-    in arbitrary coordinates to be moved by the mouse.
+    in arbitrary coordinates to be moved by dragging them with the mouse.
     """
     # TODO: haunt, link
     # TODO: #incorp best methods from mpl.DraggableBase
@@ -564,7 +590,6 @@ class DragMachinery(ConnectionMixin):
         legendkw
         """
         self._ax = None
-
         if artists is None:
             artists = []
 
@@ -584,7 +609,7 @@ class DragMachinery(ConnectionMixin):
         self.delta = np.zeros(2)  # in case of pick without motion
 
         # initialize mapping
-        self.draggables = IndexableOrderedDict()
+        self.draggable = IndexableOrderedDict()
 
         # initialize auto-connect
         ConnectionMixin.__init__(self)
@@ -597,7 +622,7 @@ class DragMachinery(ConnectionMixin):
             self.add_artist(art, offset, annotate, haunted)
 
             # TODO:
-            ##enable legend picking
+            # enable legend picking
             # self.legend = None
             # if legendkw or auto_legend:
             # self.legend = DynamicLegend(ax, artists, legendkw)
@@ -611,20 +636,20 @@ class DragMachinery(ConnectionMixin):
     def __getitem__(self, key):
         """hack for quick indexing"""
         # OR inherit from dict????
-        return self.draggables[key]
+        return self.draggable[key]
 
-    def get_offsets(self):
+    @property
+    def offsets(self):
         return np.array([drag.offset for drag in self])
 
-    offsets = property(get_offsets)
-
-    def add_artist(self, artist, offset=(0, 0), annotate=True, haunted=False, **kws):
+    def add_artist(self, artist, offset=(0, 0), annotate=True, haunted=False,
+                   **kws):
         """add a draggable artist"""
         key, drg = self.artist_factory(artist,
                                        offset=offset,
                                        annotate=annotate,
                                        haunted=haunted, **kws)
-        self.draggables[key] = drg
+        self.draggable[key] = drg
         self._original_offsets = np.r_['0,2', self._original_offsets, offset]
 
         return drg
@@ -634,10 +659,10 @@ class DragMachinery(ConnectionMixin):
         if self._ax is not None:
             return self._ax
 
-        if len(self.draggables) == 0:
+        if len(self.draggable) == 0:
             raise ValueError('%s does not contain any artists yet.'
                              % self.__class__.__name__)
-        return self.draggables[0].artist.axes
+        return self.draggable[0].artist.axes
 
     @property
     def figure(self):
@@ -649,18 +674,19 @@ class DragMachinery(ConnectionMixin):
 
     @property
     def artists(self):
-        return list(self.draggables.keys())
+        return list(self.draggable.keys())
 
     @property
     def use_blit(self):
-        return self._use_blit and (self.canvas is not None) and self.canvas.supports_blit
+        return self._use_blit and (
+            self.canvas is not None) and self.canvas.supports_blit
 
     def lock(self, which):
-        for art, drg in self.draggables.items():
+        for art, drg in self.draggable.items():
             drg.lock(which)
 
     def free(self, which):
-        for art, drg in self.draggables.items():
+        for art, drg in self.draggable.items():
             drg.free(which)
 
     def lock_x(self):
@@ -675,12 +701,12 @@ class DragMachinery(ConnectionMixin):
     def free_y(self):
         self.free('y')
 
-    def validation(self, func):
-        # Note: that validation is not the best way of enforcing limits since fast
-        # mouse movements can leave the axis while the previous known position is
-        # nowhere near the limits.
-        for art, drg in self.draggables.items():
-            drg.validation(func)
+    # def validation(self, func):
+    #     # Note: that validation is not the best way of enforcing limits since
+    #      fast mouse movements can leave the axis while the previous known
+    #      position is nowhere near the limits.
+    #     for art, drg in self.draggable.items():
+    #         drg.validation(func)
 
     def limit(self, x=None, y=None):
         """
@@ -692,14 +718,15 @@ class DragMachinery(ConnectionMixin):
         y
 
         """
-        logging.debug('limit %s, %s', x, y)
-        for art, drg in self.draggables.items():
+        self.logger.debug('limit %s, %s', x, y)
+        for art, drg in self.draggable.items():
             drg.limit(x, y)
 
     def reset(self):
         """reset the plot positions to original"""
-        logging.debug('resetting!')
-        for draggable, off in zip(self.draggables.values(), self._original_offsets):
+        self.logger.debug('resetting!')
+        for draggable, off in zip(self.draggable.values(),
+                                  self._original_offsets):
             self.update(draggable, draggable.ref_point)
 
             # self.canvas.draw()
@@ -708,7 +735,6 @@ class DragMachinery(ConnectionMixin):
     def on_click(self, event):
 
         # print( 'on_click', repr(self.selection ))
-
         """reset plot on middle mouse"""
         if event.button == 2:
             self.reset()
@@ -720,14 +746,14 @@ class DragMachinery(ConnectionMixin):
         if event.mouseevent.button != 1:
             return True
 
-        if event.artist not in self.draggables:
+        if event.artist not in self.draggable:
             return True
 
         # avoid picking multiple artist simultaneously
         # #TODO more intelligence
         if self.selection:
             #  prefer the artist with closest proximity to mouse event
-            logging.debug('Multiple picks! ignoring: %s', event.artist)
+            self.logger.debug('Multiple picks! ignoring: %s', event.artist)
             return True
 
         return False
@@ -739,41 +765,45 @@ class DragMachinery(ConnectionMixin):
         if self._ignore_pick(event):
             return
 
-        logging.debug('picked: %r: %s', event.artist, vars(event))
+        self.logger.debug('picked: %r: %s', event.artist, vars(event))
 
         # get data coordinates of pick
         self.selection = event.artist
-        draggable = self.draggables[self.selection]
+        draggable = self.draggable[self.selection]
         # get data coordinates
-        xydisp = event.mouseevent.x, event.mouseevent.y  # xy in display coordinates
-        xydata = self.ax.transData.inverted().transform(xydisp)  # xy in data coordinates
+        # xy display coordinate
+        xy_disp = event.mouseevent.x, event.mouseevent.y
+        # xy in data coordinates
+        xy_data = self.ax.transData.inverted().transform(xy_disp)
         # set reference point (to calculate distance of movement)
-        self.ref_point = np.subtract(xydata, draggable.offset)
+        self.ref_point = np.subtract(xy_data, draggable.offset)
 
         # run the on_picked methods for this draggable
-        draggable.on_picked(*xydata)
+        draggable.on_picked(*xy_data)
 
         # connect motion_notify_event for dragging the selected artist
         self.add_connection('motion_notify_event', self.on_motion)
 
         if self.use_blit:
-            # TODO: need method to get artists that will be changed by this artist
+            # TODO: need method to get artists that will be changed by this
+            #  artist
             draggable.set_animated(True)
 
             # call update here to avoid artists disappearing on click and hold
-            # without move.  Also, this gives us the artists which are animated by the move
+            # without move.  Also, this gives us the artists which are animated
+            # by the move
             draw_list = draggable.update_offset((0, 0))
-            for art in filter(None, flatiter(draw_list)):
+            for art in filter_non_artist(draw_list):
                 art.set_animated(True)
 
-                # self.update(draggable, xydata)
+                # self.update(draggable, xy_data)
 
                 # draggable.save_offset()
                 # current_offset = draggable.offset
 
                 # make the ghost artists visible
                 # for link in draggable.linked:
-                ##set the ghost vis same as the original vis for linked
+                # set the ghost vis same as the original vis for linked
                 # for l, g in zip(link.get_children(),
                 # link.ghost.get_children()):
                 # g.set_visible(l.get_visible())
@@ -782,8 +812,12 @@ class DragMachinery(ConnectionMixin):
                 # print('picked', repr(self.selection), event.artist)
 
     def on_motion(self, event):
+        """
+        Handle movement of the selected artist by the mouse.
+        """
         # TODO: pull in draggableBase on_motion_blit
-        # if we want the artist to respond to events only inside the axes - may not be desirable
+        # if we want the artist to respond to events only inside the axes -
+        # may not be desirable
         # if event.inaxes != self.ax:
         # return
 
@@ -791,33 +825,35 @@ class DragMachinery(ConnectionMixin):
             return
 
         if self.selection:
-            logging.debug('dragging: %s', self.selection)
-            draggable = self.draggables[self.selection]
+            self.logger.debug('dragging: %s', self.selection)
+            draggable = self.draggable[self.selection]
 
-            xydisp = event.x, event.y
-            xydata = x, y = self.ax.transData.inverted().transform(xydisp)  # xydata =
-            self.delta = delta = xydata - self.ref_point  # offset from original data
-            # difference between current position and previous offset positio
-            logging.debug('on_motion: delta %s; ref %s', delta, self.ref_point)
+            xy_disp = event.x, event.y
+            xy_data = x, y = self.ax.transData.inverted().transform(xy_disp)
+            # offset from original data
+            self.delta = delta = xy_data - self.ref_point
+
+            # difference between current position and previous offset position
+            self.logger.debug('on_motion: delta %s; ref %s', delta,
+                              self.ref_point)
 
             # move this artist and all its dependants
             # pos = draggable.position
-            self.update(draggable, xydata)
+            self.update(draggable, xy_data)
             # FIXME: only do if dragging = True ??
             # self._shift = draggable.position - pos
-
 
             # if draggable.clipped:
             #     draggable.on_clipped(x, y)
             #     print('HI')
-
 
             # if dragging set offset??
 
             # for link in draggable.linked:
             # link.ghost.move(delta)
 
-            # print( [(ch.get_visible(), ch.get_alpha()) for ch in link.ghost.get_children()] )
+            # print( [(ch.get_visible(), ch.get_alpha())
+            # for ch in link.ghost.get_children()] )
 
             # link.ghost.draw(self.canvas.renderer)
             # print('...')
@@ -833,22 +869,26 @@ class DragMachinery(ConnectionMixin):
             return
 
         if self.selection:
-            logging.debug('on_release: %r', self.selection)
+            self.logger.debug('on_release: %r', self.selection)
             # Remove dragging method for selected artist
             self.remove_connection('motion_notify_event')
 
-            xydisp = event.x, event.y  # NOTE: may be far outside allowed range
-            xydata = x, y = self.ax.transData.inverted().transform(xydisp)  # xydata =
-            # xydata = self.delta + self.ref_point
-            logging.debug('on_release: delta %s', self.delta)
+            xy_disp = event.x, event.y  # NOTE: may be far outside allowed range
+            xy_data = x, y = self.ax.transData.inverted().transform(xy_disp)
+            # xy_data = self.delta + self.ref_point
+            self.logger.debug('on_release: delta %s', self.delta)
 
-            draggable = self.draggables[self.selection]
+            draggable = self.draggable[self.selection]
             draw_list = draggable.on_release(x, y)
-            logging.debug('on_release: offset %s %s', draggable, draggable.offset)
+
+            print('release', draw_list)
+
+            self.logger.debug('on_release: offset %s %s', draggable,
+                              draggable.offset)
 
             if self.use_blit:
                 self.draw_blit(draw_list)
-                for art in filter(None, flatiter(draw_list)):
+                for art in filter_non_artist(draw_list):
                     art.set_animated(False)
 
                     # save offset
@@ -858,7 +898,7 @@ class DragMachinery(ConnectionMixin):
                     # linked.ghost.set_visible(False)
 
                     # do_legend()
-                    ##self.canvas.draw()
+                    # self.canvas.draw()
                     # if self._draw_on:
                     # if self._use_blit:
                     # self.canvas.restore_region(self.background)
@@ -874,22 +914,27 @@ class DragMachinery(ConnectionMixin):
         # print( 'release', repr(self.selection ))
         # print()
 
+    @mpl_connect('resize_event')
+    def on_resize(self, event):
+        """Save the background for blit after canvas resize"""
+        self.save_background()
+
     # @unhookPyQt
-    def update(self, draggable, xydata, draw_on=True):
+    def update(self, draggable, xy_data, draw_on=True):
         """
         Draw all artists that where changed by the motion
 
         Parameters
         ----------
         draggable
-        xydata
+        xy_data
         draw_on
 
         Returns
         -------
         list of artists
         """
-        draw_list = draggable.update(*xydata)
+        draw_list = draggable.update(*xy_data)
 
         # draw the canvas / blit if required
         if draw_on:
@@ -897,10 +942,13 @@ class DragMachinery(ConnectionMixin):
 
         return draw_list
 
-    def blit_setup(self, artists=[]):  # save_background
-        """setup for blitting"""
+    def blit_setup(self, artists=()):  # save_background
+        """
+        Setup canvas for blitting. First make all the artists in the list
+        invisible, then redraw the canvas and save, then redraw all the artists.
+        """
         fig = self.figure
-        artists = list(filter(None, flatiter(artists)))
+        artists = list(filter_non_artist(artists))
 
         # set artist animated
         for art in artists:
@@ -920,11 +968,12 @@ class DragMachinery(ConnectionMixin):
 
     @mpl_connect('draw_event')
     def _on_draw(self, event):
-        logging.debug('draw %s', self._draw_count)
+        self.logger.debug('draw %s', self._draw_count)
         self._draw_count += 1
 
     def draw(self, artists):
-        # TODO: inefficient to check conditional every time.  set this method dynamically
+        # TODO: could set this method dynamically
+        # print('draw')
         if self.use_blit:
             self.draw_blit(artists)
         else:
@@ -932,24 +981,29 @@ class DragMachinery(ConnectionMixin):
 
     def draw_blit(self, artists):
         self.canvas.restore_region(self.background)
-
-        # TODO: maybe check for uniqueness
-        # to prevent unnecessary duplicate draw
-
-        artists = flatiter(filter(None, artists))
-        for art in sorted(artists, key=lambda a: a.get_zorder()):
-            logging.debug('DRAWING: %s' % art)
+        # TODO: check for uniqueness to prevent unnecessary duplicate draw
+        for art in sorted(filter_non_artist(artists), key=Artist.get_zorder):
+            # self.logger.info('drawing: %s' % art)
             art.draw(self.canvas.renderer)
+
+        # After rendering all the needed artists, blit each axes individually.
+        # for ax in set(self.figure.axes):
+        #     ax.figure.canvas.blit(ax.figure.bbox)
+
         self.canvas.blit(self.figure.bbox)
 
-    def connect(self):
-        super().connect()
-
-        # get all the movable artists
+    def save_background(self):
+        # get all the movable artists by "moving" them with zero offset
         artists = []
-        for drg in self.draggables.values():
+        for drg in self.draggable.values():
             art = drg.update_offset((0, 0))
             artists.extend(art)
 
         # save background
         self.background = self.blit_setup(artists)
+
+    # def connect(self):
+    #     # connect the methods decorated with `@mpl_connect`
+    #     ConnectionMixin.connect(self)
+    #
+    #     self.save_background()

@@ -1,1 +1,1 @@
-from draggables.errorbars import *
+from .errorbars import *

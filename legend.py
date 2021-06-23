@@ -1,10 +1,10 @@
 from matplotlib.lines import Line2D
 from matplotlib.container import ErrorbarContainer
 
-from grafico.interactive import ConnectionMixin, mpl_connect
+from scrawl.connect import ConnectionMixin, mpl_connect
 
 
-class DynamicLegend(ConnectionMixin):  # TODO: move to seperate script....
+class DynamicLegend(ConnectionMixin):
     # TODO: subclass Legend??
     '''
     Enables toggling marker / bar / cap visibility by selecting on the legend.
@@ -57,7 +57,7 @@ class DynamicLegend(ConnectionMixin):  # TODO: move to seperate script....
 
             # enable legend picking by setting the picker method
             for handel, origart in zip(self.legend.legendHandles, plots):  # get_lines()
-                handel.set_picker(10)
+                handel.set_pickradius(10)
                 self.to_orig[handel] = origart
                 # self.to_leg[handel] = handel
                 # self.to_handle[origart[0]] = handel
