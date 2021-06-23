@@ -93,16 +93,43 @@ def fpicker(artist, event):
     # return picked.any(), props
 
 
-# ****************************************************************************************************
+def filter_non_artist(objects):
+    for o in mit.collapse(objects):
+        if o is None:
+            continue
+        if isinstance(o, Artist):
+            yield o
+            continue
+
+        # warn if not art
+        logger.warning('Object %r is not a matplotlib Artist' % o)
+
+
+def art_summary(artists):
+    col = defaultdict(int)
+    if artists is None:
+        return ''
+    if isinstance(artists, Artist):
+        return {artists: 1}
+
+    for art in artists:
+        col[type(art)] += 1
+    return str(col)
+
+
+def null(_):
+    return ''
+
+
 class IndexableOrderedDict(OrderedDict):
     def __missing__(self, key):
         if isinstance(key, int):
             return self[list(self.keys())[key]]
-        else:
-            return OrderedDict.__missing__(self, key)
+
+        raise KeyError(str(key))
 
 
-class Observers():
+class Observers(LoggingMixin):
     """Container class for observer functions"""
 
     def __init__(self):
@@ -110,35 +137,92 @@ class Observers():
         self.funcs = OrderedDict()
         self.active = {}
 
-    def add(self, func, order=None):
+    def __repr__(self):
+        return '\n'.join(
+            (self.__class__.__name__,
+             '\n'.join(map(self._repr_observer, self.funcs.keys()))))
+
+    def _repr_observer(self, id_):
+        f, a, args, kws = self.funcs[id_]
+        s = '%i%s: %s' % (id_, ' *'[a], pprint.method(f))
+        par = ['x', 'y']
+        par.extend(map(str, args))
+        par.extend(map('='.join, kws.items()))
+        return s + ', '.join(par).join('()')
+
+    def add(self, func, *args, **kws):
         """
-        Add an observer function for the move event for this artist
+        Add an observer function.
 
         When the artist is moved / picked, *func* will be called with the new
         coordinate position as arguments.  *func* should return any artists
         that it changes. These will be drawn if blitting is enabled.
         The signature of *func* is therefor:
-            draw_list = func(x, y)`
+
+            draw_list = func(x, y, *args, **kws)`
 
         Parameters
         ----------
         func
+        args
+        kws
 
         Returns
         -------
         A connection id is returned which can be used to remove the method
         """
-        if not isinstance(func, Callable):
-            raise TypeError
+        if not callable(func):
+            raise TypeError('`func` should be callable')
 
         id_ = next(self.counter)
-        self.funcs[id_] = func
-        self.active[id_] = True
+        self.funcs[id_] = (func, args, kws)
+        self.active[func] = True
         return id_
 
     def remove(self, id_):
-        self.active.pop(id_)
-        return self.funcs.pop(id_)
+        fun, args, kws = self.funcs.pop(id_, None)
+        self.active.pop(fun)
+        return fun
+
+    def activate(self, fun_or_id):
+        """
+        Reactivate a non-active observer.  This method is useful for toggling
+        the active state of an observer function without removing and re-adding
+        it (and it's parameters) to the dict of functions. The function will use
+        parameters and keywords (if any) that were initially passed when it was
+        added.
+
+        Parameters
+        ----------
+        fun_or_id: callable, int
+            The function (or its identifier) that will be activated 
+        """
+        self._set_active(fun_or_id, True)
+
+    def deactivate(self, fun_or_id):
+        """
+        Deactivate an active observer. 
+
+        Parameters
+        ----------
+        fun_or_id: callable, int
+            The function (or its identifier) that will be activated 
+        """
+        self._set_active(fun_or_id, False)
+
+    def _set_active(self, fun_or_id, tf):
+        if not callable(fun_or_id) and fun_or_id in self.funcs:
+            # function id passed instead of function itself
+            fun, *_ = self.funcs[fun_or_id]
+        else:
+            fun = fun_or_id
+
+        if fun in self.active:
+            self.active[fun] = tf
+        else:
+            self.logger.warning(
+                'Function %r is not an observer! Use `add(fun, *args, **kws)'
+                'to make it an observer',  fun)
 
     def __call__(self, x, y):
         """
@@ -146,29 +230,35 @@ class Observers():
 
         Parameters
         ----------
-        xydata
+        x, y
 
         Returns
         -------
         Artists that need to be drawn
         """
+        
+        if self.logger.getEffectiveLevel() < logging.DEBUG:
+            _art_summary = null
+        else:
+            _art_summary = art_summary
+
         # Artists that need to be drawn (from observer functions)
         artists = []
-        for cid, func in self.funcs.items():
-            try:
-                if self.active[cid]:
-                    art = func(x, y)
-                    logging.debug('observer: %s(%.3f, %.3f): %s',
-                                  func.__name__, x, y, art)
+        for cid, (func, args, kws) in self.funcs.items():
+            if self.active[func]:
+                try:
+                    art = func(x, y, *args, **kws)
+                    self.logger.debug('observer: %s(%.3f, %.3f): %s',
+                                      func.__name__, x, y, _art_summary(art))
 
-                    if isinstance(art, (list, tuple)):
+                    if isinstance(art, (list, tuple)):  # np.ndarray
                         artists.extend(art)
-                    else:
+
+                    elif art is not None:
                         artists.append(art)
 
-            except Exception as err:
-                logging.exception('observers error')
-                logging.exception(traceback.format_exc())
+                except Exception:
+                    self.logger.exception('Observers error')
 
         return artists
 
