@@ -1,0 +1,9 @@
+numpy
+cycler
+scipy
+astropy
+more_itertools
+six
+matplotlib
+PyQt5
+recipes
