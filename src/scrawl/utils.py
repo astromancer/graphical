@@ -25,21 +25,22 @@ def percentile(data, p, axis=None):
     p = np.divide(p, 100)
     a = np.abs(p)
     s = signum[(p > 0).astype(int)]
-    r, q = np.divmod(a, 1)
+    _, q = np.divmod(a, 1)
     c = np.abs((p > 1).astype(float) - s * q) * 100
 
     # remove masked points
     if np.ma.is_masked(data):
         if axis is not None:
             raise NotImplementedError
-        else:
-            data = np.ma.compressed(data)
+
+        data = np.ma.compressed(data)
 
     # get shape of output array
     out_shape = (len(p),)
     if axis is not None:
-        out_shape += tuple(np.take(data.shape, np.delete(np.arange(data.ndim),
-                                                         axis)))
+        out_shape += tuple(
+            np.take(data.shape, np.delete(np.arange(data.ndim), axis))
+        )
     ndo = len(out_shape)
     #
     d = np.zeros(out_shape)
@@ -104,7 +105,6 @@ def get_data_pm_1sigma(x, e=()):
     n = len(e)
     if n == 0:
         return x, x
-    elif n == 2:
+    if n == 2:
         return x - e[0], x + e[1]
-    else:
-        return x - e, x + e
+    return x - e, x + e

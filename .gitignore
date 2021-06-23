@@ -2,6 +2,8 @@
 ###################################
 dev/
 rainbow.py
+src/scrawl/interactive.py
+src/scrawl/axgrid.py
 
 #########################################
 # Editor temporary/working/backup files #
@@ -86,5 +88,4 @@ lib/z.lib
 # Jupyter files #
 #################
 .ipynb_checkpoints/
-
 

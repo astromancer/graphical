@@ -44,6 +44,7 @@ def bar3d(ax, x, y, z, dxy=0.8, *args, **kws):
 
     (dx,), (dy,) = dxy * np.diff(x[0, :2]), dxy * np.diff(y[:2, 0])
     assert (dx != 0) & (dy != 0)
+    
     bars = np.empty(x.shape, dtype=object)
     n = x.shape[1]
     for i, (xx, yy, dz, o) in enumerate(zip(*map(np.ravel, (x, y, z, zo)))):
