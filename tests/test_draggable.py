@@ -10,10 +10,10 @@ if __name__ == '__main__':
     import numpy as np
     import pylab as plt
 
-    from scrawl.draggable.machinery import DragMachinery
+    from scrawl.moves.machinery import DragMachinery
 
-    # from scrawl.draggable.errorbar import DraggableErrorbar
-    # from scrawl.draggable.lines import DragggableLine
+    # from scrawl.moves.errorbar import DraggableErrorbar
+    # from scrawl.moves.lines import DragggableLine
 
     parser = argparse.ArgumentParser(
             description='Tests for interactive draggable artists in matplotlib'

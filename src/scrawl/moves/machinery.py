@@ -35,7 +35,7 @@ logger.setLevel(logging.INFO)
 # ==============================================================================
 def draggable_artist_factory(art, offset, annotate, **kws):
     if isinstance(art, ErrorbarContainer):
-        from scrawl.draggable.errorbars import DraggableErrorbarContainer
+        from scrawl.moves.errorbars import DraggableErrorbarContainer
         draggable = DraggableErrorbarContainer(art,
                                                offset=offset,
                                                annotate=annotate,
@@ -46,7 +46,7 @@ def draggable_artist_factory(art, offset, annotate, **kws):
         # returns the markers.
 
     if isinstance(art, Line2D):
-        # from scrawl.draggable.lines import DraggableLine
+        # from scrawl.moves.lines import DraggableLine
         return art, DraggableBase(art, offset, annotate, **kws)
 
     else:
