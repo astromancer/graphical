@@ -2,13 +2,13 @@
 Routines for displaying images and video
 """
 
-# std libs
+# std
 import time
 import logging
 import warnings
 import itertools as itt
 
-# third-party libs
+# third-party
 import numpy as np
 from matplotlib import ticker
 import matplotlib.pylab as plt
@@ -21,12 +21,12 @@ from astropy.visualization.mpl_normalize import ImageNormalize
 from mpl_toolkits.mplot3d import Axes3D
 from mpl_toolkits.axes_grid1 import AxesGrid, make_axes_locatable
 
-# local libs
+# local
 from recipes.misc import duplicate_if_scalar
 from recipes.array.neighbours import neighbours
 from recipes.logging import LoggingMixin, get_module_logger
 
-# relative libs
+# relative
 from .sliders import TripleSliders
 from .utils import get_percentile_limits
 # from obstools.aps import ApertureCollection

@@ -1,10 +1,10 @@
 
-# std libs
+# std
 import logging
 import itertools as itt
 from collections import defaultdict, OrderedDict
 
-# third-party libs
+# third-party
 import numpy as np
 import more_itertools as mit
 from matplotlib.lines import Line2D
@@ -12,7 +12,7 @@ from matplotlib.artist import Artist
 from matplotlib.container import ErrorbarContainer
 from matplotlib.transforms import Affine2D, blended_transform_factory as btf
 
-# local libs
+# local
 from scrawl.connect import ConnectionMixin, mpl_connect
 from recipes import pprint
 from recipes.logging import LoggingMixin, get_module_logger
