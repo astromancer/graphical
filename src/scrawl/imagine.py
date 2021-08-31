@@ -988,7 +988,10 @@ class ImageDisplay(LoggingMixin):
         # connect sliders' interactions + save background for blitting
         self.sliders.connect()
 
-
+    def save(self, filename, *args, **kws):
+        self.figure.savefig(filename, *args, **kws)
+    
+    
 # class AstroImageDisplay(ImageDisplay):
 
 #     def clim_from_data(self, data, kws):
