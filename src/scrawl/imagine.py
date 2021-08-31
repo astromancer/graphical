@@ -1020,6 +1020,20 @@ class VideoDisplay(ImageDisplay):
 
     _scroll_wrap = True  # scrolling past the end leads to the beginning
 
+    def _check_data(self, data):
+        if not isinstance(data, np.ndarray):
+            data = np.ma.asarray(data)
+
+        n_dim = data.ndim
+        if n_dim == 2:
+            warnings.warn('Loading single image frame as 3D data cube. Use '
+                          '`ImageDisplay` instead to view single frames.')
+            data = np.ma.atleast_3d(data)
+
+        if n_dim != 3:
+            raise ValueError(f'Cannot image {n_dim}D data')
+        return data, len(data)
+    
     def __init__(self, data, **kws):
         """
         Image display for 3D data. Implements frame slider and image scroll.
@@ -1039,28 +1053,18 @@ class VideoDisplay(ImageDisplay):
         kws are passed directly to ImageDisplay.
         """
 
-        if not isinstance(data, np.ndarray):
-            data = np.ma.asarray(data)
-
-        # setup image display
-        n = self._frame = 0
-
-        n_dim = data.ndim
-        if n_dim == 2:
-            warnings.warn('Loading single image frame as 3D data cube. Use '
-                          '`ImageDisplay` instead to view single frames.')
-            data = np.ma.atleast_3d(data)
-
-        if n_dim != 3:
-            raise ValueError('Cannot image %iD data' % n_dim)
-
         #
+        data, nframes = self._check_data(data)
+
+        self.nframes = int(nframes)
         self.clim_every = kws.pop('clim_every', 1)
 
         # don't connect methods yet
         connect = kws.pop('connect', True)
 
+        # setup image display
         # parent sets data as 2D image.
+        n = self._frame = 0
         ImageDisplay.__init__(self, data[n], connect=False, **kws)
         # save data (this can be array_like (or np.mmap))
         self.data = data
@@ -1070,7 +1074,7 @@ class VideoDisplay(ImageDisplay):
 
         # make frame slider
         fsax = self.divider.append_axes('bottom', size=0.1, pad=0.3)
-        self.frameSlider = Slider(fsax, 'frame', n, len(data), valfmt='%d')
+        self.frameSlider = Slider(fsax, 'frame', n, self.nframes, valfmt='%d')
         self.frameSlider.on_changed(self.update)
         fsax.xaxis.set_major_locator(ticker.AutoLocator())
 
@@ -1131,9 +1135,9 @@ class VideoDisplay(ImageDisplay):
         # wrap scrolling if desired
         if self._scroll_wrap:
             # wrap around! scroll past end ==> go to beginning
-            i %= len(self.data)
+            i %= self.nframes
         else:  # stop scrolling at the end
-            i = max(i, len(self.data))
+            i = max(i, self.nframes)
 
         i = int(round(i, 0))  # make sure we have an int
         self._frame = i  # store current frame
@@ -1268,7 +1272,7 @@ class VideoDisplay(ImageDisplay):
         if start is None:
             start = 0
         if stop is None:
-            stop = len(self.data)
+            stop = self.nframes
 
         # save background for blitting
         # FIXME: saved bg should be without
