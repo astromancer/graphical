@@ -1,39 +1,40 @@
+"""
+The main machinery enabling interactive artist movement.
+"""
 
 # std
-import logging
 import itertools as itt
-from collections import defaultdict, OrderedDict
+from collections import OrderedDict, defaultdict
 
 # third-party
 import numpy as np
 import more_itertools as mit
+from loguru import logger
 from matplotlib.lines import Line2D
 from matplotlib.artist import Artist
 from matplotlib.container import ErrorbarContainer
 from matplotlib.transforms import Affine2D, blended_transform_factory as btf
 
 # local
-from scrawl.connect import ConnectionMixin, mpl_connect
 from recipes import pprint
-from recipes.logging import LoggingMixin, get_module_logger
+from recipes.logging import LoggingMixin
+
+# relative
+from ..connect import ConnectionMixin, mpl_connect
+
 
 # from matplotlib.axes import Axes
-# from matplotlib.offsetbox import DraggableBase
+# from matplotlib.offsetbox import MotionInterface
 
 
-# module level logger
-logger = get_module_logger()
-logging.basicConfig()
-logger.setLevel(logging.INFO)
-
-
-# from recipes.decor.misc import unhookPyQt
+# from recipes.decorators.misc import unhookPyQt
 
 # logging.basicConfig(level=logging.DEBUG)
 
 
 # ==============================================================================
-def draggable_artist_factory(art, offset, annotate, **kws):
+def draggable_artist_factory(art, offset, annotate, **kws): 
+    """"""  
     if isinstance(art, ErrorbarContainer):
         from scrawl.moves.errorbars import DraggableErrorbarContainer
         draggable = DraggableErrorbarContainer(art,
@@ -47,7 +48,7 @@ def draggable_artist_factory(art, offset, annotate, **kws):
 
     if isinstance(art, Line2D):
         # from scrawl.moves.lines import DraggableLine
-        return art, DraggableBase(art, offset, annotate, **kws)
+        return art, MotionInterface(art, offset, annotate, **kws)
 
     else:
         raise ValueError
@@ -60,14 +61,14 @@ def fpicker(artist, event):
     an artist picker that works for clicks outside the axes. ie. artist
     that are not clipped
     """
-    logger.debug('fpicker: %s', artist)
+    logger.debug('fpicker: {}', artist)
 
     if event.button != 1:  # otherwise intended reset will select
         logger.debug('wrong button!')
         return False, {}
 
     tf = artist.contains(event)
-    logger.debug('fpicker: artist.contains(event) %s', tf)
+    logger.debug('fpicker: artist.contains(event) {}', tf)
     return tf
     #
     # transformed_path = artist._get_transformed_path()
@@ -86,10 +87,10 @@ def fpicker(artist, event):
     #
     # picked = prox - pixels < 0 #
     #
-    # logging.debug('%s', (pixels, prox, artist.pickradius, picked))
+    # logging.debug('{}', (pixels, prox, artist.pickradius, picked))
     # props = dict(proximity=prox, hello='world')
     #
-    # logging.debug('picked: %r: point %s', artist, np.where(picked))
+    # logging.debug('picked: {!r}: point {}', artist, np.where(picked))
     # return picked.any(), props
 
 
@@ -102,7 +103,7 @@ def filter_non_artist(objects):
             continue
 
         # warn if not art
-        logger.warning('Object %r is not a matplotlib Artist' % o)
+        logger.warning('Object {!r} is not a matplotlib Artist', o)
 
 
 def art_summary(artists):
@@ -143,12 +144,13 @@ class Observers(LoggingMixin):
              '\n'.join(map(self._repr_observer, self.funcs.keys()))))
 
     def _repr_observer(self, id_):
-        f, a, args, kws = self.funcs[id_]
-        s = '%i%s: %s' % (id_, ' *'[a], pprint.method(f))
-        par = ['x', 'y']
-        par.extend(map(str, args))
-        par.extend(map('='.join, kws.items()))
-        return s + ', '.join(par).join('()')
+        func, active, args, kws = self.funcs[id_]
+        return (
+            f'{id_:d}{" *"[active]}: {pprint.method(func)}'
+            + ', '.join(['x', 'y',
+                         *map(str, args),
+                         *map('='.join, kws.items())]).join('()')
+        )
 
     def add(self, func, *args, **kws):
         """
@@ -221,7 +223,7 @@ class Observers(LoggingMixin):
             self.active[fun] = tf
         else:
             self.logger.warning(
-                'Function %r is not an observer! Use `add(fun, *args, **kws)'
+                'Function {!r} is not an observer! Use `add(fun, *args, **kws)'
                 'to make it an observer',  fun)
 
     def __call__(self, x, y):
@@ -236,35 +238,38 @@ class Observers(LoggingMixin):
         -------
         Artists that need to be drawn
         """
-        
-        if self.logger.getEffectiveLevel() < logging.DEBUG:
-            _art_summary = null
-        else:
-            _art_summary = art_summary
+
+        # if self.logger.getEffectiveLevel() < logging.DEBUG:
+        #     _art_summary = null
+        # else:
+        #     _art_summary = art_summary
 
         # Artists that need to be drawn (from observer functions)
         artists = []
-        for cid, (func, args, kws) in self.funcs.items():
-            if self.active[func]:
-                try:
-                    art = func(x, y, *args, **kws)
-                    self.logger.debug('observer: %s(%.3f, %.3f): %s',
-                                      func.__name__, x, y, _art_summary(art))
+        for _, (func, args, kws) in self.funcs.items():
+            if not self.active[func]:
+                continue
+            
+            try:
+                art = func(x, y, *args, **kws)
+                self.logger.opt(lazy=True).debug(
+                    'observer: {0[0]:}({0[1]:.3f}, {0[2]:.3f}): {0[3]:}',
+                    lambda: (func.__name__, x, y, art_summary(art))
+                )
 
-                    if isinstance(art, (list, tuple)):  # np.ndarray
-                        artists.extend(art)
+                if isinstance(art, (list, tuple)):  # np.ndarray
+                    artists.extend(art)
 
-                    elif art is not None:
-                        artists.append(art)
+                elif art is not None:
+                    artists.append(art)
 
-                except Exception:
-                    self.logger.exception('Observers error')
+            except Exception:
+                self.logger.exception('Observers error.')
 
         return artists
 
 
-# ******************************************************************************
-class DraggableBase(LoggingMixin):  # TODO: use as mixin?
+class MotionInterface(LoggingMixin):  # TODO: use as mixin?
     """base class for draggable artists"""
 
     annotation_format = '[%+3.2f]'
@@ -312,7 +317,7 @@ class DraggableBase(LoggingMixin):  # TODO: use as mixin?
         if not artist.get_picker():
             # artist.update()
             artist.set_pickradius(10)
-            artist.set_picker(fpicker)  # fpicker  # set_pickradius
+            artist.set_picker(True)  # fpicker
 
         # Manage with ConnectionMixin?
         self.linked = []
@@ -484,8 +489,8 @@ class DraggableBase(LoggingMixin):  # TODO: use as mixin?
         """
         linked = []
         for drg in artists:
-            if not isinstance(drg, DraggableBase):
-                drg = DraggableBase(drg)
+            if not isinstance(drg, MotionInterface):
+                drg = MotionInterface(drg)
             linked.append(drg)
 
         self.linked.extend(linked)
@@ -504,14 +509,16 @@ class DraggableBase(LoggingMixin):  # TODO: use as mixin?
         self.clipped = False
         xlim = xmin, xmax = self.xlim
         if not np.isnan(xlim).all():
-            self.logger.debug('clipping %s: x [%.2f, %.2f]', self, xmin, xmax)
+            self.logger.debug(
+                'clipping {}: x [{:.2f}, {:.2f}]', self, xmin, xmax)
             x = np.clip(x, xmin, xmax)
             if x in xlim:
                 self.clipped = True
 
         ylim = ymin, ymax = self.ylim
         if not np.isnan(ylim).all():
-            self.logger.debug('clipping %s: y [%.2f, %.2f]', self, ymin, ymax)
+            self.logger.debug(
+                'clipping {}: y [{:.2f}, {:.2f}]', self, ymin, ymax)
             y = np.clip(y, ymin, ymax)
             if y in ylim:
                 self.clipped = True
@@ -537,9 +544,9 @@ class DraggableBase(LoggingMixin):  # TODO: use as mixin?
         x, y = self.clip(x, y)
         offset = np.subtract((x, y), self.ref_point)
 
-        self.logger.debug('shifting %s to (%.3f, %.3f)', self, x, y)
+        self.logger.debug('shifting {} to ({:.3f}, {:.3f})', self, x, y)
         self.move_by(offset)
-        self.logger.debug('offset %s is (%.3f, %.3f)', self, *self.offset)
+        self.logger.debug('offset {} is ({:.3f}, {:.3f})', self, *self.offset)
 
         return self.artist
 
@@ -557,7 +564,7 @@ class DraggableBase(LoggingMixin):  # TODO: use as mixin?
         """
 
         self.offset = offset  # will adhere to positional locks
-        self.logger.debug('moving: %s %s', self, offset)
+        self.logger.debug('moving: {} {}', self, offset)
 
         # add the offset with transform
         offset_trans = Affine2D().translate(*self.offset)
@@ -565,14 +572,14 @@ class DraggableBase(LoggingMixin):  # TODO: use as mixin?
         self.artist.set_transform(trans)
 
     def update(self, x, y):
-        self.logger.debug('update: %r', self)
+        self.logger.debug('update: {!r}', self)
 
         # Artists that need to be drawn (from observers)
         pos = self.position
         draw_list = self.on_move(x, y)
         # get the actual delta (respecting position locks etc)
         delta = self.position - pos
-        self.logger.debug('DELTA %s', delta)
+        self.logger.debug('DELTA {}', delta)
 
         # if propagate:
         for lnk in self.linked:
@@ -585,7 +592,7 @@ class DraggableBase(LoggingMixin):  # TODO: use as mixin?
 
     def update_offset(self, offset):
         xy = self.position + offset  # new position
-        # self.logger.debug('update_offset %s to (%.3f, %.3f)', lnk, x, y)
+        # self.logger.debug('update_offset {} to ({:.3f}, {:.3f})', lnk, x, y)
         return self.update(*xy)
 
     # def set_axes_lim(self):
@@ -647,16 +654,15 @@ class DraggableBase(LoggingMixin):  # TODO: use as mixin?
         self.artist.draw(renderer)
 
 
-# ****************************************************************************************************
-class DragMachinery(ConnectionMixin):
+class MotionManager(ConnectionMixin):
     # TODO: some of the functionality here belongs in BlitHelper class
     """
     Class for managing draggable artists.  Artists are moved by applying a
     translation (transform) in the data space. This allows objects that live
     in arbitrary coordinates to be moved by dragging them with the mouse.
     """
-    # TODO: haunt, link
-    # TODO: #incorp best methods from mpl.DraggableBase
+
+    # TODO: #incorp best methods from mpl.MotionInterface
     supported_artists = (Line2D, ErrorbarContainer)
 
     @staticmethod
@@ -750,8 +756,8 @@ class DragMachinery(ConnectionMixin):
             return self._ax
 
         if len(self.draggable) == 0:
-            raise ValueError('%s does not contain any artists yet.'
-                             % self.__class__.__name__)
+            raise ValueError(f'{self.__class__.__name__} does not contain any '
+                             f'artists yet.')
         return self.draggable[0].artist.axes
 
     @property
@@ -772,23 +778,34 @@ class DragMachinery(ConnectionMixin):
             self.canvas is not None) and self.canvas.supports_blit
 
     def lock(self, which):
+        """
+        Lock movement along a certain axis so the artist will online move in
+        a line.
+        """
         for art, drg in self.draggable.items():
             drg.lock(which)
 
     def free(self, which):
+        """
+        Free motion along an axis for all artists.
+        """
         for art, drg in self.draggable.items():
             drg.free(which)
 
     def lock_x(self):
+        """Lock x position"""
         self.lock('x')
 
     def free_x(self):
+        """Free x motion"""
         self.free('x')
 
     def lock_y(self):
+        """Lock y position"""
         self.lock('y')
 
     def free_y(self):
+        """Free y motion"""
         self.free('y')
 
     # def validation(self, func):
@@ -800,7 +817,7 @@ class DragMachinery(ConnectionMixin):
 
     def limit(self, x=None, y=None):
         """
-        Set x and/or y limits for all draggable artists
+        Set x and/or y limits for all draggable artists.
 
         Parameters
         ----------
@@ -808,7 +825,7 @@ class DragMachinery(ConnectionMixin):
         y
 
         """
-        self.logger.debug('limit %s, %s', x, y)
+        self.logger.debug('limit {}, {}', x, y)
         for art, drg in self.draggable.items():
             drg.limit(x, y)
 
@@ -843,7 +860,7 @@ class DragMachinery(ConnectionMixin):
         # #TODO more intelligence
         if self.selection:
             #  prefer the artist with closest proximity to mouse event
-            self.logger.debug('Multiple picks! ignoring: %s', event.artist)
+            self.logger.debug('Multiple picks! ignoring: {}', event.artist)
             return True
 
         return False
@@ -855,7 +872,7 @@ class DragMachinery(ConnectionMixin):
         if self._ignore_pick(event):
             return
 
-        self.logger.debug('picked: %r: %s', event.artist, vars(event))
+        self.logger.debug('picked: {!r}: {}', event.artist, vars(event))
 
         # get data coordinates of pick
         self.selection = event.artist
@@ -915,7 +932,7 @@ class DragMachinery(ConnectionMixin):
             return
 
         if self.selection:
-            self.logger.debug('dragging: %s', self.selection)
+            self.logger.debug('dragging: {}', self.selection)
             draggable = self.draggable[self.selection]
 
             xy_disp = event.x, event.y
@@ -924,7 +941,7 @@ class DragMachinery(ConnectionMixin):
             self.delta = delta = xy_data - self.ref_point
 
             # difference between current position and previous offset position
-            self.logger.debug('on_motion: delta %s; ref %s', delta,
+            self.logger.debug('on_motion: delta {}; ref {}', delta,
                               self.ref_point)
 
             # move this artist and all its dependants
@@ -959,21 +976,21 @@ class DragMachinery(ConnectionMixin):
             return
 
         if self.selection:
-            self.logger.debug('on_release: %r', self.selection)
+            self.logger.debug('on_release: {!r}', self.selection)
             # Remove dragging method for selected artist
             self.remove_connection('motion_notify_event')
 
             xy_disp = event.x, event.y  # NOTE: may be far outside allowed range
             xy_data = x, y = self.ax.transData.inverted().transform(xy_disp)
             # xy_data = self.delta + self.ref_point
-            self.logger.debug('on_release: delta %s', self.delta)
+            self.logger.debug('on_release: delta {}', self.delta)
 
             draggable = self.draggable[self.selection]
             draw_list = draggable.on_release(x, y)
 
             print('release', draw_list)
 
-            self.logger.debug('on_release: offset %s %s', draggable,
+            self.logger.debug('on_release: offset {} {}', draggable,
                               draggable.offset)
 
             if self.use_blit:
@@ -1058,7 +1075,7 @@ class DragMachinery(ConnectionMixin):
 
     @mpl_connect('draw_event')
     def _on_draw(self, event):
-        self.logger.debug('draw %s', self._draw_count)
+        self.logger.debug('draw {}', self._draw_count)
         self._draw_count += 1
 
     def draw(self, artists):
@@ -1073,7 +1090,7 @@ class DragMachinery(ConnectionMixin):
         self.canvas.restore_region(self.background)
         # TODO: check for uniqueness to prevent unnecessary duplicate draw
         for art in sorted(filter_non_artist(artists), key=Artist.get_zorder):
-            # self.logger.info('drawing: %s' % art)
+            # self.logger.info('drawing: {}' % art)
             art.draw(self.canvas.renderer)
 
         # After rendering all the needed artists, blit each axes individually.

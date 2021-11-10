@@ -15,7 +15,7 @@ from matplotlib.lines import Line2D
 import more_itertools as mit
 
 # from .interactive import ConnectionMixin, mpl_connect
-from scrawl.moves.machinery import DragMachinery
+from scrawl.moves.machinery import MotionManager
 # from recipes.iter import flatiter
 
 import operator as op
@@ -44,7 +44,7 @@ import operator as op
 #     return hit, {}
 
 
-class AxesSliders(DragMachinery):
+class AxesSliders(MotionManager):
     """
     Class with sliders that set min/max of a value
 
@@ -111,7 +111,7 @@ class AxesSliders(DragMachinery):
         # transform = get_transform() # which='grid'
 
         # create the dragging UI
-        DragMachinery.__init__(self, use_blit=use_blit)
+        MotionManager.__init__(self, use_blit=use_blit)
 
         # add the sliding artists (lines)
         sliders = []
