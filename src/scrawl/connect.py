@@ -20,11 +20,11 @@ class ConnectionMixin(ConnectionManager, LoggingMixin):
         return self._canvas
 
     def add_connection(self, name, method):
-        self.logger.debug('Adding connection %r: %s', name, method)
+        self.logger.debug('Adding connection {!r}: {}', name, method)
         self.connections[name] = self.canvas.mpl_connect(name, method)
 
     def remove_connection(self, name):
-        self.logger.debug('Removing connection %r', name)
+        self.logger.debug('Removing connection {!r}', name)
         self.canvas.mpl_disconnect(self.connections[name])
         self.connections.pop(name)
 
@@ -39,4 +39,4 @@ class ConnectionMixin(ConnectionManager, LoggingMixin):
         """
         for name, cid in self.connections.items():
             self.canvas.mpl_disconnect(cid)
-        self.logger.debug('Disconnected from figure %s', self.figure.canvas)
+        self.logger.debug('Disconnected from figure {!s}', self.figure.canvas)
