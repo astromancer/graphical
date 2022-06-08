@@ -24,21 +24,18 @@ from scrawl.multitab import MplMultiTab, QtWidgets
 
 
 # if __name__ == '__main__':
-app = QtWidgets.QApplication(sys.argv)
 
-n = 100
-colours = 'rgb'
-ui = MplMultiTab()
-for c in colours:
-    fig, ax = plt.subplots()
-    ax.scatter(*np.random.randn(2, n), color=c)
-    ui.add_tab(fig, c)
+if __name__ == '__main__':
+    app = QtWidgets.QApplication(sys.argv)
 
-ui.show()
-sys.exit(app.exec_())
+    n = 100
+    colours = 'rgb'
+    ui = MplMultiTab()
+    for c in colours:
+        fig, ax = plt.subplots()
+        ax.scatter(*np.random.randn(2, n), color=c)
+        ui.add_tab(fig, c)
 
-# from IPython import embed
-# embed()
-# sys.exit(app.exec_())
-
-# main()
+    
+    ui.show()
+    sys.exit(app.exec_())
