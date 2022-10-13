@@ -2,7 +2,7 @@
 # std
 import itertools as itt
 from collections import abc
-
+from time import time
 # third-party
 import numpy as np
 import cmasher as cmr
@@ -20,6 +20,8 @@ from ..connect import ConnectionMixin, mpl_connect
 from .hist import PixelHistogram
 from .utils import guess_figsize, set_clim_connected, _sanitize_data
 
+from recipes.string import remove_prefix
+
 # from .zscale import zrange
 
 # from astropy.visualization import mpl_normalize  # import ImageNormalize as _
@@ -31,6 +33,7 @@ from .utils import guess_figsize, set_clim_connected, _sanitize_data
 # TODO: middle mouse resets axes limits
 
 SCROLL_CMAPS = cmr.get_cmap_list()
+SCROLL_CMAPS_R = [_ for _ in SCROLL_CMAPS if _.endswith('_r')]
 
 
 def auto_grid(n):
@@ -120,9 +123,9 @@ class ImageDisplay(ConnectionMixin, LoggingMixin):
             self.clim_from_data(image, kws)
 
         # use imshow to draw the image
-        self.imagePlot = ax.imshow(image, *args, **kws)
-        self.norm = self.imagePlot.norm
-        # self.imagePlot.set_clim(*clim)
+        self.image = ax.imshow(image, *args, **kws)
+        self.norm = self.image.norm
+        # self.image.set_clim(*clim)
 
         # create the colourbar / histogram / sliders
         self.cbar = None
@@ -237,22 +240,43 @@ class ImageDisplay(ConnectionMixin, LoggingMixin):
             from matplotlib import ticker
             fmt = ticker.NullFormatter()
 
-        return self.figure.colorbar(self.imagePlot, cax=self.cax, format=fmt)
+        return self.figure.colorbar(self.image, cax=self.cax, format=fmt)
+
+    #
+    _cmap_scroll_timeout = 0.1
+    _cmap_switch_time = -1
 
     @mpl_connect('scroll_event')
     def _cmap_scroll(self, event):
-        if self.cbar and self.cax is event.inaxes:
-            self.logger.debug('Scrolling cmap: ')
-            SCROLL_CMAPS
+
+        if self.cbar is None or self.cax is not event.inaxes:
+            return
+
+        now = time()
+        if now - self._cmap_switch_time < self._cmap_scroll_timeout:
+            self.debug('Scroll timeout')
+            return
+
+        self._cmap_switch_time = now
+        cmap = remove_prefix(self.image.get_cmap().name, 'cmr.')
+        self.logger.debug('Current cmap: {}', cmap)
+        
+        available = SCROLL_CMAPS_R
+        i = available.index(cmap) if cmap in available else -1
+        new = f'cmr.{available[(i + 1) % len(available)]}'
+        self.logger.info('Scrolling cmap: {} -> {}', cmap, new)
+        self.set_cmap(new)
+        
+        self.canvas.draw()
 
     def make_sliders(self, hist_kws=None):
-        # data = self.imagePlot.get_array()
+        # data = self.image.get_array()
 
         # FIXME: This is causing recursive repaint!!
 
         sliders = None
         if self.has_sliders:
-            clim = self.imagePlot.get_clim()
+            clim = self.image.get_clim()
             sliders = self.sliderClass(self.hax, clim, 'y',
                                        color='rbg',
                                        ms=(2, 1, 2),
@@ -263,7 +287,7 @@ class ImageDisplay(ConnectionMixin, LoggingMixin):
 
         pxh = None
         if self.has_hist:
-            pxh = PixelHistogram(self.hax, self.imagePlot, 'horizontal',
+            pxh = PixelHistogram(self.hax, self.image, 'horizontal',
                                  self.use_blit, **hist_kws)
 
             # set ylim if reasonable to do so
@@ -318,21 +342,23 @@ class ImageDisplay(ConnectionMixin, LoggingMixin):
         return clims
 
     def set_cmap(self, cmap):
-        self.imagePlot.set_cmap(cmap)
+        self.image.set_cmap(cmap)
         if self.has_hist:
-            ''
+            self.histogram.set_cmap(cmap)
+        
+        self.canvas.draw()
 
     def set_clim(self, *clim):
-        self.imagePlot.set_clim(*clim)
+        self.image.set_clim(*clim)
 
         if not self.has_hist:
-            return self.imagePlot
+            return self.image
 
         self.histogram.update()
         self.sliders.min_span = (clim[0] - clim[1]) / 100
 
         # TODO: return COLOURBAR ticklabels?
-        return self.imagePlot, self.histogram.bars
+        return self.image, self.histogram.bars
 
     def update_clim(self, *xydata):
         """Set colour limits on slider move"""
@@ -368,7 +394,7 @@ class ImageDisplay(ConnectionMixin, LoggingMixin):
 
         # MASKED_STR = 'masked'
 
-        if not hasattr(self, 'imagePlot'):
+        if not hasattr(self, 'image'):
             # prevents a swap of repeated errors flooding the terminal for
             # mouse over when no image has been drawn
             return 'no image'
@@ -380,7 +406,7 @@ class ImageDisplay(ConnectionMixin, LoggingMixin):
         col, row = int(x + 0.5), int(y + 0.5)
         nrows, ncols = self.ishape
         if (0 <= col < ncols) and (0 <= row < nrows):
-            data = self.imagePlot.get_array()
+            data = self.image.get_array()
             z = data[row, col]
             # handle masked data
             # prevent Warning: converting a masked element to nan.
@@ -516,7 +542,7 @@ def plot_image_grid(images, layout=(), titles=(), title_kws=None, figsize=None,
 
         # plot image
         imd = ImageDisplay(images[i], ax=ax, **kws)
-        art.append(imd.imagePlot)
+        art.append(imd.image)
 
         # do ticks
         top = (j == 0)
@@ -538,7 +564,7 @@ def plot_image_grid(images, layout=(), titles=(), title_kws=None, figsize=None,
                 transform=ax.transAxes, **title_kws)
 
     # Do colorbar
-    # fig.colorbar(imd.imagePlot, cax)
+    # fig.colorbar(imd.image, cax)
     img = ImageGrid(fig, axes, imd)
     if clim_all:
         img._clim_all(images, plims)

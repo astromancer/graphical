@@ -7,6 +7,7 @@ Implements a pixel colour value histogram intended to accompany image colorbars.
 import numpy as np
 from matplotlib import ticker
 from matplotlib.colors import ListedColormap
+from matplotlib.cm import get_cmap
 
 # local
 from recipes.logging import LoggingMixin
@@ -17,18 +18,15 @@ from .utils import _sanitize_data
 
 
 # ---------------------------------------------------------------------------- #
-_sci = ticker.LogFormatterSciNotation()
+# _sci = ticker.LogFormatterSciNotation()
 
 
 def fmt_log_tick(x, pos=None):
     # x = float(x)
-    if 1 <= x <= 100:
-        return str(int(x))
+    return str(int(x)) if 1 <= x <= 100 else f'{x:.1f}'
+    # if 0.1 <= x < 1:
 
-    if 0.1 <= x < 1:
-        return f'{x:.1f}'
-
-    return _sci(x)
+    # return 
 
 # ---------------------------------------------------------------------------- #
 
@@ -75,19 +73,21 @@ class PixelHistogram(LoggingMixin):  # PixelHistogram
         assert orientation.lower().startswith(('h', 'v'))
         self.orientation = orientation
 
-        self.set_cmap(image_plot, outside_colour, outside_alpha)
-
         # compute histogram
         self.bins = kws.pop('bins', self._default_n_bins)
         self.counts = self.bin_edges = self.bin_centers = ()
         self.compute(self.get_array())
 
         # create collection
+        cmap = self.image_plot.get_cmap()
         self.bars = PolyCollection(self.get_verts(self.counts, self.bin_edges),
                                    array=self.norm(self.bin_centers),
-                                   cmap=self.cmap)
+                                   cmap=cmap)
         ax.add_collection(self.bars)
 
+        # colour map
+        self.set_cmap(cmap, outside_colour, outside_alpha)
+        
         if use_blit:
             # image_plot.set_animated(True)
             self.bars.set_animated(True)
@@ -96,26 +96,38 @@ class PixelHistogram(LoggingMixin):  # PixelHistogram
         if self.log:
             ax.set(xscale='log', xlim=(0.75, None))
             ax.xaxis.major.formatter = ticker.FuncFormatter(fmt_log_tick)
+            ax.format_xdata = self.ax.format_ydata
 
         # rescale if non-empty histogram
         if len(self.counts):
             self.autoscale_view()
 
-    def set_cmap(self, image_plot, outside_colour, outside_alpha):
+    @property
+    def cmap(self):
+        return self._cmap
+    
+    @cmap.setter
+    def cmap(self, cmap):
+        self.set_cmap(cmap)
+    
+    def set_cmap(self, cmap, outside_colour=None, outside_alpha=0.5):
         # setup colormap (copy)
-        cmap = image_plot.get_cmap()
-        self.cmap = ListedColormap(cmap(np.linspace(0, 1, 256)))
+        self.logger.debug('Adapting cmap {} for {}.', cmap, self)
+        cmap = get_cmap(cmap)
+        cmap = ListedColormap(cmap(np.linspace(0, 1, 256)))
+        self._cmap = cmap
 
         # optionally gray out out-of-bounds values
         if outside_colour is None:
-            outside_colours = self.cmap([0., 1.])  # note float
+            outside_colours = cmap([0., 1.])  # note float
             outside_colours[:, -1] = outside_alpha
             under, over = outside_colours
         else:
             under, over = duplicate_if_scalar(outside_colour)
         #
-        self.cmap.set_over(over)
-        self.cmap.set_under(under)
+        cmap.set_over(over)
+        cmap.set_under(under)
+        self.bars.set_cmap(cmap)
 
     def get_array(self):
         return self.image_plot.get_array()

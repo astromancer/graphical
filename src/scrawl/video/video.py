@@ -19,7 +19,6 @@ from ..image import ImageDisplay
 class VideoDisplay(ImageDisplay):
     # FIXME: blitting not working - something is leading to auto draw
     # FIXME: frame slider bar not drawing on blit
-    # FIXME: HISTOGRAM values not updating on scroll
     # TODO: lock the sliders in place with button??
 
     _scroll_wrap = True  # scrolling past the end leads to the beginning
@@ -186,14 +185,14 @@ class VideoDisplay(ImageDisplay):
         image = self.get_image_data(self.frame)
         # set the image data
         # TODO: method set_image_data here??
-        self.imagePlot.set_data(image)  # does not update normalization
+        self.image.set_data(image)  # does not update normalization
 
         # FIXME: normalizer fails with boolean data
         #  File "/usr/local/lib/python3.6/dist-packages/matplotlib/colorbar.py", line 956, in on_mappable_changed
         #   self.update_normal(mappable)
         # File "/usr/local/lib/python3.6/dist-packages/matplotlib/colorbar.py", line 987, in update_normal
 
-        draw_list = [self.imagePlot]
+        draw_list = [self.image]
 
         # set the slider axis limits
         if self.sliders:
@@ -217,7 +216,7 @@ class VideoDisplay(ImageDisplay):
         if self.clim_every and (self._draw_count % self.clim_every) == 0:
             # set the slider positions / color limits
             vmin, vmax = self.clim_from_data(image)
-            self.imagePlot.set_clim(vmin, vmax)
+            self.image.set_clim(vmin, vmax)
 
             if self.sliders:
                 draw_list = self.sliders.set_positions((vmin, vmax),
@@ -242,7 +241,9 @@ class VideoDisplay(ImageDisplay):
         # return i, image
 
     def _scroll(self, event):
-
+        if event.inaxes is not self.ax:
+            return
+        
         # FIXME: drawing on scroll.....
         # try:
         inc = [-1, +1][event.button == 'up']
@@ -361,7 +362,6 @@ class VideoDisplay(ImageDisplay):
 
 
 class VideoDisplayX(VideoDisplay):
-    # TODO: improve memory performance by allowing coords to update via func
 
     marker_properties = dict(alpha=1, s=5, marker='x', color='r')
 
@@ -426,11 +426,14 @@ class VideoDisplayX(VideoDisplay):
         return self.coords[i, :, ::-1]
 
     def update(self, i, draw=True):
-        self.logger.debug('update')
+        
         # i = round(i)
         draw_list = VideoDisplay.update(self, i, False)
         #
-        if (coo := self.get_coords(i)) is not None:
+        coo = self.get_coords(i).T
+        self.logger.debug('Coords: {}', coo)
+        
+        if coo is not None:
             self.marks.set_offsets(coo)
             self.marks.set_visible(True)
             draw_list.append(self.marks)
