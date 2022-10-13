@@ -48,6 +48,20 @@ from .connect import ConnectionMixin, mpl_connect
 # TODO: middle mouse resets axes limits
 
 
+_sci = ticker.LogFormatterSciNotation()
+
+
+def fmt_log_tick(x, pos=None):
+    # x = float(x)
+    if 1 <= x <= 100:
+        return str(int(x))
+
+    if 0.1 <= x < 1:
+        return f'{x:.1f}'
+
+    return _sci(x)
+
+
 def _sanitize_data(data):
     """
     Removes nans and masked elements
@@ -561,7 +575,8 @@ class ColourBarHistogram(LoggingMixin):  # PixelHistogram
 
         # set axes limits
         if self.log:
-            ax.set_xscale('log')
+            ax.set(xscale='log', xlim=(0.75, None))
+            ax.xaxis.major.formatter = ticker.FuncFormatter(fmt_log_tick)
 
         # rescale if non-empty histogram
         if len(self.counts):
