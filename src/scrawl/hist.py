@@ -2,7 +2,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 from recipes.logging import LoggingMixin
 
-from scrawl.imagine import _sanitize_data
+from scrawl.image import _sanitize_data
 from scrawl.utils import percentile
 
 

@@ -1,6 +1,9 @@
-import pylab as plt
-from scrawl.imagine import ImageDisplay
+# third-party
 import numpy as np
+
+# local
+from scrawl.image import ImageDisplay
+
 
 data = np.random.random((100, 100))
 ImageDisplay(data)
