@@ -1,19 +1,18 @@
 
+# std
 import datetime
-from matplotlib import ticker
-from matplotlib import scale as mscale
-from matplotlib.dates import AutoDateFormatter, AutoDateLocator
-from matplotlib.dates import date2num
-from matplotlib.transforms import (IdentityTransform, Affine2D,
-                                   blended_transform_factory as btf,)
+
+# third-party
 from mpl_toolkits.axes_grid1.parasite_axes import SubplotHost
+from matplotlib import ticker, scale as mscale
+from matplotlib.dates import AutoDateFormatter, AutoDateLocator, date2num
+from matplotlib.transforms import (Affine2D, IdentityTransform,
+                                   blended_transform_factory as btf)
 
-# from recipes.decor import expose
-
-from scrawl.ticks import (MetricFormatter, AutoMinorLocator, locator_factory, 
-                          formatter_factory)
-
+# relative
 from .transforms import ReciprocalTransform
+from .ticks import (AutoMinorLocator, MetricFormatter, formatter_factory,
+                    locator_factory)
 
 
 class ReciprocalScale(mscale.ScaleBase):  # FIXME

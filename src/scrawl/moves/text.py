@@ -2,7 +2,7 @@ import matplotlib.pyplot as plt
 from matplotlib.text import Text
 
 
-class DragHandler(object):
+class DragHandler: # MotionInterface
     # NOTE: DOES NOT HANDLE TEXT WITH ARBITRARY TRANSFORMS!!!!
     """
     A simple class to handle Drag n Drop.

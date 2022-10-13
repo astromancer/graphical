@@ -6,6 +6,7 @@ Routines for displaying images and video
 import time
 import warnings
 import itertools as itt
+from collections import abc
 
 # third-party
 import numpy as np
@@ -25,17 +26,15 @@ from astropy.visualization.mpl_normalize import ImageNormalize
 from recipes.functionals import echo0
 from recipes.dicts import AttrReadItem
 from recipes.logging import LoggingMixin
-from recipes.misc import duplicate_if_scalar
+from recipes.utils import duplicate_if_scalar
 from recipes.array.neighbours import neighbours
 
 # relative
 from .bar3d import bar3d
-from .sliders import TripleSliders
+from .sliders import RangeSliders
 from .utils import get_percentile_limits
 from .connect import ConnectionMixin, mpl_connect
 
-
-# from obstools.aps import ApertureCollection
 
 # from .zscale import zrange
 
@@ -92,9 +91,8 @@ def get_norm(image, interval, stretch):
 
     """
     # choose colour interval algorithm based on data type
-    if image.dtype.kind == 'i':  # integer array
-        if image.ptp() < 1000:
-            interval = 'minmax'
+    if image.dtype.kind == 'i' and image.ptp() < 1000:   # integer array
+        interval = 'minmax'
 
     # determine colour transform from `interval` and `stretch`
     if isinstance(interval, str):
@@ -111,7 +109,7 @@ def get_norm(image, interval, stretch):
 
 def get_screen_size_inches():
     """
-    Use QT to get the size of the primary screen in inches
+    Use QT to get the size of the primary screen in inches.
 
     Returns
     -------
@@ -121,20 +119,22 @@ def get_screen_size_inches():
     import sys
     from PyQt5.QtWidgets import QApplication, QDesktopWidget
 
+
     # Note the check on QApplication already running and not executing the exit
     #  statement at the end.
     app = QApplication.instance()
     if app is None:
         app = QApplication(sys.argv)
     else:
-        logger.debug(f'QApplication instance already exists: {app}')
+        logger.debug('Retrieving screen size for existing QApplication '
+                     f'instance: {app}')
 
     # TODO: find out on which screen the focus is
 
     w = QDesktopWidget()
     s = w.screen()
     size_inches = [s.width() / s.physicalDpiX(), s.height() / s.physicalDpiY()]
-    # app.exec_()
+    logger.info('Screen size is: {}', size_inches)
     w.close()
     return size_inches
 
@@ -196,7 +196,7 @@ def _guess_figsize(image_shape, fill_factor=0.75, max_pixel_size=0.2,
     # enlarge =
     size *= max(np.max(min_size / size), 1)
 
-    logger.debug('Guessed figure size: (%.1f, %.1f)', *size)
+    logger.debug('Guessed figure size: ({:.1f}, {:.1f})', *size)
     return size
 
 
@@ -218,7 +218,7 @@ def get_clim(data, plims=(0.25, 99.75)):
 
     bad_clims = (clims[0] == clims[1])
     if bad_clims:
-        logger.warning('Ignoring bad colour interval: (%.1f, %.1f). ', *clims)
+        logger.warning('Ignoring bad colour interval: ({:.1f}, {:.1f}). ', *clims)
         return None, None
 
     return clims
@@ -302,7 +302,7 @@ def plot_image_grid(images, layout=(), titles=(), title_kws=None, figsize=None,
                  **(title_kws or {})}
 
     art = []
-    w = len(str(int(n)))
+    w = len(str(n))
     axes = np.empty((n_rows, n_cols), 'O')
     indices = enumerate(np.ndindex(n_rows, n_cols))
     for (i, (j, k)), title in itt.zip_longest(indices, titles, fillvalue=''):
@@ -349,6 +349,7 @@ def plot_image_grid(images, layout=(), titles=(), title_kws=None, figsize=None,
     img = ImageGrid(fig, axes, imd)
     if clim_all:
         img._clim_all(images, plims)
+
     return img
 
 
@@ -400,7 +401,7 @@ class ImageGrid:
     def images(self):
         return [ax.images[0].get_array() for ax in self.fig.axes]
 
-    def _clim_all(art, imd, images, plims):
+    def _clim_all(self, art, imd, images, plims):
         # connect all image clims to the sliders.
         for image in art:
             # noinspection PyUnboundLocalVariable
@@ -465,9 +466,8 @@ class FromNameMixin:
                 allowed_names.add(name)
 
         else:
-            raise ValueError('Unrecognized method %r. Please use one of '
-                             'the following %s' %
-                             (method, tuple(allowed_names)))
+            raise ValueError(f'Unrecognized method {method!r}. Please use one'
+                             f' of the following {tuple(allowed_names)}')
 
         return sub(*args, **kws)
 
@@ -595,11 +595,10 @@ class ColourBarHistogram(LoggingMixin):  # PixelHistogram
         self.bars.set_array(self.norm(self.bin_centers))
 
     def compute(self, data, bins=None, range=None):
-
         # compute histogram
         self.bins = self._auto_bins(self.bins if bins is None else bins)
         if range is None:  # FIXME: should be included in bins vector
-            range = self._auto_range()
+            range = self._auto_range()  # sourcery skip: avoid-builtin-shadow
 
         self.counts, self.bin_edges = np.histogram(
             _sanitize_data(data), self.bins, range)
@@ -668,26 +667,24 @@ class ColourBarHistogram(LoggingMixin):  # PixelHistogram
         return m - w / 2, m + w / 2
 
     def autoscale_view(self):
-
         # set the axes limits slightly wider than the clims
         # the naming here assumes horizontal histogram orientation
-        xmin = 0.1 if self.log else 0
+        xmin = 0.7 if self.log else 0
         xlim = (xmin, self.counts.max())
         ylim = self._auto_range()
 
         if self.orientation.startswith('v'):
             xlim, ylim = ylim, xlim
 
-        # self.logger.debug('Ax lims: (%.1f, %.1f)', *lim)
+        # self.logger.debug('Ax lims: ({:.1f}, {:.1f})', *lim)
         self.ax.set(xlim=xlim, ylim=ylim)
 
 
-class ImageDisplay(LoggingMixin):
+class ImageDisplay(ConnectionMixin, LoggingMixin):
     # TODO: move cursor with arrow keys when hovering over figure (like ds9)
     # TODO: optional zoomed image window
+    # TODO: scroll colorbar to switch cmap
 
-    # FIXME: Dragging too slow for large images: option for update on release
-    #  instead of update on drag!!
 
     # FIXME: hist: outside alpha changes with middle slider move.....
 
@@ -698,7 +695,7 @@ class ImageDisplay(LoggingMixin):
     # TODO: remove ticks on cbar ax
     # TODO: plot scale func on hist axis
 
-    sliderClass = TripleSliders  # AxesSliders
+    sliderClass = RangeSliders  # AxesSliders
     _default_plims = (0.25, 99.75)
     _default_hist_kws = dict(bins=100)
 
@@ -760,9 +757,11 @@ class ImageDisplay(LoggingMixin):
         self.ax, self.cax, self.hax = axes
         ax = self.ax
 
-        # use imshow to do the plotting
-        self.clim_from_data(image, kws)
+        # get colour limits
+        if 'vmin' not in kws and 'vmax' not in kws:
+            self.clim_from_data(image, kws)
 
+        # use imshow to draw the image
         self.imagePlot = ax.imshow(image, *args, **kws)
         self.norm = self.imagePlot.norm
         # self.imagePlot.set_clim(*clim)
@@ -778,6 +777,9 @@ class ImageDisplay(LoggingMixin):
         # connect on_draw for debugging
         self._draw_count = 0
         # self.cid = ax.figure.canvas.mpl_connect('draw_event', self._on_draw)
+
+        # link viewlims of the 3d axes
+        ConnectionMixin.__init__(self, self.fig.canvas)
 
         if connect:
             self.connect()
@@ -877,9 +879,12 @@ class ImageDisplay(LoggingMixin):
             from matplotlib import ticker
             fmt = ticker.NullFormatter()
 
-        # cax = self.axes.cbar
-        cbar = self.figure.colorbar(self.imagePlot, cax=self.cax, format=fmt)
-        return cbar
+        return self.figure.colorbar(self.imagePlot, cax=self.cax, format=fmt)
+
+    @mpl_connect('scroll_event')
+    def _cmap_scroll(self, event):
+        if self.cbar and self.cax is event.inaxes:
+            
 
     def make_sliders(self, hist_kws=None):
         # data = self.imagePlot.get_array()
@@ -916,33 +921,42 @@ class ImageDisplay(LoggingMixin):
         """
         Get colour scale limits for data.
         """
-        # first arg is dict from which we remove 'extra' keywords that
-        # are not allowed in imshow. This allows a dict from the calling
-        # scope to be edited here without global statement.
-        # This function can also still be used with unpacked keyword args
+        # `kws` dict from which we remove 'extra' keywords that are not allowed
+        # in imshow. This allows a dict from the calling scope to be edited here
+        # without global statement. This function can also still be used with
+        # unpacked keyword args
         kws = kws or {}
-        clim = kws.pop('clim', True)
+        if 'clim' in kws:
+            clim = kws.pop('clim')
+            if clim is None or (clim is False):
+                return None, None
+
+            if isinstance(clim, abc.Sized) and len(clim) == 2:
+                kws['vmin'], kws['vmax'] = clim
+                return clim
+
+            if clim is not True:
+                raise ValueError(f'Invalid value for `clim`: {clim!r}.')
+
         plims = kws.pop('plims', None)
-        if clim:
-            plims = kws_.setdefault('plims', plims)
-            if plims is None:
-                kws_['plims'] = self._default_plims
+        plims = kws_.setdefault('plims', plims)
+        if plims is None:
+            kws_['plims'] = self._default_plims
 
-            if np.all(np.ma.getmask(data)):
-                return None, None
+        if np.all(np.ma.getmask(data)):
+            return None, None
 
-            clims = get_percentile_limits(_sanitize_data(data), **kws_)
-            self.logger.debug('Colour limits: ({:.1f}, {:.1f})', *clims)
-            kws['vmin'], kws['vmax'] = clims
+        clims = get_percentile_limits(_sanitize_data(data), **kws_)
+        self.logger.debug('Colour limits: ({:.1f}, {:.1f})', *clims)
+        kws['vmin'], kws['vmax'] = clims
 
-            bad_clims = (clims[0] == clims[1])
-            if bad_clims:
-                self.logger.warning('Bad colour interval: (%.1f, %.1f). '
-                                    'Ignoring', *clims)
-                return None, None
+        bad_clims = (clims[0] == clims[1])
+        if bad_clims:
+            self.logger.warning('Bad colour interval: ({:.1f}, {:.1f}). '
+                                'Ignoring', *clims)
+            return None, None
 
-            return clims
-        return None, None
+        return clims
 
     def set_clim(self, *clim):
         self.imagePlot.set_clim(*clim)
@@ -996,8 +1010,8 @@ class ImageDisplay(LoggingMixin):
             return 'no image'
 
         # xy repr
-        xs = 'x=%1.{:d}f'.format(precision) % x
-        ys = 'y=%1.{:d}f'.format(precision) % y
+        xs = f'x={x:1.{precision:d}f}'
+        ys = f'y={y:1.{precision:d}f}'
         # z
         col, row = int(x + 0.5), int(y + 0.5)
         nrows, ncols = self.ishape
@@ -1005,16 +1019,15 @@ class ImageDisplay(LoggingMixin):
             data = self.imagePlot.get_array()
             z = data[row, col]
             # handle masked data
-            if np.ma.is_masked(z):
-                # prevent Warning: converting a masked element to nan.
-                zs = 'z=%s' % masked_str
-            else:
-                zs = 'z=%1.{:d}f'.format(precision) % z
+            # prevent Warning: converting a masked element to nan.
+            zs = f'z={masked_str}' if np.ma.is_masked(z) else f'z={z:1.{precision:d}f}'
             return ',\t'.join((xs, ys, zs)).expandtabs()
         else:
             return ', '.join((xs, ys))
 
     def connect(self):
+        super().connect()
+        
         if self.sliders is None:
             return
 
@@ -1066,7 +1079,7 @@ class VideoDisplay(ImageDisplay):
             raise ValueError(f'Cannot image {n_dim}D data')
         return data, len(data)
 
-    def __init__(self, data, **kws):
+    def __init__(self, data, clim_every=1, **kws):
         """
         Image display for 3D data. Implements frame slider and image scroll.
 
@@ -1089,7 +1102,7 @@ class VideoDisplay(ImageDisplay):
         data, nframes = self._check_data(data)
 
         self.nframes = int(nframes)
-        self.clim_every = kws.pop('clim_every', 1)
+        self.clim_every = clim_every
 
         # don't connect methods yet
         connect = kws.pop('connect', True)
@@ -1147,7 +1160,7 @@ class VideoDisplay(ImageDisplay):
         size = super().guess_figsize(data, fill_factor, max_pixel_size)
         # create a bit more space below the figure for the frame nr indicator
         size[1] += 0.5
-        self.logger.debug('Guessed figure size: (%.1f, %.1f)', *size)
+        self.logger.debug('Guessed figure size: ({:.1f}, {:.1f})', *size)
         return size
 
     @property
@@ -1228,20 +1241,21 @@ class VideoDisplay(ImageDisplay):
             # find min / max as float
             min_max = float(np.nanmin(image)), float(np.nanmax(image))
             if not np.isnan(min_max).any():
-                self.sliders.ax.set_ylim(min_max)
+                # self.sliders.ax.set_ylim(min_max)
                 self.sliders.valmin, self.sliders.valmax = min_max
 
                 # since we changed the axis limits, need to redraw tick labels
                 draw_list.extend(
                     getattr(self.histogram.ax,
-                            f'get_{self.sliders.slide_axis}ticklabels')())
+                            f'get_{self.sliders.slide_axis}ticklabels')()
+                )
 
         # update histogram
         if self.has_hist:
             self.histogram.compute(image, self.histogram.bin_edges)
             draw_list.append(self.histogram.update())
 
-        if not (self._draw_count % self.clim_every):
+        if self.clim_every and (self._draw_count % self.clim_every) == 0:
             # set the slider positions / color limits
             vmin, vmax = self.clim_from_data(image)
             self.imagePlot.set_clim(vmin, vmax)
@@ -1259,7 +1273,7 @@ class VideoDisplay(ImageDisplay):
             #             _sanitize_data(image))
 
             # else:
-            #     self.logger.debug('Auto clims: (%.1f, %.1f)', vmin, vmax)
+            #     self.logger.debug('Auto clims: ({:.1f}, {:.1f})', vmin, vmax)
 
         #
         if draw:
@@ -1388,10 +1402,9 @@ class VideoDisplay(ImageDisplay):
 
 
 class VideoDisplayX(VideoDisplay):
-    # FIXME: redraw markers after color adjust
     # TODO: improve memory performance by allowing coords to update via func
 
-    marker_properties = dict(c='r', marker='x', alpha=1, ls='none', ms=5)
+    marker_properties = dict(alpha=1, s=5, marker='x', color='r')
 
     def __init__(self, data, coords=None, **kws):
         """
@@ -1405,50 +1418,62 @@ class VideoDisplayX(VideoDisplay):
             array_like with
             shape (N, k, 2) where k is the number of apertures per frame, and N
             is the number of frames.
+        markers: str
+            Sequence of markers
         kws:
             passed to `VideoDisplay`
         """
 
         VideoDisplay.__init__(self, data, **kws)
 
-        # create markers
-        self.marks, = self.ax.plot([], [], **self.marker_properties)
-
+        #
         # check coords
         self.coords = coords
         self.has_coords = (coords is not None)
         if self.has_coords:
             coords = np.asarray(coords)
             if coords.ndim not in (2, 3) or (coords.shape[-1] != 2):
-                raise ValueError('Coordinate array has incorrect shape: %s',
-                                 coords.shape)
+                raise ValueError('Coordinate array `coords` has incorrect '
+                                 f'dimensions: {coords.shape}')
             if coords.ndim == 2:
                 # Assuming single coordinate point per frame
                 coords = coords[:, None]
             if len(coords) < len(data):
                 self.logger.warning(
-                    'Coordinate array contains fewer points (%i) than '
-                    'the number of frames (%i).', len(coords), len(data))
+                    'Coordinate array contains fewer points ({}) than the '
+                    'number of frames ({}).', len(coords), len(data)
+                )
 
-            # set for frame 0
-            self.marks.set_data(coords[0, :, ::-1].T)
+            # coord getter
             self.get_coords = self.get_coords_internal
+
+            # create markers
+            # set for frame 0
+            self.marks = self.ax.scatter(*coords[0, :, ::-1].T,
+                                         **self.marker_properties)
+        else:
+            # create markers
+            self.marks = self.ax.scatter([0], [0], **self.marker_properties)
+            self.marks.set_visible(False)
+
+        # redraw markers after color adjust
+        self.sliders.link(self.marks)
 
     def get_coords(self, i):
         return
 
     def get_coords_internal(self, i):
         i = int(round(i))
-        return self.coords[i, :, ::-1].T
+        return self.coords[i, :, ::-1]
 
     def update(self, i, draw=True):
-        # self.logger.debug('update')
+        self.logger.debug('update')
         # i = round(i)
         draw_list = VideoDisplay.update(self, i, False)
         #
-        coo = self.get_coords(i)
-        if coo is not None:
-            self.marks.set_data(coo)
+        if (coo := self.get_coords(i)) is not None:
+            self.marks.set_offsets(coo)
+            self.marks.set_visible(True)
             draw_list.append(self.marks)
 
         return draw_list
@@ -1460,10 +1485,12 @@ class VideoDisplayA(VideoDisplayX):
                    picker=False,
                    widths=7.5, heights=7.5)
 
-    def __init__(self, data, coords=None, ap_props={}, **kws):
+    def __init__(self, data, coords=None, ap_props=None, **kws):
         """
         Optionally also displays apertures if coordinates provided.
         """
+        if ap_props is None:
+            ap_props = {}
         VideoDisplayX.__init__(self, data, coords, **kws)
 
         # create apertures
@@ -1472,6 +1499,8 @@ class VideoDisplayA(VideoDisplayX):
         self.aps = self.create_apertures(**props)
 
     def create_apertures(self, **props):
+        from obstools.aps import ApertureCollection
+        
         props.setdefault('animated', self.use_blit)
         aps = ApertureCollection(**props)
         # add apertures to axes.  will not display yet if coordinates not given
@@ -1485,28 +1514,14 @@ class VideoDisplayA(VideoDisplayX):
 
     def update(self, i, draw=True):
         # get all the artists that changed by calling parent update
-        draw_list = VideoDisplay.update(self, i, False)
-        #
-        coo = self.get_coords(i)
-        if coo is not None:
-            self.marks.set_data(coo)
-            draw_list.append(self.marks)
+        draw_list = VideoDisplayX.update(self, i, False)
+        coo = self.marks.get_offsets()
 
         art = self.update_apertures(i, coo.T)
         draw_list.append(art)
 
         return draw_list
 
-        # self.ap_updater(self.aps, i)
-        # self.aps.coords = coo.T
-
-        # except Exception as err:
-        #     self.logger.exception('Aperture update failed at %i', i)
-        #     self.aps.coords = np.empty((0, 2))
-        # else:
-        # draw_list.append(self.aps)
-        # finally:
-        # return draw_list
 
 
 DEFAULT_TITLES = ('Data', 'Fit', 'Residual')
@@ -1604,7 +1619,7 @@ class ImageModelPlot3D(ConnectionMixin):
         # axes_3d = AxesGrid(fig, 212, **self._3d_axes_kws)
         axes_3d = []
         for i in range(4, 7):
-            ax = fig.add_subplot(2, 3, i, projection='3d', 
+            ax = fig.add_subplot(2, 3, i, projection='3d',
                                  **self._3d_axes_kws)
             ax.set_facecolor('None')
             # ax.patch.set_linewidth( 1 )
@@ -1633,12 +1648,12 @@ class ImageModelPlot3D(ConnectionMixin):
 
     def setup_cbar_ticks(self, cbar, cax):
         # make the colorbar ticks look nice
-        
+
         rightmost = cax is self.axes_images.cbar_axes[-1]
         params = self.colorbar_ticks['right' if rightmost else 'major']
         cax.axes.tick_params(**params)
         cax.axes.tick_params(**self.colorbar_ticks.minor)
-        
+
         # make the colorbar spine invisible
         cbar.outline.set_visible(False)
         #

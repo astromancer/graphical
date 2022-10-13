@@ -67,10 +67,10 @@ def percentile(data, p, axis=None):
     return np.squeeze(u * mn + v * mx + s2 * d)
 
 
-def get_percentile_limits(data, plims=(-5, 105), e=(), axis=None):
+def get_percentile_limits(data, plims=(-5, 105), errorbars=(), axis=None):
     """
     Return suggested axis limits based on the extrema of `data` and optional
-    errorbars `e`.
+    1 sigma standard deviation `errorbars`.
 
     data : array-like
         data on display
@@ -87,7 +87,7 @@ def get_percentile_limits(data, plims=(-5, 105), e=(), axis=None):
         axis along which to compute percentile
     """
 
-    x = get_data_pm_1sigma(data, e)
+    x = get_data_pm_1sigma(data, errorbars)
     lims = np.empty(2, data.dtype)
     for i, (x, p) in enumerate(zip(x, plims)):
         lims[i] = percentile(x, p, axis)

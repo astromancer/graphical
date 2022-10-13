@@ -56,7 +56,10 @@ class AxesSliders(MotionManager):
     >>> sliders.upper.on_move.add(func)
     """
 
-    # indices of the draggable objects that can be set by assigning to the
+    # TODO: Dragging sliders too slow for large images: option for update on
+    #  release instead of update on drag!!
+
+    # indices of the movable objects that can be set by assigning to the
     # `positions` attribute
     _use_positions = slice(None)
 
@@ -101,11 +104,7 @@ class AxesSliders(MotionManager):
         # assert np.size(positions) == 2, 'Positions should have size 2'
         self._original_position = positions  # np.sort(
 
-        if props:
-            prop_cycle = cycler(**props)
-        else:
-            prop_cycle = [{}] * len(positions)
-
+        prop_cycle = cycler(**props) if props else [{}] * len(positions)
         # get transform (like axhline / axvline)
         transform = getattr(ax, f'get_{self.slide_axis}axis_transform')()
         # transform = get_transform() # which='grid'
@@ -132,14 +131,14 @@ class AxesSliders(MotionManager):
             # add some markers for aesthetic           '>s<'
             for x, m in zip(np.linspace(0, 1, nem, 1), extra_markers):
                 x, y = [[pos], [x]][o]
-                linked = Line2D(x, y, color=props['color'], marker=m,
-                                transform=transform, clip_on=clip_on)
-                ax.add_line(linked)  # move to link function??
-                self[line].link(linked)
+                tied = Line2D(x, y, color=props['color'], marker=m,
+                              transform=transform, clip_on=clip_on)
+                ax.add_line(tied)  # move to link function??
+                self[line].tie(tied)
 
         # set upper / lower attributes for convenience
-        self.lower = self.draggable[sliders[0]]
-        self.upper = self.draggable[sliders[1]]
+        self.lower = self.movable[sliders[0]]
+        self.upper = self.movable[sliders[1]]
         self.lock(self._locked)
 
         # constrain movement
@@ -169,7 +168,7 @@ class AxesSliders(MotionManager):
         # not a property since it returns a list of artists to draw
         # assert len(values) == len(self.artists)
         draw_list = []
-        for drg, v in zip(self.draggable.values(), values):
+        for drg, v in zip(self.movable.values(), values):
             new = (v, drg.position[self._ilock])[self._order]
             art = self.update(drg, new, False)
             draw_list.extend(art)
@@ -214,11 +213,25 @@ class AxesSliders(MotionManager):
         """ """
         ax.set_navigate(False)  # turn off nav for this axis
 
+    def link(self, *artists):
+        """
+        Link artists for co-draw.
+        """
+        for mv in self.movable.values():
+            mv.link(*artists)
 
-class TripleSliders(AxesSliders):  # MinMaxMeanSliders
+    def unlink(self, *artists):
+        """
+        Link artists for co-draw.
+        """
+        for mv in self.movable.values():
+            mv.unlink(*artists)
+
+
+class RangeSliders(AxesSliders):  # MinMaxMeanSliders # RangeSliders
     """
     A set of 3 sliders for setting min/max/mean value.  Middle slider is
-    linked to both the upper and lower slider and will move both those when
+    tied to both the upper and lower slider and will move both those when
     changed.  This allows for easily altering the upper/lower range values
     simultaneously.  The middle slider will also always be at the mean
     position of the upper/lower sliders.
@@ -251,7 +264,7 @@ class TripleSliders(AxesSliders):  # MinMaxMeanSliders
                              annotate, haunted, use_blit, extra_markers,
                              **props)
         #
-        self.centre = self.draggable[2]
+        self.centre = self.movable[2]
         self.centre.lock(self._locked)
         # self.lower.on_picked.add(lambda x, y: self.centre.set_animate(True))
 
@@ -267,9 +280,9 @@ class TripleSliders(AxesSliders):  # MinMaxMeanSliders
         self.centre.on_picked.add(self.deactivate_centre_control)
         # re-link to the centre slider
         self.centre.on_release.add(self.activate_centre_control)
-        # make sure we draw all the linked artists on centre move
+        # make sure we draw all the tied artists on centre move
         # NOTE: not sure why this is necessary since linking should draw all
-        # linked artists, but trailing slider does not draw...
+        # tied artists, but trailing slider does not draw...
         self.centre.on_move.add(
             lambda x, y: self.lower.draw_list + self.upper.draw_list)
 
@@ -279,8 +292,7 @@ class TripleSliders(AxesSliders):  # MinMaxMeanSliders
         is moved
         """
         y = self.positions.mean()
-        draw_list = self.centre.update(x, y)
-        return draw_list
+        return self.centre.update(x, y)
 
     def set_centre_min(self, x, y):
         """set minimum position of the central slider"""
@@ -293,7 +305,7 @@ class TripleSliders(AxesSliders):  # MinMaxMeanSliders
         self.logger.debug('centre ymax: %.2f, %.2f', self.centre.ymax, y)
 
     def _animate(self, b):
-        for drg in self.draggable.values():
+        for drg in self.movable.values():
             drg.set_animated(b)
 
     def animate(self, x, y):
@@ -310,8 +322,8 @@ class TripleSliders(AxesSliders):  # MinMaxMeanSliders
         up = shift[self._ifree] > 0  # True if movement is upwards
 
         # upper if moving up else lower. i.e. the one that may get clipped
-        lead = self.draggable[int(up)]
-        trail = self.draggable[int(not up)]
+        lead = self.movable[int(up)]
+        trail = self.movable[int(not up)]
 
         art2 = lead.update(*(lead.position + shift))
         art3 = trail.update(*(trail.position + shift))
@@ -323,27 +335,27 @@ class TripleSliders(AxesSliders):  # MinMaxMeanSliders
         self.lower.on_move.activate(self._lwr_mv_ctr)
         self.upper.on_move.activate(self._upr_mv_ctr)
 
-        self.centre.unlink(self.lower, self.upper)
+        self.centre.untie(self.lower, self.upper)
 
     def deactivate_centre_control(self, x=None, y=None):
         # print('deact')
         self.lower.on_move.deactivate(self._lwr_mv_ctr)
         self.upper.on_move.deactivate(self._upr_mv_ctr)
 
-        self.centre.link(self.lower, self.upper)
+        self.centre.tie(self.lower, self.upper)
 
     def on_motion(self, event):
         if event.button != 1:
             return
 
         if self.selection:
-            draggable = self.draggable[self.selection]
+            movable = self.movable[self.selection]
 
             xydisp = event.x, event.y
             xydata = self.ax.transData.inverted().transform(xydisp)
             self.delta = xydata - self.ref_point
 
-            self.update(draggable, xydata)
+            self.update(movable, xydata)
 
     def on_release(self, event):
         if event.button != 1:
@@ -358,11 +370,11 @@ class TripleSliders(AxesSliders):  # MinMaxMeanSliders
             x, y = self.ax.transData.inverted().transform(xydisp)  # xydata =
             self.logger.debug('on_release: delta %s', self.delta)
 
-            draggable = self.draggable[self.selection]
-            draw_list = draggable.on_release(x, y)
+            movable = self.movable[self.selection]
+            draw_list = movable.on_release(x, y)
 
-            self.logger.debug('on_release: offset %s %s', draggable,
-                              draggable.offset)
+            self.logger.debug('on_release: offset %s %s', movable,
+                              movable.offset)
 
             if self.use_blit:
                 self.draw_blit(draw_list)
@@ -375,7 +387,7 @@ class TripleSliders(AxesSliders):  # MinMaxMeanSliders
         # super().reset()
         self.logger.debug('resetting!')
         draw_list = []
-        for art, off in zip(self.draggable.values(),
+        for art, off in zip(self.movable.values(),
                             self._original_offsets):
             artists = art.update(*art.ref_point)
             draw_list.extend(artists)

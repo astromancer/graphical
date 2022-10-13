@@ -1,6 +1,6 @@
 import copy
 import numpy as np
-from recipes.misc import duplicate_if_scalar
+from recipes.utils import duplicate_if_scalar
 
 DEFAULT_BINS = 50
 MAX_POINTS = 500
