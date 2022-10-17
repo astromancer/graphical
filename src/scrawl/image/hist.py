@@ -3,11 +3,14 @@ Implements a pixel colour value histogram intended to accompany image colorbars.
 """
 
 
+# std
+from types import MappingProxyType
+
 # third-party
 import numpy as np
 from matplotlib import ticker
-from matplotlib.colors import ListedColormap
 from matplotlib.cm import get_cmap
+from matplotlib.colors import ListedColormap
 
 # local
 from recipes.logging import LoggingMixin
@@ -26,7 +29,7 @@ def fmt_log_tick(x, pos=None):
     return str(int(x)) if 1 <= x <= 100 else f'{x:.1f}'
     # if 0.1 <= x < 1:
 
-    # return 
+    # return
 
 # ---------------------------------------------------------------------------- #
 
@@ -40,13 +43,18 @@ class PixelHistogram(LoggingMixin):  # PixelHistogram
 
     _default_n_bins = 50
 
+    _outer_style = dict(facecolor=None,
+                        edgecolor='0.75',
+                        linewidth=0.5,
+                        alpha=0.5)
+
     @classmethod
     def from_image(cls, image_artist):
         pass
 
     # todo. better with data?
     def __init__(self, ax, image_plot, orientation='horizontal', use_blit=True,
-                 outside_colour=None, outside_alpha=0.5, **kws):
+                 outer_bar_style=MappingProxyType(_outer_style), **kws):
         """
         Display a histogram for colour values in an image.
 
@@ -81,12 +89,15 @@ class PixelHistogram(LoggingMixin):  # PixelHistogram
         # create collection
         cmap = self.image_plot.get_cmap()
         self.bars = PolyCollection(self.get_verts(self.counts, self.bin_edges),
-                                   array=self.norm(self.bin_centers),
+                                   array=self.bin_centers,
                                    cmap=cmap)
         ax.add_collection(self.bars)
 
         # colour map
-        self.set_cmap(cmap, outside_colour, outside_alpha)
+        self._outer_style = {**self._outer_style, **outer_bar_style}
+        self.set_cmap(cmap, self._outer_style['facecolor'], self._outer_style['alpha'])
+
+        
         
         if use_blit:
             # image_plot.set_animated(True)
@@ -105,11 +116,11 @@ class PixelHistogram(LoggingMixin):  # PixelHistogram
     @property
     def cmap(self):
         return self._cmap
-    
+
     @cmap.setter
     def cmap(self, cmap):
         self.set_cmap(cmap)
-    
+
     def set_cmap(self, cmap, outside_colour=None, outside_alpha=0.5):
         # setup colormap (copy)
         self.logger.debug('Adapting cmap {} for {}.', cmap, self)
@@ -132,14 +143,10 @@ class PixelHistogram(LoggingMixin):  # PixelHistogram
     def get_array(self):
         return self.image_plot.get_array()
 
-    def set_array(self, data):
-
+    def set_array(self, data):  # set_image
         # compute histogram
         self.compute(data)
-
-        # create collection
-        self.bars.set_verts(self.get_verts(self.counts, self.bin_edges))
-        self.bars.set_array(self.norm(self.bin_centers))
+        self.update()
 
     def compute(self, data, bins=None, range=None):
         # compute histogram
@@ -169,23 +176,14 @@ class PixelHistogram(LoggingMixin):  # PixelHistogram
                 for xwidth, ymin in zip(counts, bin_edges)]
 
     def update(self):
+        self.bars.set_verts(self.get_verts(self.counts, self.bin_edges))
+        self.bars.set_array(self.bin_centers)
+        self.bars.set_clim(self.image_plot.get_clim())
 
-        # data = self.image_plot.get_array()
-        # rng = self._auto_range()
-        #
-        # self.counts, self.bin_edges = counts, bin_edges =\
-        #     np.histogram(_sanitize_data(data), self.bins, rng)
-
-        self.bars.set_verts(
-            self.get_verts(self.counts, self.bin_edges)
-        )
-
-        # bin_centers = bin_edges[:-1] + np.diff(bin_edges)
-        # self.bars.set_array(self.norm(self.bin_centers))
-        # note set_array doesn't seem to work correctly. bars outside the
-        #  range get coloured for some reason
-
-        self.bars.set_facecolors(self.cmap(self.norm(self.bin_centers)))
+        outside = ~np.ma.masked_inside(self.bin_centers, *self.bars.get_clim()).mask
+        self.bars.set_linewidth(outside * self._outer_style['linewidth'])
+        self.bars.set_edgecolor(self._outer_style['edgecolor'])
+        
         return self.bars  # TODO: xtick labels if necessary
 
     def _auto_bins(self, n=None):
