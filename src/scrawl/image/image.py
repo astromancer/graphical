@@ -1,8 +1,9 @@
 
 # std
 import itertools as itt
-from collections import abc
 from time import time
+from collections import abc
+
 # third-party
 import numpy as np
 import cmasher as cmr
@@ -12,15 +13,15 @@ from mpl_toolkits.axes_grid1 import make_axes_locatable
 
 # local
 from recipes.logging import LoggingMixin
+from recipes.string import remove_prefix
 
 # relative
 from ..sliders import RangeSliders
 from ..utils import get_percentile_limits
 from ..connect import ConnectionMixin, mpl_connect
 from .hist import PixelHistogram
-from .utils import guess_figsize, set_clim_connected, _sanitize_data
+from .utils import _sanitize_data, guess_figsize, set_clim_connected
 
-from recipes.string import remove_prefix
 
 # from .zscale import zrange
 
@@ -56,7 +57,7 @@ class ImageDisplay(ConnectionMixin, LoggingMixin):
     # TODO: remove ticks on cbar ax
     # TODO: plot scale func on hist axis
 
-    sliderClass = RangeSliders  # AxesSliders
+    sliderClass = RangeSliders
     _default_plims = (0.25, 99.75)
     _default_hist_kws = dict(bins=100)
 
@@ -134,6 +135,8 @@ class ImageDisplay(ConnectionMixin, LoggingMixin):
 
         # create sliders after histogram so they display on top
         self.sliders, self.histogram = self.make_sliders(hist_kws)
+        self._cbar_hist_connectors = {}
+        self.connect_cbar_hist()
 
         # connect on_draw for debugging
         self._draw_count = 0
@@ -232,6 +235,16 @@ class ImageDisplay(ConnectionMixin, LoggingMixin):
         image = self.data[0] if data is None else data
         return guess_figsize(image, fill_factor, max_pixel_size)
 
+    def _on_draw(self, event):
+        self.logger.debug('DRAW %i', self._draw_count)  # ,  vars(event)
+        if self._draw_count == 0:
+            self._on_first_draw(event)
+        self._draw_count += 1
+
+    def _on_first_draw(self, event):
+        self.logger.debug('FIRST DRAW')
+
+    # TODO: custom cbar class?
     def make_cbar(self):
         fmt = None
         if self.has_hist:
@@ -242,7 +255,7 @@ class ImageDisplay(ConnectionMixin, LoggingMixin):
 
         return self.figure.colorbar(self.image, cax=self.cax, format=fmt)
 
-    #
+    # TODO: manage timeout through ConnectionMixin and mpl_connect
     _cmap_scroll_timeout = 0.1
     _cmap_switch_time = -1
 
@@ -260,14 +273,51 @@ class ImageDisplay(ConnectionMixin, LoggingMixin):
         self._cmap_switch_time = now
         cmap = remove_prefix(self.image.get_cmap().name, 'cmr.')
         self.logger.debug('Current cmap: {}', cmap)
-        
+
         available = SCROLL_CMAPS_R
         i = available.index(cmap) if cmap in available else -1
         new = f'cmr.{available[(i + 1) % len(available)]}'
         self.logger.info('Scrolling cmap: {} -> {}', cmap, new)
         self.set_cmap(new)
-        
+
         self.canvas.draw()
+
+    def connect_cbar_hist(self):
+        if not (self.histogram and self.sliders):
+            raise ValueError()
+
+        from matplotlib.patches import ConnectionPatch
+
+        c0, c1 = self.image.get_clim()
+        x0, _ = self.hax.get_xlim()
+        xy_from = [(1, 0),
+                   (1, 1),
+                   (1, 0.5)]
+        xy_to = [(x0, c0),
+                 (x0, c1),
+                 (x0, (c0 + c1) / 2)]
+        for mv, xy_from, xy_to in zip(self.sliders, xy_from, xy_to):
+            p = ConnectionPatch(
+                xyA=xy_from, coordsA=self.cax.transAxes,
+                xyB=xy_to, coordsB=self.hax.transData,
+                arrowstyle="-",
+                edgecolor=mv.artist.get_color(),
+                alpha=0.5
+            )
+            self.figure.add_artist(p)
+            self._cbar_hist_connectors[mv.artist] = p
+
+        self.sliders.centre.on_move.add(self._update_connectors)
+
+        return self._cbar_hist_connectors
+
+    def _update_connectors(self, x, y):
+        positions = [*self.sliders.positions, self.sliders.positions.mean()]
+        for patch, pos in zip(self._cbar_hist_connectors.values(), positions):
+            xy = np.array(patch.xy2)
+            xy[self.sliders._ifree] = pos
+            patch.xy2 = xy
+        return self._cbar_hist_connectors.values()
 
     def make_sliders(self, hist_kws=None):
         # data = self.image.get_array()
@@ -285,20 +335,28 @@ class ImageDisplay(ConnectionMixin, LoggingMixin):
             sliders.lower.on_move.add(self.update_clim)
             sliders.upper.on_move.add(self.update_clim)
 
-        pxh = None
+        hist = None
         if self.has_hist:
-            pxh = PixelHistogram(self.hax, self.image, 'horizontal',
-                                 self.use_blit, **hist_kws)
+            hist = PixelHistogram(self.hax, self.image, 'horizontal',
+                                  use_blit=self.use_blit, **(hist_kws or {}))
 
             # set ylim if reasonable to do so
             # if data.ptp():
             #     # avoid warnings in setting upper/lower limits identical
             #     hax.set_ylim((data.min(), data.max()))
-            # NOTE: will have to change with different orientation
 
+            # NOTE: will have to change with different orientation
             self.hax.yaxis.tick_right()
             self.hax.grid(True)
-        return sliders, pxh
+
+        return sliders, hist
+
+    def set_cmap(self, cmap):
+        self.image.set_cmap(cmap)
+        if self.has_hist:
+            self.histogram.set_cmap(cmap)
+
+        self.canvas.draw()
 
     def clim_from_data(self, data, kws=None, **kws_):
         """
@@ -341,13 +399,6 @@ class ImageDisplay(ConnectionMixin, LoggingMixin):
 
         return clims
 
-    def set_cmap(self, cmap):
-        self.image.set_cmap(cmap)
-        if self.has_hist:
-            self.histogram.set_cmap(cmap)
-        
-        self.canvas.draw()
-
     def set_clim(self, *clim):
         self.image.set_clim(*clim)
 
@@ -363,15 +414,6 @@ class ImageDisplay(ConnectionMixin, LoggingMixin):
     def update_clim(self, *xydata):
         """Set colour limits on slider move"""
         return self.set_clim(*self.sliders.positions)
-
-    def _on_draw(self, event):
-        self.logger.debug('DRAW %i', self._draw_count)  # ,  vars(event)
-        if self._draw_count == 0:
-            self._on_first_draw(event)
-        self._draw_count += 1
-
-    def _on_first_draw(self, event):
-        self.logger.debug('FIRST DRAW')
 
     def format_coord(self, x, y, precision=3, masked_str='masked'):
         """

@@ -53,8 +53,11 @@ class PixelHistogram(LoggingMixin):  # PixelHistogram
         pass
 
     # todo. better with data?
-    def __init__(self, ax, image_plot, orientation='horizontal', use_blit=True,
-                 outer_bar_style=MappingProxyType(_outer_style), **kws):
+    def __init__(self, ax, image_plot, 
+                 orientation='horizontal', 
+                 outer_bar_style=MappingProxyType(_outer_style),
+                 use_blit=True,
+                 **kws):
         """
         Display a histogram for colour values in an image.
 
@@ -223,3 +226,5 @@ class PixelHistogram(LoggingMixin):  # PixelHistogram
 
         # self.logger.debug('Ax lims: ({:.1f}, {:.1f})', *lim)
         self.ax.set(xlim=xlim, ylim=ylim)
+        
+
