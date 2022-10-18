@@ -14,6 +14,7 @@ from mpl_toolkits.axes_grid1 import make_axes_locatable
 # local
 from recipes.logging import LoggingMixin
 from recipes.string import remove_prefix
+from scrawl.moves.machinery import BlitHelper
 
 # relative
 from ..sliders import RangeSliders
@@ -43,7 +44,7 @@ def auto_grid(n):
     return x, y
 
 
-class ImageDisplay(CallbackManager, LoggingMixin):
+class ImageDisplay(BlitHelper, LoggingMixin):
     # TODO: move cursor with arrow keys when hovering over figure (like ds9)
     # TODO: optional zoomed image window
     # TODO: scroll colorbar to switch cmap
@@ -235,14 +236,6 @@ class ImageDisplay(CallbackManager, LoggingMixin):
         image = self.data[0] if data is None else data
         return guess_figsize(image, fill_factor, max_pixel_size)
 
-    def _on_draw(self, event):
-        self.logger.debug('DRAW %i', self._draw_count)  # ,  vars(event)
-        if self._draw_count == 0:
-            self._on_first_draw(event)
-        self._draw_count += 1
-
-    def _on_first_draw(self, event):
-        self.logger.debug('FIRST DRAW')
 
     # TODO: custom cbar class?
     def make_cbar(self):
