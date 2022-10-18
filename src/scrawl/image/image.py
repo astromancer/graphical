@@ -18,7 +18,7 @@ from recipes.string import remove_prefix
 # relative
 from ..sliders import RangeSliders
 from ..utils import get_percentile_limits
-from ..connect import ConnectionMixin, mpl_connect
+from ..moves.callbacks import CallbackManager, mpl_connect
 from .hist import PixelHistogram
 from .utils import _sanitize_data, guess_figsize, set_clim_connected
 
@@ -43,7 +43,7 @@ def auto_grid(n):
     return x, y
 
 
-class ImageDisplay(ConnectionMixin, LoggingMixin):
+class ImageDisplay(CallbackManager, LoggingMixin):
     # TODO: move cursor with arrow keys when hovering over figure (like ds9)
     # TODO: optional zoomed image window
     # TODO: scroll colorbar to switch cmap
@@ -143,7 +143,7 @@ class ImageDisplay(ConnectionMixin, LoggingMixin):
         # self.cid = ax.figure.canvas.mpl_connect('draw_event', self._on_draw)
 
         # link viewlims of the 3d axes
-        ConnectionMixin.__init__(self, self.figure.canvas)
+        CallbackManager.__init__(self, self.figure.canvas)
 
         if connect:
             self.connect()
@@ -255,7 +255,7 @@ class ImageDisplay(ConnectionMixin, LoggingMixin):
 
         return self.figure.colorbar(self.image, cax=self.cax, format=fmt)
 
-    # TODO: manage timeout through ConnectionMixin and mpl_connect
+    # TODO: manage timeout through CallbackManager and mpl_connect
     _cmap_scroll_timeout = 0.1
     _cmap_switch_time = -1
 

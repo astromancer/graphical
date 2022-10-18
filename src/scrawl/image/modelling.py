@@ -16,13 +16,13 @@ from recipes.array.neighbours import neighbours
 
 # relative
 from ..bar3d import bar3d
-from ..connect import ConnectionMixin, mpl_connect
+from ..moves.callbacks import CallbackManager, mpl_connect
 
 
 DEFAULT_TITLES = ('Data', 'Fit', 'Residual')
 
 
-class ImageModelPlot3D(ConnectionMixin):
+class ImageModelPlot3D(CallbackManager):
     """
     Base class for plotting image data, model and residual for comparison.
     """
@@ -74,7 +74,7 @@ class ImageModelPlot3D(ConnectionMixin):
         self.update(x, y, z, data, image_kws, art3d_kws)
 
         # link viewlims of the 3d axes
-        ConnectionMixin.__init__(self, self.fig.canvas)
+        CallbackManager.__init__(self, self.fig.canvas)
 
     def __call__(self,  x, y, z, data):
         """

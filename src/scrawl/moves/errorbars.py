@@ -17,7 +17,7 @@ from matplotlib.transforms import Affine2D, blended_transform_factory as btf
 from recipes.lists import flatten
 
 # relative
-from ..connect import ConnectionMixin, mpl_connect
+from .callbacks import CallbackManager, mpl_connect
 
 
 # from PyQt4.QtCore import pyqtRemoveInputHook, pyqtRestoreInputHook
@@ -208,7 +208,7 @@ class ErrorbarPicker():
 
 
 # ---------------------------------------------------------------------------- #
-class DynamicLegend(ConnectionMixin):  # TODO: move to separate script....
+class DynamicLegend(CallbackManager):  # TODO: move to separate script....
     # TODO: subclass Legend??
 
     # FIXME: redesign so you can handel other artists
@@ -229,7 +229,7 @@ class DynamicLegend(ConnectionMixin):  # TODO: move to separate script....
         """enable legend picking"""
 
         # initialize auto-connect
-        ConnectionMixin.__init__(self, ax.figure)
+        CallbackManager.__init__(self, ax.figure)
 
         # Auto-generate labels
         # NOTE: This needs to be done to enable legend picking. if the artists
@@ -474,7 +474,7 @@ class MovableErrorbarContainer(NamedErrorbarContainer):
 
 
 # ---------------------------------------------------------------------------- #
-class MovableErrorbar(ConnectionMixin):  # TODO: rename
+class MovableErrorbar(CallbackManager):  # TODO: rename
     # TODO:      inherit from MotionManager()???
     # TODO:      Use offsetbox????
     # TODO:      BLITTING !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
@@ -528,7 +528,7 @@ class MovableErrorbar(ConnectionMixin):  # TODO: rename
         self.movable = {}  # TODO: make this a indexable Ordered dict
 
         # initialize auto-connect
-        ConnectionMixin.__init__(self, ax.figure)
+        CallbackManager.__init__(self, ax.figure)
 
         # esure linked argument is a nested list
         if len(linked) and isinstance(linked[0], ErrorbarContainer):  # HACK
@@ -604,7 +604,7 @@ class MovableErrorbar(ConnectionMixin):  # TODO: rename
             self.selection = event.artist
 
             # connect motion_notify_event for dragging the selected artist
-            self.add_connection('motion_notify_event', self.on_motion)
+            self.add_callback('motion_notify_event', self.on_motion)
             # save the background for blitting
             self.background = self.canvas.copy_from_bbox(self.figure.bbox)
 
@@ -653,7 +653,7 @@ class MovableErrorbar(ConnectionMixin):  # TODO: rename
 
         if self.selection:
             # Remove dragging method for selected artist
-            self.remove_connection('motion_notify_event')
+            self.remove_callback('motion_notify_event')
 
             movable = self.movable[self.selection]
             for linked in movable.linked:

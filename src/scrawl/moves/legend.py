@@ -1,15 +1,14 @@
-from matplotlib.lines import Line2D
-from matplotlib.container import ErrorbarContainer
-
-from scrawl.connect import ConnectionMixin, mpl_connect
 
 
-class DynamicLegend(ConnectionMixin):
+from .callbacks import CallbackManager, mpl_connect
+
+
+class DynamicLegend(CallbackManager):
     # TODO: subclass Legend??
     '''
     Enables toggling marker / bar / cap visibility by selecting on the legend.
     '''
-    # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    
     _default_legend = dict(fancybox=True,
                            framealpha=0.5,
                            #                            handler_map={ErrorbarContainer:
@@ -19,12 +18,12 @@ class DynamicLegend(ConnectionMixin):
     #     label_map = {ErrorbarContainer: 'errorbar{}',
     #                  Line2D: 'line{}'}
 
-    # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    
     def __init__(self, ax, plots, legendkw={}):
         '''enable legend picking'''
 
         # initialize auto-connect
-        ConnectionMixin.__init__(self, ax.figure)
+        CallbackManager.__init__(self, ax.figure)
 
         # Auto-generate labels
         # NOTE: This needs to be done to enable legend picking. if the artists
@@ -64,7 +63,6 @@ class DynamicLegend(ConnectionMixin):
 
         # self.connect()
 
-    # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     @mpl_connect('pick_event')
     def on_pick(self, event):
         '''Pick event handler.'''
@@ -72,7 +70,6 @@ class DynamicLegend(ConnectionMixin):
         if event.artist in self.to_orig:
             self.toggle_vis(event)
 
-    # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     # @unhookPyQt
     def toggle_vis(self, event):
         '''
@@ -92,7 +89,7 @@ class DynamicLegend(ConnectionMixin):
         self.canvas.draw()
 
 
-# class DynamicLegend(ConnectionMixin):  # TODO: move to seperate script....
+# class DynamicLegend(CallbackManager):  # TODO: move to seperate script....
 #     # TODO: subclass Legend??
 #     '''
 #     Enables toggling marker / bar / cap visibility by selecting on the legend.
@@ -110,7 +107,7 @@ class DynamicLegend(ConnectionMixin):
 #         '''enable legend picking'''
 #
 #         # initialize auto-connect
-#         ConnectionMixin.__init__(self, ax.figure)
+#         CallbackManager.__init__(self, ax.figure)
 #
 #         # Auto-generate labels
 #         # NOTE: This needs to be done to enable legend picking. if the artists
