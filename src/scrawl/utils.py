@@ -1,8 +1,21 @@
 # third-party
 import numpy as np
+from matplotlib import patheffects as path_effects
 
 # local
 from recipes.transforms import sph2cart
+
+
+def emboss(art, linewidth=2, color='k'):
+    # add border around text to make it stand out (like the arrows)
+    art.set_path_effects([
+        path_effects.Stroke(linewidth=linewidth, foreground=color),
+        path_effects.Normal()
+    ])
+    return art
+
+# alias
+embossed = emboss
 
 
 def percentile(data, p, axis=None):
@@ -59,6 +72,7 @@ def percentile(data, p, axis=None):
                     if axis else ())))
     d[c > 0] = np.percentile(data, c[c > 0], axis)
 
+    # sourcery skip: flip-comparison
     mn, mx, = data.min(axis, keepdims=True), data.max(axis, keepdims=True)
     p1 = (p > 1).astype(int)
     s2 = np.array(signum[((0 < p) & (p < 1)).astype(int)], ndmin=d.ndim).T

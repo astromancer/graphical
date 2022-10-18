@@ -13,6 +13,7 @@ from matplotlib import ticker
 from matplotlib.widgets import Slider
 
 # relative
+from ..utils import embossed
 from ..image import ImageDisplay
 
 
@@ -140,6 +141,7 @@ class VideoDisplay(ImageDisplay):
             # wrap around! scroll past end ==> go to beginning
             i %= self.nframes
         else:  # stop scrolling at the end
+            self.logger.debug('Reached the last frame. Scroll wrap is OFF.')
             i = max(i, self.nframes)
 
         i = int(round(i, 0))  # make sure we have an int
@@ -243,10 +245,12 @@ class VideoDisplay(ImageDisplay):
     def _scroll(self, event):
         if event.inaxes is not self.ax:
             return
-        
+
         # FIXME: drawing on scroll.....
         # try:
         inc = [-1, +1][event.button == 'up']
+        self.logger.debug('Scrolling to {} image.',
+                          'next' if inc > 0 else 'previous')
         new = self._frame + inc
         if self.use_blit:
             self.frameSlider.drawon = False
@@ -361,11 +365,16 @@ class VideoDisplay(ImageDisplay):
     #         return 'x=%1.3f, y=%1.3f' % (x, y)
 
 
-class VideoDisplayX(VideoDisplay):
+class VideoFeatureDisplay(VideoDisplay):  # VideoFeatureDisplay
 
-    marker_properties = dict(alpha=1, s=5, marker='x', color='r')
+    # config
+    default_marker_style = dict(s=25, edgecolor='r', facecolor='none',
+                                linewidth=1.5, alpha=0.5)
 
-    def __init__(self, data, coords=None, **kws):
+    def __init__(self, data, coords=None,
+                 markers='XPoHd*s',
+                 marker_style: dict = None,
+                 **kws):
         """
 
         Parameters
@@ -373,10 +382,10 @@ class VideoDisplayX(VideoDisplay):
         data: array-like
             Image stack. shape (N, ypix, xpix)
         coords:  array_like, optional
-            coordinate positions (yx) of apertures to display. This must be
-            array_like with
-            shape (N, k, 2) where k is the number of apertures per frame, and N
-            is the number of frames.
+            Coordinate positions (yx) of features to display. `coords` must be
+            array_like with shape (N, [l], p, 2) where  N is the number of
+            frames l is the (optional) number of features, and p is the number
+            of data points per frame.
         markers: str
             Sequence of markers
         kws:
@@ -385,63 +394,99 @@ class VideoDisplayX(VideoDisplay):
 
         VideoDisplay.__init__(self, data, **kws)
 
-        #
+        first = self.set_coords(coords)
+
+        # create marker art
+        marker_style = {**self.default_marker_style, **(marker_style or {})}
+        self.marks = self.mark(first, markers, **marker_style)
+
+    def set_coords(self, coords):
         # check coords
+        if coords is None:
+            # get xy coords for frame 0
+            self.coords = None
+            return np.array([[None], [None]])
+
+        coords = np.asarray(coords)
+        nd = coords.ndim
+        m, *_, d = coords.shape
+        n = len(self.data)
+        if (nd not in (2, 3, 4) or (d != 2) or (nd != 2 and n != m)):
+            raise ValueError(
+                'Coordinate array `coords` has incorrect dimensions: '
+                f'{coords.shape}. Expected array dimentions to be: '
+                '([n_frames], [n_features], [n_points_per_frame], 2)'
+            )
+
+        if n != m:
+            # use as initializing coordinates for first frame
+            self.logger.info('Using coordinates as locations for first '
+                             'frame: {}', coords)
+            self.coords = None
+            return coords
+
+        # have array
+        self.get_coords = self._get_coords_internal
+
+        if nd == 2:
+            # Assuming single source point per frame with single feature
+            coords = coords[:, None, None]
+
         self.coords = coords
-        self.has_coords = (coords is not None)
-        if self.has_coords:
-            coords = np.asarray(coords)
-            if coords.ndim not in (2, 3) or (coords.shape[-1] != 2):
-                raise ValueError('Coordinate array `coords` has incorrect '
-                                 f'dimensions: {coords.shape}')
-            if coords.ndim == 2:
-                # Assuming single coordinate point per frame
-                coords = coords[:, None]
-            if len(coords) < len(data):
-                self.logger.warning(
-                    'Coordinate array contains fewer points ({}) than the '
-                    'number of frames ({}).', len(coords), len(data)
-                )
+        return coords[0]
 
-            # coord getter
-            self.get_coords = self.get_coords_internal
+    def mark(self, xy, markers, emboss=2, **style):
+        # create markers
+        if xy.ndim == 2:
+            xy = xy[None, ...]
 
-            # create markers
-            # set for frame 0
-            self.marks = self.ax.scatter(*coords[0, :, ::-1].T,
-                                         **self.marker_properties)
-        else:
-            # create markers
-            self.marks = self.ax.scatter([0], [0], **self.marker_properties)
-            self.marks.set_visible(False)
+        art = []
+        for points, marker in zip(xy, markers):
+            marks = self.ax.scatter(*points.T, marker=marker,
+                                    **dict(style or self.default_marker_style))
 
-        # redraw markers after color adjust
-        self.sliders.link(self.marks)
+            if emboss:
+                embossed(marks, emboss)
+
+            # redraw markers after color adjust
+            self.sliders.link(marks)
+            art.append(marks)
+
+        return art
 
     def get_coords(self, i):
         return
 
-    def get_coords_internal(self, i):
+    def _get_coords_internal(self, i):
         i = int(round(i))
         return self.coords[i, :, ::-1]
-
-    def update(self, i, draw=True):
+    
+    # def set_frame(self, i):
+    #     super().set_frame(i)
         
-        # i = round(i)
+    
+    def update(self, i, draw=True):
+
+        i %= self.nframes
         draw_list = VideoDisplay.update(self, i, False)
         #
-        coo = self.get_coords(i).T
-        self.logger.debug('Coords: {}', coo)
-        
-        if coo is not None:
-            self.marks.set_offsets(coo)
-            self.marks.set_visible(True)
-            draw_list.append(self.marks)
+        coords = self.get_coords(i)
+        self.logger.debug('Coords: {}\n{}', coords.shape, coords)
+
+        if coords is None:
+            return draw_list
+
+        for coo, marks in zip(coords, self.marks):
+            marks.set_offsets(coo)
+            marks.set_visible(True)
+            draw_list.append(marks)
 
         return draw_list
 
+#
+VideoDisplayX = VideoFeatureDisplay
 
-class VideoDisplayA(VideoDisplayX):
+class VideoDisplayA(VideoDisplayX):  # VideoApertureDisplay
     # default aperture properties
     apProps = dict(ec='m', lw=1,
                    picker=False,
