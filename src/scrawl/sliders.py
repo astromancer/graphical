@@ -1,24 +1,18 @@
-import logging
-# import operator
+"""
+Extensible slider widgets.
+"""
 
+# std
+import operator as op
 
+# third-party
 import numpy as np
+import more_itertools as mit
 from cycler import cycler
 from matplotlib.lines import Line2D
 
-# from matplotlib.widgets import AxesWidget, Slider
-# from matplotlib.patches import Circle
-#
-# from matplotlib.transforms import Affine2D
-# from matplotlib.transforms import blended_transform_factory as btf
-
-import more_itertools as mit
-
-# from .interactive import ConnectionMixin, mpl_connect
-from scrawl.moves.machinery import MotionManager
-# from recipes.iter import flatiter
-
-import operator as op
+# relative
+from .moves.machinery import MotionManager
 
 
 # from decor import expose
@@ -52,7 +46,7 @@ class AxesSliders(MotionManager):
         movement - click & drag
         reset - middle mouse
 
-    Connect listeners to the sliders with
+    Connect listeners to the sliders with eg.:
     >>> sliders.upper.on_move.add(func)
     """
 
@@ -68,7 +62,8 @@ class AxesSliders(MotionManager):
 
     def __init__(self, ax, positions, slide_axis='x',
                  dragging=True,  # FIXME: clarify what this does. is it useful??
-                 trapped=False, annotate=False, haunted=False, use_blit=True,
+                 trapped=False, annotate=False, haunted=False,
+                 use_blit=True,
                  extra_markers=(),
                  **props):
         """
@@ -104,15 +99,14 @@ class AxesSliders(MotionManager):
         # assert np.size(positions) == 2, 'Positions should have size 2'
         self._original_position = positions  # np.sort(
 
+        # create the movement UI
+        MotionManager.__init__(self, use_blit=use_blit)
+
         prop_cycle = cycler(**props) if props else [{}] * len(positions)
         # get transform (like axhline / axvline)
         transform = getattr(ax, f'get_{self.slide_axis}axis_transform')()
-        # transform = get_transform() # which='grid'
 
-        # create the dragging UI
-        MotionManager.__init__(self, use_blit=use_blit)
-
-        # add the sliding artists (lines)
+        # add the sliding artists (Line2D)
         sliders = []
         nem = len(extra_markers)
         clip_on = use_blit or trapped
@@ -159,6 +153,10 @@ class AxesSliders(MotionManager):
         # FIXME: get this working to you update on release not motion for speed
         # create sliders & add to axis
 
+    def setup_axes(self, ax):
+        """ """
+        ax.set_navigate(False)  # turn off nav for this axis
+
     @property
     def positions(self):
         return self._original_position[self._use_positions] + \
@@ -190,6 +188,15 @@ class AxesSliders(MotionManager):
             # set limits
             getattr(self.ax, f'set_{self.slide_axis}lim')(limits)
             self._changed_axes_lim = True
+        elif self._changed_axes_lim:
+            self.logger.debug('!'*100)
+            limits = [None, None]
+            relate = (min, max)[upper]
+            limits[upper] = relate(self._original_axes_limits[self._ifree, upper],
+                                   (x, y)[self._ifree])
+
+            # set limits
+            getattr(self.ax, f'set_{self.slide_axis}lim')(limits)
 
         # note: only actually have to draw these if the axis limits have
         #  changed, but need to always return these so blit_setup gets the
@@ -201,17 +208,16 @@ class AxesSliders(MotionManager):
         # pos = self.get_positions()
         if self.min_span is not None:
             self.upper.ymin = y + self.min_span
-            self.logger.debug('upper ymin: %.2f, %.2f', self.upper.ymin, y)
+            self.logger.debug('upper ymin: {:.2f}, {:.2f}', self.upper.ymin, y)
 
     def set_lower_ymax(self, x, y):
         # pos = self.get_positions()
         if self.min_span is not None:
             self.lower.ymax = y - self.min_span
-            self.logger.debug('lower ymax: %.2f, %.2f', self.lower.ymax, y)
+            self.logger.debug('lower ymax: {:.2f}, {:.2f}', self.lower.ymax, y)
 
-    def setup_axes(self, ax):
-        """ """
-        ax.set_navigate(False)  # turn off nav for this axis
+    # def reset(self):
+    #     return super().reset()
 
     def link(self, *artists):
         """
@@ -238,8 +244,6 @@ class RangeSliders(AxesSliders):  # MinMaxMeanSliders # RangeSliders
     """
     _use_positions = [0, 1]
 
-    # FIXME: middle slider doesn't  drag the range!!!!
-
     def __init__(self, ax, positions, slide_axis='x', dragging=True,
                  trapped=False, annotate=False, haunted=False, use_blit=True,
                  extra_markers=(), **props):
@@ -264,13 +268,13 @@ class RangeSliders(AxesSliders):  # MinMaxMeanSliders # RangeSliders
                              annotate, haunted, use_blit, extra_markers,
                              **props)
         #
-        self.centre = self.movable[2]
+        self.centre = self.middle = self.movable[2]
         self.centre.lock(self._locked)
         # self.lower.on_picked.add(lambda x, y: self.centre.set_animate(True))
 
         # add method to move central slider when either other is moved
-        self._lwr_mv_ctr = self.lower.on_move.add(self.set_centre)
-        self._upr_mv_ctr = self.upper.on_move.add(self.set_centre)
+        self._cid_lwr_mv_ctr = self.lower.on_move.add(self.set_centre)
+        self._cid_upr_mv_ctr = self.upper.on_move.add(self.set_centre)
 
         # make sure centre slide is between upper and lower
         self.lower.on_release.add(self.set_centre_max)
@@ -297,12 +301,12 @@ class RangeSliders(AxesSliders):  # MinMaxMeanSliders # RangeSliders
     def set_centre_min(self, x, y):
         """set minimum position of the central slider"""
         self.centre.ymin = self.lower.ymin + self.min_span / 2
-        self.logger.debug('centre min: %.2f, %.2f', self.centre.ymin, y)
+        self.logger.debug('centre min: {:.2f}, {:.2f}', self.centre.ymin, y)
 
     def set_centre_max(self, x, y):
         """set maximum position of the central slider"""
         self.centre.ymax = self.upper.ymax + self.min_span / 2
-        self.logger.debug('centre ymax: %.2f, %.2f', self.centre.ymax, y)
+        self.logger.debug('centre ymax: {:.2f}, {:.2f}', self.centre.ymax, y)
 
     def _animate(self, b):
         for drg in self.movable.values():
@@ -332,65 +336,14 @@ class RangeSliders(AxesSliders):  # MinMaxMeanSliders # RangeSliders
 
     def activate_centre_control(self, x=None, y=None):
         # print('act')
-        self.lower.on_move.activate(self._lwr_mv_ctr)
-        self.upper.on_move.activate(self._upr_mv_ctr)
+        self.lower.on_move.activate(self._cid_lwr_mv_ctr)
+        self.upper.on_move.activate(self._cid_upr_mv_ctr)
 
         self.centre.untie(self.lower, self.upper)
 
     def deactivate_centre_control(self, x=None, y=None):
         # print('deact')
-        self.lower.on_move.deactivate(self._lwr_mv_ctr)
-        self.upper.on_move.deactivate(self._upr_mv_ctr)
+        self.lower.on_move.deactivate(self._cid_lwr_mv_ctr)
+        self.upper.on_move.deactivate(self._cid_upr_mv_ctr)
 
         self.centre.tie(self.lower, self.upper)
-
-    def on_motion(self, event):
-        if event.button != 1:
-            return
-
-        if self.selection:
-            movable = self.movable[self.selection]
-
-            xydisp = event.x, event.y
-            xydata = self.ax.transData.inverted().transform(xydisp)
-            self.delta = xydata - self.ref_point
-
-            self.update(movable, xydata)
-
-    def on_release(self, event):
-        if event.button != 1:
-            return
-
-        if self.selection:
-            self.logger.debug('on_release: %r', self.selection)
-            # Remove dragging method for selected artist
-            self.remove_connection('motion_notify_event')
-
-            xydisp = event.x, event.y  # NOTE: may be far outside allowed range
-            x, y = self.ax.transData.inverted().transform(xydisp)  # xydata =
-            self.logger.debug('on_release: delta %s', self.delta)
-
-            movable = self.movable[self.selection]
-            draw_list = movable.on_release(x, y)
-
-            self.logger.debug('on_release: offset %s %s', movable,
-                              movable.offset)
-
-            if self.use_blit:
-                self.draw_blit(draw_list)
-                for art in filter(None, mit.collapse(draw_list)):
-                    art.set_animated(False)
-
-        self.selection = None
-
-    def reset(self):
-        # super().reset()
-        self.logger.debug('resetting!')
-        draw_list = []
-        for art, off in zip(self.movable.values(),
-                            self._original_offsets):
-            artists = art.update(*art.ref_point)
-            draw_list.extend(artists)
-
-        #
-        self.draw(draw_list)

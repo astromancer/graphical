@@ -29,9 +29,6 @@ from .callbacks import CallbackManager, mpl_connect
 # from matplotlib.offsetbox import MotionInterface
 
 
-# from recipes.decorators.misc import unhookPyQt
-
-
 # ---------------------------------------------------------------------------- #
 def movable_artist_factory(art, offset, annotate, **kws):
     """"""
@@ -271,7 +268,7 @@ class MotionInterface(LoggingMixin):
     """
 
     annotation_format = '[{:+3.2f}]'
-    PICK_RADIUS = 200
+    PICK_RADIUS = 20
 
     # @classmethod
     # def from_data(cls, data):
@@ -315,9 +312,7 @@ class MotionInterface(LoggingMixin):
         # make the lines pickable
         if not artist.get_picker():
             # artist.update()
-            print('%' * 88)
-            artist.set_pickradius(self.PICK_RADIUS)
-            artist.set_picker(True)  # fpicker
+            artist.set_picker(self.PICK_RADIUS)  # fpicker
 
         # Manage with CallbackManager?
         self.tied = []
@@ -678,10 +673,11 @@ class BlitHelper(CallbackManager):
     def __init__(self, canvas=None, use_blit=True):
 
         # flag for blitting behaviour
-        super().__init__(canvas)
+        CallbackManager.__init__(self, canvas)
         self._use_blit = use_blit
         self.background = None
         self._draw_count = 0
+        self._blit_count = 0
 
     def blit_setup(self, artists=()):  # save_background
         """
@@ -709,9 +705,12 @@ class BlitHelper(CallbackManager):
 
     @mpl_connect('draw_event', 1)
     def _on_first_draw(self, event):
+        if self._draw_count > 1:
+            raise ValueError()
+
         self.logger.debug('First draw callback.')
         # disconnect callback to this function
-        self.figure.canvas.mpl_disconnect(('draw_event', 1))
+        self.remove_callback('draw_event', 1)
 
     @mpl_connect('draw_event')
     def _on_draw(self, event):
@@ -725,7 +724,8 @@ class BlitHelper(CallbackManager):
             self.canvas.draw()
 
     def draw_blit(self, artists):
-        self.logger.debug('blit {}', self._draw_count)
+
+        self.logger.debug('blit {}', self._blit_count)
         self.canvas.restore_region(self.background)
 
         t0 = time.time()
@@ -739,6 +739,7 @@ class BlitHelper(CallbackManager):
         # for ax in set(self.figure.axes):
         #     ax.figure.canvas.blit(ax.figure.bbox)
         self.canvas.blit(self.figure.bbox)
+        self._blit_count += 1
 
     # @mpl_connect('axes_enter_event')
     # @mpl_connect('axes_leave_event')
@@ -806,6 +807,7 @@ class MotionManager(BlitHelper):
         # remember (will need for reset)
         self._original_offsets = offsets
         self.delta = np.zeros(2)  # in case of pick without motion
+        self._original_axes_limits = None  # set in `_on_first_draw`
 
         # initialize mapping
         self.movable = IndexableOrderedDict()
@@ -926,11 +928,17 @@ class MotionManager(BlitHelper):
         for art, mv in self.movable.items():
             mv.limit(x, y)
 
+    def _on_first_draw(self, event):
+        super()._on_first_draw(event)
+        self._original_axes_limits = self.ax.viewLim.get_points().T.copy()
+
     def reset(self):
         """Reset the plot positions to original."""
         self.logger.debug('resetting!')
         artists = [movable.update(*movable.origin)
                    for movable in self.movable.values()]
+        xlim, ylim = self._original_axes_limits
+        self.ax.set(xlim=xlim, ylim=ylim)
         self.draw(artists)
 
     @mpl_connect('button_press_event')
@@ -980,36 +988,36 @@ class MotionManager(BlitHelper):
         # run the on_picked methods for this movable
         movable.on_picked(*xy_data)
 
-        # connect motion_notify_event for dragging the selected artist
+        # connect motion_notify_event for moving the selected artist
         self.add_callback('motion_notify_event', self.on_motion)
 
-        if self.use_blit:
-            self.save_background()
-            # TODO: need method to get artists that will be changed by this
-            #  artist
-            movable.set_animated(True)
+        # if self.use_blit:
+        #     self.save_background()
+        #     # TODO: need method to get artists that will be changed by this
+        #     #  artist
+        #     movable.set_animated(True)
 
-            # call update here to avoid artists disappearing on click and hold
-            # without move.  Also, this gives us the artists which are animated
-            # by the move
-            draw_list = movable.update_offset((0, 0))
-            for art in filter_non_artist(draw_list):
-                art.set_animated(True)
+        #     # call update here to avoid artists disappearing on click and hold
+        #     # without move.  Also, this gives us the artists which are animated
+        #     # by the move
+        #     draw_list = movable.update_offset((0, 0))
+        #     for art in filter_non_artist(draw_list):
+        #         art.set_animated(True)
 
-                # self.update(movable, xy_data)
+        #         # self.update(movable, xy_data)
 
-                # movable.save_offset()
-                # current_offset = movable.offset
+        #         # movable.save_offset()
+        #         # current_offset = movable.offset
 
-                # make the ghost artists visible
-                # for tie in movable.tied:
-                # set the ghost vis same as the original vis for tied
-                # for l, g in zip(tie.get_children(),
-                # tie.ghost.get_children()):
-                # g.set_visible(l.get_visible())
-                # print( 'visible!', g, g.get_visible() )
+        #         # make the ghost artists visible
+        #         # for tie in movable.tied:
+        #         # set the ghost vis same as the original vis for tied
+        #         # for l, g in zip(tie.get_children(),
+        #         # tie.ghost.get_children()):
+        #         # g.set_visible(l.get_visible())
+        #         # print( 'visible!', g, g.get_visible() )
 
-                # print('picked', repr(self.selection), event.artist)
+        #         # print('picked', repr(self.selection), event.artist)
 
     def on_motion(self, event):
         """
@@ -1025,42 +1033,45 @@ class MotionManager(BlitHelper):
         if event.button != 1:
             return
 
-        if self.selection:
-            self.logger.debug('dragging: {}', self.selection)
-            movable = self.movable[self.selection]
+        if self.selection is None:
+            return
 
-            xy_disp = event.x, event.y
-            ax = event.inaxes  # self.ax
-            xy_data = x, y = ax.transData.inverted().transform(xy_disp)
-            # offset from original data
-            self.delta = delta = xy_data - self.origin
+        self.logger.debug('moving: {}', self.selection)
+        movable = self.movable[self.selection]
 
-            # difference between current position and previous offset position
-            self.logger.debug('delta {}; origin {}', delta,
-                              self.origin)
+        xy_disp = event.x, event.y
+        xy_data = self.ax.transData.inverted().transform(xy_disp)
+        # NOTE: using `self.ax` instead of `event.inaxes` allows dragging to be
+        # active even when mouse moves outside the axes
 
-            # move this artist and all its dependants
-            # pos = movable.position
-            self.update(movable, xy_data)
-            # FIXME: only do if dragging = True ??
-            # self._shift = movable.position - pos
+        # offset from original data
+        self.delta = delta = xy_data - self.origin
 
-            # if movable.clipped:
-            #     movable.on_clipped(x, y)
-            #     print('HI')
+        # difference between current position and previous offset position
+        self.logger.debug('delta {}; origin {}', delta, self.origin)
 
-            # if dragging set offset??
+        # move this artist and all its dependants
+        # pos = movable.position
+        self.update(movable, xy_data)
+        # FIXME: only do if dragging = True ??
+        # self._shift = movable.position - pos
 
-            # for tie in movable.tied:
-            # tie.ghost.move(delta)
+        # if movable.clipped:
+        #     movable.on_clipped(x, y)
+        #     print('HI')
 
-            # print( [(ch.get_visible(), ch.get_alpha())
-            # for ch in tie.ghost.get_children()] )
+        # if dragging set offset??
 
-            # tie.ghost.draw(self.canvas.renderer)
-            # print('...')
+        # for tie in movable.tied:
+        # tie.ghost.move(delta)
 
-            # self.canvas.blit(self.figure.bbox)
+        # print( [(ch.get_visible(), ch.get_alpha())
+        # for ch in tie.ghost.get_children()] )
+
+        # tie.ghost.draw(self.canvas.renderer)
+        # print('...')
+
+        # self.canvas.blit(self.figure.bbox)
 
     @mpl_connect('button_release_event')
     def on_release(self, event):
@@ -1070,51 +1081,53 @@ class MotionManager(BlitHelper):
         if event.button != 1:
             return
 
-        if self.selection:
-            self.logger.debug('on_release: {!r}', self.selection)
-            # Remove dragging method for selected artist
-            self.remove_callback('motion_notify_event')
-            ax = event.inaxes
-            xy_disp = event.x, event.y  # NOTE: may be far outside allowed range
-            x, y = ax.transData.inverted().transform(xy_disp)
-            # xy_data = self.delta + self.origin
-            self.logger.debug('on_release: delta {}', self.delta)
+        if self.selection is None:
+            return
 
-            movable = self.movable[self.selection]
-            draw_list = movable.on_release(x, y)
+        self.logger.debug('on_release: {!r}', self.selection)
+        # Remove motion method for selected artist
+        self.remove_callback('motion_notify_event')
 
-            # self.logger.debug(('release', draw_list)
+        xy_disp = event.x, event.y
+        # NOTE: may be far outside allowed range
+        x, y = self.ax.transData.inverted().transform(xy_disp)
+        # NOTE: using `self.ax` instead of `event.inaxes` allows dragging to be
+        # active even when mouse moves outside the axes.
 
-            self.logger.debug('on_release: offset {} {}', movable,
-                              movable.offset)
+        # xy_data = self.delta + self.origin
+        self.logger.debug('on_release: delta {}', self.delta)
 
-            if self.use_blit:
-                self.draw_blit(draw_list)
-                for art in filter_non_artist(draw_list):
-                    art.set_animated(False)
-
-                    # save offset
-                    # for tied in movable.tied:
-                    # tied.move( self.delta )
-                    # tied.offset = self.delta
-                    # tied.ghost.set_visible(False)
-
-                    # do_legend()
-                    # self.canvas.draw()
-                    # if self._draw_on:
-                    # if self._use_blit:
-                    # self.canvas.restore_region(self.background)
-                    # movable.draw()
-                    # self.canvas.blit(self.figure.bbox)
-                    # self.selection.set_animated(False)
-                    # else:
-                    # self.canvas.draw()
-
+        movable = self.movable[self.selection]
+        draw_list = movable.on_release(x, y)
         self.selection = None
-        # self.up = None
-        # self.delta.fill(0)
-        # print( 'release', repr(self.selection ))
-        # print()
+
+        # self.logger.debug(('release', draw_list)
+        self.logger.debug('on_release: offset {} {}', movable,
+                          movable.offset)
+
+        if not self.use_blit:
+            return
+
+        self.draw_blit(draw_list)
+        for art in filter_non_artist(draw_list):
+            art.set_animated(False)
+
+            # save offset
+            # for tied in movable.tied:
+            # tied.move( self.delta )
+            # tied.offset = self.delta
+            # tied.ghost.set_visible(False)
+
+            # do_legend()
+            # self.canvas.draw()
+            # if self._draw_on:
+            # if self._use_blit:
+            # self.canvas.restore_region(self.background)
+            # movable.draw()
+            # self.canvas.blit(self.figure.bbox)
+            # self.selection.set_animated(False)
+            # else:
+            # self.canvas.draw()
 
     @mpl_connect('resize_event')
     def on_resize(self, event):

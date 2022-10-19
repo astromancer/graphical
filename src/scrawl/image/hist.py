@@ -53,8 +53,8 @@ class PixelHistogram(LoggingMixin):  # PixelHistogram
         pass
 
     # todo. better with data?
-    def __init__(self, ax, image_plot, 
-                 orientation='horizontal', 
+    def __init__(self, ax, image_plot,
+                 orientation='horizontal',
                  outer_bar_style=MappingProxyType(_outer_style),
                  use_blit=True,
                  **kws):
@@ -100,8 +100,6 @@ class PixelHistogram(LoggingMixin):  # PixelHistogram
         self._outer_style = {**self._outer_style, **outer_bar_style}
         self.set_cmap(cmap, self._outer_style['facecolor'], self._outer_style['alpha'])
 
-        
-        
         if use_blit:
             # image_plot.set_animated(True)
             self.bars.set_animated(True)
@@ -186,7 +184,17 @@ class PixelHistogram(LoggingMixin):  # PixelHistogram
         outside = ~np.ma.masked_inside(self.bin_centers, *self.bars.get_clim()).mask
         self.bars.set_linewidth(outside * self._outer_style['linewidth'])
         self.bars.set_edgecolor(self._outer_style['edgecolor'])
-        
+
+        # draw_list = [self.bars]
+
+        # Axes grids. this doesn't work..
+        # for axis in (self.ax.xaxis, self.ax.yaxis):
+        #     z = axis.get_zorder()
+        #     if axis._major_tick_kw['gridOn']:
+        #         for t in axis.majorTicks:
+        #             t.gridline.set_zorder(z)
+        #             draw_list.append((t.gridline for t in axis.majorTicks))
+
         return self.bars  # TODO: xtick labels if necessary
 
     def _auto_bins(self, n=None):
@@ -226,5 +234,3 @@ class PixelHistogram(LoggingMixin):  # PixelHistogram
 
         # self.logger.debug('Ax lims: ({:.1f}, {:.1f})', *lim)
         self.ax.set(xlim=xlim, ylim=ylim)
-        
-

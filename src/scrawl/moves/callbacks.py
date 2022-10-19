@@ -1,5 +1,5 @@
 """
-Manage callbacks.
+Manage canvas callbacks.
 """
 
 from recipes.oo.meta import tagger
@@ -35,29 +35,31 @@ class CallbackManager(TagManager, LoggingMixin):
                 f' callbacks are currently registered: {self.callbacks}\n'
                 f'Please choose a unique name for the {method} callback.'
             )
+
+        if isinstance(id_, tuple):
+            name = id_[0]
+        else:
+            name = id_
+            id_ = (id_, )
         
-        name = id_[0] if isinstance(id_, tuple) else id_
         self.logger.debug('Adding callback {!r}: {}', id_, method)
         self.callbacks[id_] = self.canvas.mpl_connect(name, method)
 
-    def remove_callback(self, name):
-        self.logger.debug('Removing callback {!r}', name)
-        self.canvas.mpl_disconnect(self.callbacks[name])
-        self.callbacks.pop(name)
+    def remove_callback(self, *id_):
+        self.logger.debug('Removing callback {!r}', id_)
+        self.canvas.mpl_disconnect(self.callbacks.pop(id_))
 
     def connect(self):
         """
         Connect the flagged methods to the canvas as callback functions.
         """
         for method, id_ in self._callbacks.items():
-            if len(id_) == 1:
-                id_ = id_[0]
             self.add_callback(id_, method)
 
     def disconnect(self):
         """
         Disconnect all callbacks from figure canvas.
         """
-        for name, cid in self.callbacks.items():
+        for cid in self.callbacks.values():
             self.canvas.mpl_disconnect(cid)
         self.logger.debug('Disconnected from figure {!s}', self.figure.canvas)

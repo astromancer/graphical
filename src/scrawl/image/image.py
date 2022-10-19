@@ -24,15 +24,10 @@ from .hist import PixelHistogram
 from .utils import _sanitize_data, guess_figsize, set_clim_connected
 
 
-# from .zscale import zrange
-
-# from astropy.visualization import mpl_normalize  # import ImageNormalize as _
-
 # TODO: docstrings (when stable)
 # TODO: unit tests
 # TODO: maybe display things like contrast ratio ??
 
-# TODO: middle mouse resets axes limits
 
 SCROLL_CMAPS = cmr.get_cmap_list()
 SCROLL_CMAPS_R = [_ for _ in SCROLL_CMAPS if _.endswith('_r')]
@@ -47,11 +42,7 @@ def auto_grid(n):
 class ImageDisplay(BlitHelper, LoggingMixin):
     # TODO: move cursor with arrow keys when hovering over figure (like ds9)
     # TODO: optional zoomed image window
-    # TODO: scroll colorbar to switch cmap
 
-    # FIXME: hist: outside alpha changes with middle slider move.....
-
-    # TODO: optional Show which region on the histogram corresponds to colorbar
     # TODO: better histogram for integer / binary data with narrow ranges
     # TODO: method pixels corresponding to histogram bin?
 
@@ -236,8 +227,8 @@ class ImageDisplay(BlitHelper, LoggingMixin):
         image = self.data[0] if data is None else data
         return guess_figsize(image, fill_factor, max_pixel_size)
 
-
     # TODO: custom cbar class?
+
     def make_cbar(self):
         fmt = None
         if self.has_hist:
@@ -310,12 +301,11 @@ class ImageDisplay(BlitHelper, LoggingMixin):
             xy = np.array(patch.xy2)
             xy[self.sliders._ifree] = pos
             patch.xy2 = xy
+
         return self._cbar_hist_connectors.values()
 
     def make_sliders(self, hist_kws=None):
         # data = self.image.get_array()
-
-        # FIXME: This is causing recursive repaint!!
 
         sliders = None
         if self.has_sliders:
