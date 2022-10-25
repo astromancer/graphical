@@ -2,64 +2,90 @@
 Manage canvas callbacks.
 """
 
-from recipes.oo.meta import tagger
+# third-party
+from matplotlib.cbook import CallbackRegistry
+
+# local
+import recipes.pprint as pp
+from recipes.oo.meta import TagManagerBase
 from recipes.logging import LoggingMixin
 
 
 __all__ = ['mpl_connect', 'CallbackManager']
 
-#
-TagManager, mpl_connect = tagger.factory(collection='_callbacks')
+# #
+# TagManager, mpl_connect = tagger.factory(tag='_is_callback',
+#                                          collection='_callbacks')
+
+# class CallbackManager(LoggingMixin,
+#                       TagManager(tag='_is_callback',
+#                                  collection='_callbacks'))
 
 
-class CallbackManager(TagManager, LoggingMixin):
+class CallbackManager(LoggingMixin, TagManagerBase,
+                      tag='_is_callback', collection='_callbacks'):
     """
-    Mixin for connecting callbacks of decorated methods to the figure canvas.
+    Mixin for managing canvas / artist callbacks as decorated methods.
     """
 
-    def __init__(self, canvas=None):
+    def __init__(self, object=None, connect=False):
         """ """
-        TagManager.__init__(self)
-        # connection ids
-        self.callbacks = {}
-        self._canvas = canvas  # TODO: check that it's a canvas
+        # `TagManagerMeta` collects the functions tagged by `@mpl_connect(*args)`
+        # and sets the `_callbacks` attribute which maps the (bound) methods to
+        # the argument tuple passed to the decorator.
+        # TagManager.__init__()
 
-    @property
-    def canvas(self):
-        return self._canvas
+        # connection id proxies
+        self.cid_proxies = {}
+        if isinstance(object, CallbackRegistry):
+            callbacks = object
+        elif not isinstance((callbacks := getattr(object, 'callbacks')),
+                            CallbackRegistry):
+            raise TypeError(f'Cannot not instantiate {type(self)!r} from '
+                            f'object of type {type(object)}.')
 
-    def add_callback(self, id_, method):
-        if id_ in self.callbacks:
+        #
+        self.callbacks = callbacks
+
+        # connect all decorated methods
+        if connect:
+            self.connect()
+
+    def add_callback(self, signal, method, identifier=None):
+        identifier = identifier or type(self)
+        if identifier in self.cid_proxies:
             raise ValueError(
-                f'A callback with ID {id_} already exists! The following '
-                f' callbacks are currently registered: {self.callbacks}\n'
-                f'Please choose a unique name for the {method} callback.'
+                f'A callback with ID {identifier} already exists! The '
+                'following callbacks are currently registered:'
+                f' {pp.mapping(self.callbacks)}\n'
+                f'Please choose a unique (hashable) identifier for the {method}'
+                ' callback.'
             )
 
-        if isinstance(id_, tuple):
-            name = id_[0]
-        else:
-            name = id_
-            id_ = (id_, )
-        
-        self.logger.debug('Adding callback {!r}: {}', id_, method)
-        self.callbacks[id_] = self.canvas.mpl_connect(name, method)
+        self.logger.debug('Adding {} callback with id {!r}', method, identifier)
+        self.cid_proxies[identifier] = self.callbacks.connect(signal, method)
 
-    def remove_callback(self, *id_):
-        self.logger.debug('Removing callback {!r}', id_)
-        self.canvas.mpl_disconnect(self.callbacks.pop(id_))
+    def remove_callback(self, *identifier):
+        self.logger.debug('Removing callback {!r}', identifier)
+        self.callbacks.disconnect(self.cid_proxies.get(identifier, identifier))
 
     def connect(self):
         """
-        Connect the flagged methods to the canvas as callback functions.
+        Connect the decorated methods to the canvas callback registry.
         """
-        for method, id_ in self._callbacks.items():
-            self.add_callback(id_, method)
+        for method, (signal, *identifier) in self._callbacks.items():
+            assert callable(method)
+            # print(signal, method, *identifier)
+            self.add_callback(signal, method, *identifier)
 
     def disconnect(self):
         """
-        Disconnect all callbacks from figure canvas.
+        Disconnect all callbacks for class.
         """
-        for cid in self.callbacks.values():
-            self.canvas.mpl_disconnect(cid)
-        self.logger.debug('Disconnected from figure {!s}', self.figure.canvas)
+        [*map(self.callbacks.disconnect, self.cid_proxies.values())]
+        self.cid_proxies = {}
+        self.logger.debug('Disconnected from figure {!s}', self.canvas)
+
+
+# decorator
+mpl_connect = CallbackManager.tag
