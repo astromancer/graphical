@@ -5,6 +5,7 @@ The main machinery enabling interactive artist movement.
 # std
 import time
 import itertools as itt
+from warnings import warn
 from collections import OrderedDict, defaultdict
 
 # third-party
@@ -45,7 +46,7 @@ def movable_artist_factory(art, offset, annotate, **kws):
 
     if isinstance(art, Line2D):
         # from scrawl.moves.lines import MovableLine
-        return art, MotionInterface(art, offset, annotate, **kws)
+        return art, MotionInterfaceArtist(art, offset, annotate, **kws)
 
     else:
         raise ValueError
@@ -96,6 +97,9 @@ def null(_):
 
 
 def filter_non_artist(objects):
+    if objects is None:
+        return
+
     for o in mit.collapse(objects):
         if o is None:
             continue
@@ -264,7 +268,8 @@ class Observers(LoggingMixin):
         return artists
 
 
-class MotionInterface(LoggingMixin):
+# ArtistMotionInterfaceArtist / MotionInterfaceArtistArtist
+class MotionInterfaceArtist(LoggingMixin):
     """
     Interface for managing a movable artist and any tied / linked art.
     """
@@ -276,6 +281,8 @@ class MotionInterface(LoggingMixin):
     # def from_data(cls, data):
     #     # construct from data?
     #     raise NotImplementedError
+
+    # FIXME: tied, linked artists to add to Blit list automatically?
 
     def __init__(self, artist, offset=(0., 0.), annotate=False, haunted=False,
                  trapped=False, **kws):
@@ -486,13 +493,13 @@ class MotionInterface(LoggingMixin):
 
         Returns
         -------
-        list of MotionInterface objects
+        list of MotionInterfaceArtist objects
             The co-moving artists.
 
         """
         cls = type(self)
         for art in artists:
-            if not isinstance(art, MotionInterface):
+            if not isinstance(art, MotionInterfaceArtist):
                 art = cls(art)
             self.tied.append(art)
 
@@ -671,14 +678,20 @@ class MotionInterface(LoggingMixin):
         self.artist.draw(renderer or self.artist.figure.canvas.renderer)
 
 
-class BlitHelper(CallbackManager):
-    def __init__(self, canvas=None, connect=False, use_blit=True):
+class CanvasBlitHelper(CallbackManager):
+    def __init__(self, artists=(), connect=False, active=True):
 
-        # flag for blitting behaviour
-        CallbackManager.__init__(self, canvas, connect)
-        self.canvas = canvas
-        self._use_blit = use_blit
+        self._canvas = None
         self.background = None
+
+        self.artists = set()
+        for art in set(filter_non_artist(artists)):
+            self.add_artist(art)
+
+        #
+        CallbackManager.__init__(self, self.canvas, connect)
+
+        self._use_blit = active
         self._draw_count = 0
         self._blit_count = 0
 
@@ -688,6 +701,9 @@ class BlitHelper(CallbackManager):
 
     @canvas.setter
     def canvas(self, canvas):
+        return self.set_canvas(canvas)
+    
+    def set_canvas(self, canvas):
         self._canvas = canvas
         if canvas:
             self.callbacks = canvas.callbacks
@@ -699,11 +715,26 @@ class BlitHelper(CallbackManager):
 
     @property
     def use_blit(self):
+        # can we use blitting?
         return (self._use_blit and
                 self.canvas is not None and
                 self.canvas.supports_blit)
 
-    def blit_setup(self, artists=()):  # save_background
+    def add_artist(self, artist):
+        """
+        Add an animated artist.
+        """
+        if len(self.artists) == 0 and not self.canvas:
+            self.canvas = artist.figure.canvas
+            # also sets `callbacks` to `canvas.callbacks` CallbackRegistry
+
+        if self.canvas != artist.figure.canvas:
+            raise ValueError(f'Artists from multiple canvases. '
+                             f'{type(self)} only manages a single canvas.')
+
+        self.artists.add(artist)
+
+    def blit_setup(self, artists=None):  # save_background
         """
         Setup canvas for blitting. First make all the artists in the list
         invisible, then redraw the canvas and save, then redraw all the artists.
@@ -715,39 +746,63 @@ class BlitHelper(CallbackManager):
             raise TypeError(f'No blit support for {self.canvas}!')
 
         canvas = self.canvas
-        artists = list(filter_non_artist(artists))
+
+        artists = self.artists if artists is None else set(filter_non_artist(artists))
 
         # set artist animated
         for art in artists:
             art.set_animated(True)
             art.set_visible(False)
 
+        # Draw everything (including our now-invisible art)
         canvas.draw()
+        # Save background region without animated artists
         background = canvas.copy_from_bbox(canvas.figure.bbox)
 
         for art in artists:
-            art.draw(canvas.renderer)
             art.set_animated(False)
             art.set_visible(True)
+            art.draw(canvas.renderer)
 
         canvas.blit(canvas.figure.bbox)
         return background
 
     @mpl_connect('draw_event', 1)
     def _on_first_draw(self, event):
+        print('*')
+        print(self)
+        print(self.callbacks.callbacks['draw_event'])
+
         if self._draw_count > 0:
-            raise ValueError(f'Draw count is {self._draw_count =} > 0. Do not'
-                             ' do so call this method directly. If you did not,'
-                             ' the first draw callback did not disconnect!')
+            warn(f'Draw count is {self._draw_count = } > 0. Do not'
+                 ' do so call this method directly. If you did not,'
+                 ' the first draw callback did not disconnect!')
+            # except Exception as err:
+            # import sys, textwrap
+            # from IPython import embed
+            # from better_exceptions import format_exception
+            # embed(header=textwrap.dedent(
+            #         f"""\
+            #         Caught the following {type(err).__name__} at 'machinery.py':773:
+            #         %s
+            #         Exception will be re-raised upon exiting this embedded interpreter.
+            #         """) % '\n'.join(format_exception(*sys.exc_info()))
+            # )
+            # raise
+            return
 
         self.logger.debug('First draw callback.')
 
         # disconnect callback to this function
         self.remove_callback('draw_event', 1)
 
+        # save background (without artists)
+        self.background = self.blit_setup(self.artists)
+
     @mpl_connect('draw_event')
     def _on_draw(self, event):
-        self.logger.trace('draw {}', self._draw_count)
+        # connect on_draw for debugging
+        self.logger.debug('draw {}', self._draw_count)
         self._draw_count += 1
 
     def draw(self, artists):
@@ -774,37 +829,32 @@ class BlitHelper(CallbackManager):
         self.canvas.blit(self.figure.bbox)
         self._blit_count += 1
 
-    # @mpl_connect('axes_enter_event')
-    # @mpl_connect('axes_leave_event')
-    def save_background(self, event=None):
-        # get all the movable artists by "moving" them with zero offset
-        if event and (self.ax != event.inaxes):
-            return
-
-        artists = []
-        for mv in self.movable.values():
-            art = mv.update_offset((0, 0))
-            artists.extend(art)
-
+    def save_background(self, artist=None):
         # save background (without artists)
-        self.background = self.blit_setup(artists)
+        self.background = self.blit_setup(artist or self.artists)
+
+    @mpl_connect('resize_event')
+    def on_resize(self, event):
+        """Save the background for blit after canvas resize"""
+        if self._draw_count:
+            self.save_background()
 
 
-class MotionManager(BlitHelper):
+class MotionManager(CanvasBlitHelper):
     """
     Class for managing movable artists. Artists are moved by applying a
     translation (transform) in the data space. This allows objects that live
     in arbitrary coordinates to be moved by dragging them with the mouse.
     """
 
-    # TODO: #incorp best methods from mpl.MotionInterface
+    # TODO: #incorp best methods from mpl.MotionInterfaceArtist
     supported_artists = (Line2D, ErrorbarContainer)
 
     @staticmethod
     def artist_factory(art, offset, annotate, **kws):
         return movable_artist_factory(art, offset, annotate, **kws)
 
-    def __init__(self, artists=None, offsets=None, annotate=True, haunted=False,
+    def __init__(self, artists=(), offsets=None, annotate=True, haunted=False,
                  auto_legend=True, use_blit=True, **legendkw):
         """
 
@@ -821,8 +871,7 @@ class MotionManager(BlitHelper):
         legendkw
         """
         self._ax = None
-        if artists is None:
-            artists = []
+        artists = artists or ()
 
         self.selection = None
         self.origin = None
@@ -848,7 +897,7 @@ class MotionManager(BlitHelper):
 
         # initialize auto-connect
         # CallbackManager.__init__(self)
-        BlitHelper.__init__(self, use_blit=use_blit)
+        CanvasBlitHelper.__init__(self, artists, active=use_blit)
 
         # TODO:
         # enable legend picking
@@ -871,17 +920,15 @@ class MotionManager(BlitHelper):
         """
         Add a movable artist.
         """
-        if len(self.movable) == 0 and not self.canvas:
-            self.canvas = artist.axes.figure.canvas
-            # also sets `callbacks` to `canvas.callbacks` CallbackRegistry
-
-        key, mv = self.artist_factory(artist,
-                                      offset=offset,
-                                      annotate=annotate,
-                                      haunted=haunted, **kws)
-        self.movable[key] = mv
+        artist, mv = self.artist_factory(artist,
+                                         offset=offset,
+                                         annotate=annotate,
+                                         haunted=haunted, **kws)
+        self.movable[artist] = mv
         self._original_offsets = np.r_['0,2', self._original_offsets, offset]
 
+        # add artists to blit list
+        self.artists |= set(mv.draw_list)
         return mv
 
     @property
@@ -898,27 +945,19 @@ class MotionManager(BlitHelper):
     def figure(self):
         return self.ax.figure
 
-    # @property
-    # def canvas(self):
-    #     return self.figure.canvas
-
-    @property
-    def artists(self):
-        return list(self.movable.keys())
-
     def lock(self, which):
         """
         Lock movement along a certain axis so the artist will online move in
         a line.
         """
-        for art, mv in self.movable.items():
+        for mv in self.movable.values():
             mv.lock(which)
 
     def free(self, which):
         """
         Free motion along an axis for all artists.
         """
-        for art, mv in self.movable.items():
+        for mv in self.movable.values():
             mv.free(which)
 
     def lock_x(self):
@@ -955,12 +994,12 @@ class MotionManager(BlitHelper):
 
         """
         self.logger.debug('limit {}, {}', x, y)
-        for art, mv in self.movable.items():
+        for mv in self.movable.values():
             mv.limit(x, y)
 
     def _on_first_draw(self, event):
-        super()._on_first_draw(event)
         self._original_axes_limits = self.ax.viewLim.get_points().T.copy()
+        super()._on_first_draw(event)
 
     def reset(self):
         """Reset the plot positions to original."""
@@ -1161,11 +1200,6 @@ class MotionManager(BlitHelper):
             # else:
             # self.canvas.draw()
 
-    @mpl_connect('resize_event')
-    def on_resize(self, event):
-        """Save the background for blit after canvas resize"""
-        self.save_background()
-
     def update(self, movable, xy_data, draw_on=True):
         """
         Draw all artists that where changed by the motion
@@ -1187,6 +1221,18 @@ class MotionManager(BlitHelper):
             self.draw(draw_list)
 
         return draw_list
+
+    # @mpl_connect('axes_enter_event')
+    # @mpl_connect('axes_leave_event')
+    def save_background(self, artists=None):
+        # get all the movable artists by "moving" them with zero offset
+
+        if artists is None:
+            artists = [mv.update_offset((0, 0))
+                       for mv in self.movable.values()]
+
+        # save background (without artists)
+        self.background = self.blit_setup(artists)
 
     # def connect(self):
     #     # connect the methods decorated with `@mpl_connect`

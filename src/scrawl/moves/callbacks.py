@@ -99,6 +99,7 @@ class CallbackManager(LoggingMixin, TagManagerBase,
         """
         Disconnect all callbacks for class.
         """
+        # connect the methods decorated with `@mpl_connect`
         self._check()
         [*map(self.callbacks.disconnect, self.cid_proxies.values())]
         self.cid_proxies = {}

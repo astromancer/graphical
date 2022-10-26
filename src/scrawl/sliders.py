@@ -7,7 +7,6 @@ import operator as op
 
 # third-party
 import numpy as np
-import more_itertools as mit
 from cycler import cycler
 from matplotlib.lines import Line2D
 
@@ -118,8 +117,9 @@ class AxesSliders(MotionManager):
             line = Line2D(x, y, transform=transform, clip_on=clip_on, **props)
             ax.add_artist(line)
             sliders.append(line)
-            # dart =
-            self.add_artist(line, (0, 0), annotate, haunted,
+            
+            # 
+            mia = self.add_artist(line, (0, 0), annotate, haunted,
                             trapped=trapped)
 
             # add some markers for aesthetic           '>s<'
@@ -128,7 +128,9 @@ class AxesSliders(MotionManager):
                 tied = Line2D(x, y, color=props['color'], marker=m,
                               transform=transform, clip_on=clip_on)
                 ax.add_line(tied)  # move to link function??
-                self[line].tie(tied)
+                mia.tie(tied)
+
+            self.artists |= set(mia.draw_list)
 
         # set upper / lower attributes for convenience
         self.lower = self.movable[sliders[0]]
