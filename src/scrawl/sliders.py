@@ -40,10 +40,10 @@ from .moves.machinery import MotionManager
 
 class AxesSliders(MotionManager):
     """
-    Class with sliders that set min/max of a value
+    Sliders that move along an axes and hold min/max value state.
 
     Basic interactions include:
-        movement - click & drag
+        movement - click & drag with left mouse
         reset - middle mouse
 
     Connect listeners to the sliders with eg.:
@@ -189,7 +189,6 @@ class AxesSliders(MotionManager):
             getattr(self.ax, f'set_{self.slide_axis}lim')(limits)
             self._changed_axes_lim = True
         elif self._changed_axes_lim:
-            self.logger.debug('!'*100)
             limits = [None, None]
             relate = (min, max)[upper]
             limits[upper] = relate(self._original_axes_limits[self._ifree, upper],
@@ -208,13 +207,13 @@ class AxesSliders(MotionManager):
         # pos = self.get_positions()
         if self.min_span is not None:
             self.upper.ymin = y + self.min_span
-            self.logger.debug('upper ymin: {:.2f}, {:.2f}', self.upper.ymin, y)
+            self.logger.trace('upper ymin: {:.2f}, {:.2f}', self.upper.ymin, y)
 
     def set_lower_ymax(self, x, y):
         # pos = self.get_positions()
         if self.min_span is not None:
             self.lower.ymax = y - self.min_span
-            self.logger.debug('lower ymax: {:.2f}, {:.2f}', self.lower.ymax, y)
+            self.logger.trace('lower ymax: {:.2f}, {:.2f}', self.lower.ymax, y)
 
     # def reset(self):
     #     return super().reset()

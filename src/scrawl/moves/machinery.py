@@ -125,6 +125,8 @@ def art_summary(artists):
 class Observers(LoggingMixin):
     """Container class for observer functions."""
 
+    # TODO: MOST of the activities here already handled by CallbackRegister
+
     def __init__(self):
         self.counter = itt.count()
         self.funcs = OrderedDict()
@@ -221,7 +223,7 @@ class Observers(LoggingMixin):
 
     def __call__(self, x, y):
         """
-        Run all active observers for current data point
+        Run all active observers for current data point.
 
         Parameters
         ----------
@@ -670,21 +672,49 @@ class MotionInterface(LoggingMixin):
 
 
 class BlitHelper(CallbackManager):
-    def __init__(self, canvas=None, use_blit=True):
+    def __init__(self, canvas=None, connect=False, use_blit=True):
 
         # flag for blitting behaviour
-        CallbackManager.__init__(self, canvas)
+        CallbackManager.__init__(self, canvas, connect)
+        self.canvas = canvas
         self._use_blit = use_blit
         self.background = None
         self._draw_count = 0
         self._blit_count = 0
+
+    @property
+    def canvas(self):
+        return self._canvas
+
+    @canvas.setter
+    def canvas(self, canvas):
+        self._canvas = canvas
+        if canvas:
+            self.callbacks = canvas.callbacks
+
+    @canvas.deleter
+    def canvas(self):
+        self._canvas = None
+        self.callbacks = None
+
+    @property
+    def use_blit(self):
+        return (self._use_blit and
+                self.canvas is not None and
+                self.canvas.supports_blit)
 
     def blit_setup(self, artists=()):  # save_background
         """
         Setup canvas for blitting. First make all the artists in the list
         invisible, then redraw the canvas and save, then redraw all the artists.
         """
-        fig = self.figure
+        if not self.canvas:
+            raise ValueError('No canvas!')
+
+        if not self.canvas.supports_blit:
+            raise TypeError(f'No blit support for {self.canvas}!')
+
+        canvas = self.canvas
         artists = list(filter_non_artist(artists))
 
         # set artist animated
@@ -692,23 +722,26 @@ class BlitHelper(CallbackManager):
             art.set_animated(True)
             art.set_visible(False)
 
-        fig.canvas.draw()
-        background = fig.canvas.copy_from_bbox(fig.bbox)
+        canvas.draw()
+        background = canvas.copy_from_bbox(canvas.figure.bbox)
 
         for art in artists:
-            art.draw(fig.canvas.renderer)
+            art.draw(canvas.renderer)
             art.set_animated(False)
             art.set_visible(True)
 
-        fig.canvas.blit(fig.bbox)
+        canvas.blit(canvas.figure.bbox)
         return background
 
     @mpl_connect('draw_event', 1)
     def _on_first_draw(self, event):
-        if self._draw_count > 1:
-            raise ValueError()
+        if self._draw_count > 0:
+            raise ValueError(f'Draw count is {self._draw_count =} > 0. Do not'
+                             ' do so call this method directly. If you did not,'
+                             ' the first draw callback did not disconnect!')
 
         self.logger.debug('First draw callback.')
+
         # disconnect callback to this function
         self.remove_callback('draw_event', 1)
 
@@ -764,8 +797,6 @@ class MotionManager(BlitHelper):
     in arbitrary coordinates to be moved by dragging them with the mouse.
     """
 
-    # TODO: some of the functionality here belongs in BlitHelper class
-
     # TODO: #incorp best methods from mpl.MotionInterface
     supported_artists = (Line2D, ErrorbarContainer)
 
@@ -795,7 +826,6 @@ class MotionManager(BlitHelper):
 
         self.selection = None
         self.origin = None
-        self.up = None
 
         if offsets is None:
             offsets = np.zeros((len(artists), 2))
@@ -812,13 +842,13 @@ class MotionManager(BlitHelper):
         # initialize mapping
         self.movable = IndexableOrderedDict()
 
-        # initialize auto-connect
-        # CallbackManager.__init__(self)
-        BlitHelper.__init__(self, None, use_blit)
-
         # build the movable objects
         for art, offset in zip(artists, offsets):
             self.add_artist(art, offset, annotate, haunted)
+
+        # initialize auto-connect
+        # CallbackManager.__init__(self)
+        BlitHelper.__init__(self, use_blit=use_blit)
 
         # TODO:
         # enable legend picking
@@ -838,7 +868,13 @@ class MotionManager(BlitHelper):
 
     def add_artist(self, artist, offset=(0, 0), annotate=True, haunted=False,
                    **kws):
-        """add a movable artist"""
+        """
+        Add a movable artist.
+        """
+        if len(self.movable) == 0 and not self.canvas:
+            self.canvas = artist.axes.figure.canvas
+            # also sets `callbacks` to `canvas.callbacks` CallbackRegistry
+
         key, mv = self.artist_factory(artist,
                                       offset=offset,
                                       annotate=annotate,
@@ -862,19 +898,13 @@ class MotionManager(BlitHelper):
     def figure(self):
         return self.ax.figure
 
-    @property
-    def canvas(self):
-        return self.figure.canvas
+    # @property
+    # def canvas(self):
+    #     return self.figure.canvas
 
     @property
     def artists(self):
         return list(self.movable.keys())
-
-    @property
-    def use_blit(self):
-        return (self._use_blit and
-                self.canvas is not None and
-                self.canvas.supports_blit)
 
     def lock(self, which):
         """
@@ -944,23 +974,25 @@ class MotionManager(BlitHelper):
     @mpl_connect('button_press_event')
     def on_click(self, event):
         """Reset plot on middle mouse."""
-        # print( 'on_click', repr(self.selection ))
+        self.logger.debug('Received mouse click button {event.button}', )
         if event.button == 2:
             self.reset()
 
     def _ignore_pick(self, event):
         """Filter pick events"""
         if event.mouseevent.button != 1:
+            self.logger.debug('Ignoring pick: wrong button {}.', event.mouseevent.button)
             return True
 
         if event.artist not in self.movable:
+            self.logger.debug('Ignoring pick: Artist {} not movable.', event.artist)
             return True
 
         # avoid picking multiple artist simultaneously
         # #TODO more intelligence
         if self.selection:
             #  prefer the artist with closest proximity to mouse event
-            self.logger.debug('Multiple picks! ignoring: {}', event.artist)
+            self.logger.debug('Multiple artist picks! Ignoring: {}', event.artist)
             return True
 
         return False
@@ -1134,7 +1166,6 @@ class MotionManager(BlitHelper):
         """Save the background for blit after canvas resize"""
         self.save_background()
 
-    # @unhookPyQt
     def update(self, movable, xy_data, draw_on=True):
         """
         Draw all artists that where changed by the motion
