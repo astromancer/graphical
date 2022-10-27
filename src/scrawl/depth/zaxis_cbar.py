@@ -11,8 +11,9 @@ from scrawl.moves.callbacks import CallbackManager, mpl_connect
 
 class ZAxisCbar(CallbackManager):
     @classmethod
-    def from_image(cls, image, corner=(0, 0), nseg=50):
-        return cls(image.axes, image.get_cmap(), image.get_clim(), corner, nseg)
+    def from_image(cls, image, corner=(0, 0), nseg=50, **kws):
+        return cls(image.axes, image.get_cmap(), image.get_clim(), corner, nseg,
+                   **kws)
 
     from_scalar_mappable = from_image
 

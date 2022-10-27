@@ -9,11 +9,12 @@ import itertools as itt
 # third-party
 import numpy as np
 from loguru import logger
+from matplotlib.cm import ScalarMappable
 
 # relative
-from ..moves import CallbackManager, mpl_connect
-from .utils import camera_distance
-from matplotlib.cm import ScalarMappable
+from ..moves import CallbackManager, TrackAxesUnderMouse, mpl_connect
+from . import camera
+from .zaxis_cbar import ZAxisCbar
 
 
 # ---------------------------------------------------------------------------- #
@@ -71,7 +72,7 @@ def is_one_colour(c):
     return (isinstance(c, (str, numbers.Real)) or np.size(c) in {3, 4})
 
 
-class Bar3D(ScalarMappable):
+class Bar3D(CallbackManager):
     """
     3D bar plot that renders correctly for different viewing angles.
     """
@@ -94,7 +95,8 @@ class Bar3D(ScalarMappable):
         assert hasattr(ax, 'bar3d')
         assert 0 < dxy <= 1
 
-        ScalarMappable.__init__(self, norm, cmap)
+        self.sm = ScalarMappable(norm, cmap)
+        self.set_cmap = self.sm.set_cmap
 
         self.ax = ax
         xyz = np.array([x, y, z])  # .reshape(3, -1)
@@ -109,8 +111,8 @@ class Bar3D(ScalarMappable):
         if color is None:
             self.set_cmap(cmap)
             # self.set_array(z)
-            self.set_clim(vmin, vmax)
-            color = self.to_rgba(z)
+            self.sm.set_clim(vmin, vmax)
+            color = self.sm.to_rgba(z)
 
         if not (color is None or is_one_colour(color)):
             color = np.asanyarray(color)
@@ -127,38 +129,35 @@ class Bar3D(ScalarMappable):
             self.bars[tuple(divmod(i, n))] = \
                 ax.bar3d(xx, yy, 0, dx, dy, dz, color=c, **kws)
 
-        # if zaxis_cbar:
-        #     ZAxisCbar(ax, )
+        self.cbar = None
+        if zaxis_cbar:
+            self.cbar = ZAxisCbar(self.ax, cmap)
 
-        # connect callbacks
-        # FIXME: callback attribute used by ScalarMappable
-        # CallbackManager.__init__(self, ax.figure.canvas, connect=True)
-        cnv = self.ax.figure.canvas
-        self._cid0 = cnv.mpl_connect('draw_event', self.on_first_draw)
-        self._cid_motion = cnv.mpl_connect('motion_notify_event', self.on_rotate)
+        # 
+        TrackAxesUnderMouse.__init__(self, ax.figure.canvas, connect=True)
 
-        #
-        self.callbacks.connect('changed', self._update_bars)
+        # embed()
 
-    # @mpl_connect('draw_event', 1)
+        # self.sm.callbacks.connect('changed', self._update_bars)
 
+    @mpl_connect('draw_event', 1)
     def on_first_draw(self, _):
         # HACK to get the zorder right at first draw
         self.set_zorder()
-        # self.remove_callback('draw_event', 1)
-        self.ax.figure.canvas.mpl_disconnect(self._cid0)
+        self.remove_callback('draw_event', 1)
         self.ax.figure.canvas.draw()
 
     def set_array(self, z):
-        super().set_array(z)
+        self.sm.set_array(z)
         self._update_bars(z)
 
-    def set_cmap(self, cmap):
-        # in_init = self.cmap
-        in_init = self.cmap is None
-        super().set_cmap(cmap)
-        if not in_init:
-            self._update_bars(self.z)
+    # def set_cmap(self, cmap):
+        # self.sm.set_cmap
+        # # in_init = self.cmap
+        # in_init = self.cmap is None
+        # super().set_cmap(cmap)
+        # if not in_init:
+        #     self._update_bars(self.z)
 
     def _update_bars(self, z=None):
         if z is not None:
@@ -183,7 +182,7 @@ class Bar3D(ScalarMappable):
             )
 
     def get_zorder(self):
-        return camera_distance(self.ax, *self.xy).ravel()
+        return -camera.distance(self.ax, *self.xy).ravel()
 
     def set_zorder(self):
         for i, o in enumerate(self.get_zorder()):
@@ -191,7 +190,7 @@ class Bar3D(ScalarMappable):
             bar._sort_zpos = o
             bar.set_zorder(o)
 
-    # @mpl_connect('motion_notify_event')
+    @mpl_connect('motion_notify_event')
     def on_rotate(self, event):  # sourcery skip: de-morgan
         # Redo zorder when rotating axes
         if ((event.inaxes is not self.ax) or
