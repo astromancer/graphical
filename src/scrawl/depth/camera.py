@@ -16,19 +16,16 @@ def sphview(ax):
     theta, phi = np.radians((90 - ax.elev, ax.azim))
     return r, theta, phi
 
+def xyz(ax):
+    return sph2cart(*sphview(ax))
 
-def camera_distance(ax, x, y, z=None):
+def distance(ax, x, y, z=None):
     z = np.zeros_like(x) if z is None else z
-    return np.multiply(
+    # camera = xyz(ax)
+    # print(camera)
+    return np.sqrt(np.square(
         # location of points
-        [x, y, z],
+        [x, y, z] -
         # camera position in xyz
-        np.array(sph2cart(*sphview(ax)), ndmin=3).T
-    ).sum(0)
-
-# return np.sqrt(np.square(
-    #     # location of points
-    #     [x, y, z] -
-    #     # camera position in xyz
-    #     np.array(sph2cart(*sphview(ax)), ndmin=3).T
-    # ).sum(0))
+        np.array(xyz(ax), ndmin=3).T
+    ).sum(0))
