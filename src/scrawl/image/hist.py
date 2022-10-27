@@ -48,12 +48,12 @@ class PixelHistogram(LoggingMixin):  # PixelHistogram
                         linewidth=0.5,
                         alpha=0.5)
 
-    @classmethod
-    def from_image(cls, image_artist):
-        pass
+    # @classmethod
+    # def from_image(cls, image_plot):
+    #     pass
 
     # todo. better with data?
-    def __init__(self, ax, image_plot,
+    def __init__(self, ax, image,
                  orientation='horizontal',
                  outer_bar_style=MappingProxyType(_outer_style),
                  use_blit=True,
@@ -64,7 +64,7 @@ class PixelHistogram(LoggingMixin):  # PixelHistogram
         Parameters
         ----------
         ax
-        image_plot
+        image
         use_blit
         outside_colour
         kws
@@ -78,8 +78,8 @@ class PixelHistogram(LoggingMixin):  # PixelHistogram
 
         self.log = kws.pop('log', True)
         self.ax = ax
-        self.image_plot = image_plot
-        self.norm = image_plot.norm
+        self.image = image
+        self.image.callbacks.connect('changed', self._update_cmap_from_image)
 
         assert orientation.lower().startswith(('h', 'v'))
         self.orientation = orientation
@@ -90,7 +90,7 @@ class PixelHistogram(LoggingMixin):  # PixelHistogram
         self.compute(self.get_array())
 
         # create collection
-        cmap = self.image_plot.get_cmap()
+        cmap = self.image.get_cmap()
         self.bars = PolyCollection(self.get_verts(self.counts, self.bin_edges),
                                    array=self.bin_centers,
                                    cmap=cmap)
@@ -101,7 +101,7 @@ class PixelHistogram(LoggingMixin):  # PixelHistogram
         self.set_cmap(cmap, self._outer_style['facecolor'], self._outer_style['alpha'])
 
         if use_blit:
-            # image_plot.set_animated(True)
+            # image.set_animated(True)
             self.bars.set_animated(True)
 
         # set axes limits
@@ -113,7 +113,11 @@ class PixelHistogram(LoggingMixin):  # PixelHistogram
         # rescale if non-empty histogram
         if len(self.counts):
             self.autoscale_view()
-
+    
+    @property
+    def figure(self):
+        return self.ax.figure
+    
     @property
     def cmap(self):
         return self._cmap
@@ -141,8 +145,11 @@ class PixelHistogram(LoggingMixin):  # PixelHistogram
         cmap.set_under(under)
         self.bars.set_cmap(cmap)
 
+    def _update_cmap_from_image(self, image):
+        self.set_cmap(image.get_cmap())
+    
     def get_array(self):
-        return self.image_plot.get_array()
+        return self.image.get_array()
 
     def set_array(self, data):  # set_image
         # compute histogram
@@ -179,7 +186,7 @@ class PixelHistogram(LoggingMixin):  # PixelHistogram
     def update(self):
         self.bars.set_verts(self.get_verts(self.counts, self.bin_edges))
         self.bars.set_array(self.bin_centers)
-        self.bars.set_clim(self.image_plot.get_clim())
+        self.bars.set_clim(self.image.get_clim())
 
         outside = ~np.ma.masked_inside(self.bin_centers, *self.bars.get_clim()).mask
         self.bars.set_linewidth(outside * self._outer_style['linewidth'])
@@ -210,7 +217,7 @@ class PixelHistogram(LoggingMixin):  # PixelHistogram
 
     def _auto_range(self, stretch=1.2):
         # choose range based on image colour limits
-        vmin, vmax = self.image_plot.get_clim()
+        vmin, vmax = self.image.get_clim()
         if vmin == vmax:
             self.logger.warning('Colour range is 0! Falling back to min-max '
                                 'range.')

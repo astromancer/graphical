@@ -7,19 +7,25 @@ from collections import abc
 # third-party
 import numpy as np
 import cmasher as cmr
-import matplotlib.pylab as plt
+import matplotlib.pyplot as plt
+import matplotlib.colorbar as cbar
+from matplotlib import ticker
 from matplotlib.gridspec import GridSpec
+from matplotlib.cm import ScalarMappable, get_cmap
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 
 # local
+from recipes.pprint import describe
 from recipes.logging import LoggingMixin
 from recipes.string import remove_prefix
-from scrawl.moves.machinery import BlitHelper
 
 # relative
+from ..depth.bar3d import Bar3D
 from ..sliders import RangeSliders
+from ..depth.zaxis_cbar import ZAxisCbar
 from ..utils import get_percentile_limits
-from ..moves.callbacks import CallbackManager, mpl_connect
+from ..moves.machinery import CanvasBlitHelper
+from ..moves import TrackAxesUnderMouse, mpl_connect
 from .hist import PixelHistogram
 from .utils import _sanitize_data, guess_figsize, set_clim_connected
 
@@ -39,7 +45,92 @@ def auto_grid(n):
     return x, y
 
 
-class ImageDisplay(BlitHelper, LoggingMixin):
+class Colorbar(cbar.Colorbar, LoggingMixin):
+
+    def __init__(self, ax, mappable=None, scroll=True, **kws):
+        super().__init__(ax, mappable, **kws)
+
+        self.scroll = None
+        if scroll:
+            self.scroll = CMapScroll(self)
+
+
+class CMapScroll(CanvasBlitHelper, TrackAxesUnderMouse, LoggingMixin):
+    # TODO: manage timeout through CallbackManager and mpl_connect
+
+    def __init__(self, cbar, cmaps=SCROLL_CMAPS_R, timeout=0.25, use_blit=True):
+        self.colorbar = cbar
+        self.available = sorted(set(cmaps))
+        self._letter_index = next(zip(self.available))
+        self._timeout = timeout
+        self._prev_switch_time = -1
+
+        self.mappables = {self.colorbar.mappable}
+
+        # canvas = cbar.ax.figure.canvas if cbar.ax else None
+        CanvasBlitHelper.__init__(self, (self.mappable, self.colorbar.solids), use_blit)
+
+    def add_artist(self, artist):
+        if isinstance(artist, ScalarMappable):
+            self.mappables.add(artist)
+        return super().add_artist(artist)
+
+    @property
+    def mappable(self):
+        return self.colorbar.mappable
+
+    def get_cmap(self):
+        return remove_prefix(self.mappable.get_cmap().name, 'cmr.')
+
+    def set_cmap(self, cmap):
+        for sm in self.mappables:
+            sm.set_cmap(cmap)
+
+    @mpl_connect('scroll_event')
+    def _on_scroll(self, event):
+
+        if self.colorbar is None or event.inaxes is not self.colorbar.ax:
+            return
+
+        now = time()
+        if now - self._prev_switch_time < self._timeout:
+            self.logger.debug('Scroll timeout.')
+            return
+
+        cmap = self.get_cmap()
+        self.logger.debug('Current cmap: {}', cmap)
+
+        avail = self.available
+        i = avail.index(cmap) if cmap in avail else -1
+        new = f'cmr.{avail[(i + 1) % len(avail)]}'
+        self.logger.info('Scrolling cmap: {} -> {}', cmap, new)
+
+        self.set_cmap(new)
+        self._prev_switch_time = now
+        # self.save_background(())
+        self.draw()
+
+    @mpl_connect('key_press_event')
+    def _on_key(self, event):
+
+        if self._axes_under_mouse is not self.ax:
+            self.logger.debug(f'Ignoring key press since {self._axes_under_mouse = }')
+            return
+
+        if event.key not in self._letter_index:
+            self.logger.debug('No cmaps starting with {!r}', event.key)
+            return
+
+        current = self.get_cmap()
+        i = self._letter_index.index(event.key)
+        new = f'cmr.{self.available[i]}'
+        self.logger.info('Scrolling cmap: {} -> {}', current, new)
+        self.set_cmap(new)
+
+        self.draw((self.mappables, self.colorbar.solids, self.colorbar.dividers))
+
+
+class ImageDisplay(CanvasBlitHelper, LoggingMixin):
     # TODO: move cursor with arrow keys when hovering over figure (like ds9)
     # TODO: optional zoomed image window
 
@@ -85,17 +176,18 @@ class ImageDisplay(BlitHelper, LoggingMixin):
             hist_kws = self._default_hist_kws
         self.has_hist = bool(hist_kws)
         self.has_sliders = kws.pop('sliders', True)
-        self.use_blit = kws.pop('use_blit', False)
-        connect = kws.pop('connect', self.has_sliders)
+        use_blit = kws.pop('use_blit', True)
+        connect = kws.pop('connect', True)
         # set origin
         kws.setdefault('origin', 'lower')
 
         # check data
         image = np.ma.asarray(image).squeeze()  # remove redundant dimensions
         if image.ndim != 2:
-            msg = f'{self.__class__.__name__} cannot image {image.ndim}D data.'
+            msg = f'{describe(type(self))} cannot display {image.ndim}D data.'
             if image.ndim == 3:
-                msg += 'Use `VideoDisplay` class to image 3D data.'
+                msg += ('Use the `VideoDisplay` class to display 3D data as '
+                        'scrollable video.')
             raise ValueError(msg)
 
         # convert boolean to integer (for colour scale algorithm)
@@ -107,7 +199,7 @@ class ImageDisplay(BlitHelper, LoggingMixin):
 
         # create the figure if needed
         self.divider = None
-        self.figure, axes = self.init_figure(kws)
+        self.figure, axes = self.setup_figure(kws)
         self.ax, self.cax, self.hax = axes
         ax = self.ax
 
@@ -118,37 +210,35 @@ class ImageDisplay(BlitHelper, LoggingMixin):
         # use imshow to draw the image
         self.image = ax.imshow(image, *args, **kws)
         self.norm = self.image.norm
+        self.get_clim = self.image.get_clim
         # self.image.set_clim(*clim)
 
         # create the colourbar / histogram / sliders
         self.cbar = None
         if self.has_cbar:
-            self.cbar = self.make_cbar()
+            self.cbar = self.colorbar()
 
         # create sliders after histogram so they display on top
-        self.sliders, self.histogram = self.make_sliders(hist_kws)
-        self._cbar_hist_connectors = {}
-        self.connect_cbar_hist()
 
-        # connect on_draw for debugging
-        self._draw_count = 0
-        # self.cid = ax.figure.canvas.mpl_connect('draw_event', self._on_draw)
+        self.sliders, self.histogram = self.make_sliders(use_blit, hist_kws)
+        self._cbar_hist_connectors = self.connect_cbar_hist() \
+            if self.has_hist and self.has_sliders else {}
 
-        # link viewlims of the 3d axes
-        CallbackManager.__init__(self, self.figure.canvas)
-
-        if connect:
-            self.connect()
+        # init blit and callbacks
+        CanvasBlitHelper.__init__(self,
+                                  (self.image, self.histogram.bars),
+                                  connect, use_blit)
 
     def __iter__(self):
         yield self.figure
         yield self.ax
 
-    # def _clean_kws(self):
-    #     s = inspect.signature(self.ax.imshow)
-    #     set(s.parameters.keys()) - {'X', 'data', 'kwargs'}
+    def set_canvas(self, canvas):
+        super().set_canvas(canvas)
+        if self.sliders:
+            self.sliders.set_canvas(canvas)
 
-    def init_figure(self, kws):
+    def setup_figure(self, kws):
         """
         Create the figure and add the axes
 
@@ -219,52 +309,20 @@ class ImageDisplay(BlitHelper, LoggingMixin):
         -------
         size: tuple
             Size (width, height) of the figure in inches
-
-
         """
 
-        #
         image = self.data[0] if data is None else data
         return guess_figsize(image, fill_factor, max_pixel_size)
 
     # TODO: custom cbar class?
 
-    def make_cbar(self):
-        fmt = None
-        if self.has_hist:
-            # No need for the data labels on the colourbar since it will be on
-            # the histogram axis.
-            from matplotlib import ticker
-            fmt = ticker.NullFormatter()
+    def colorbar(self, **kws):
+        # No need for the data labels on the colourbar since it will be on the
+        # histogram axis.
+        fmt = ticker.NullFormatter() if self.has_hist else None
+        return Colorbar(self.cax, self.image,  format=fmt, **kws)
 
-        return self.figure.colorbar(self.image, cax=self.cax, format=fmt)
-
-    # TODO: manage timeout through CallbackManager and mpl_connect
-    _cmap_scroll_timeout = 0.1
-    _cmap_switch_time = -1
-
-    @mpl_connect('scroll_event')
-    def _cmap_scroll(self, event):
-
-        if self.cbar is None or self.cax is not event.inaxes:
-            return
-
-        now = time()
-        if now - self._cmap_switch_time < self._cmap_scroll_timeout:
-            self.debug('Scroll timeout')
-            return
-
-        self._cmap_switch_time = now
-        cmap = remove_prefix(self.image.get_cmap().name, 'cmr.')
-        self.logger.debug('Current cmap: {}', cmap)
-
-        available = SCROLL_CMAPS_R
-        i = available.index(cmap) if cmap in available else -1
-        new = f'cmr.{available[(i + 1) % len(available)]}'
-        self.logger.info('Scrolling cmap: {} -> {}', cmap, new)
-        self.set_cmap(new)
-
-        self.canvas.draw()
+        # return self.figure.colorbar(self.image, cax=self.cax,)
 
     def connect_cbar_hist(self):
         if not (self.histogram and self.sliders):
@@ -272,6 +330,7 @@ class ImageDisplay(BlitHelper, LoggingMixin):
 
         from matplotlib.patches import ConnectionPatch
 
+        connectors = {}
         c0, c1 = self.image.get_clim()
         x0, _ = self.hax.get_xlim()
         xy_from = [(1, 0),
@@ -281,19 +340,21 @@ class ImageDisplay(BlitHelper, LoggingMixin):
                  (x0, c1),
                  (x0, (c0 + c1) / 2)]
         for mv, xy_from, xy_to in zip(self.sliders, xy_from, xy_to):
-            p = ConnectionPatch(
-                xyA=xy_from, coordsA=self.cax.transAxes,
-                xyB=xy_to, coordsB=self.hax.transData,
-                arrowstyle="-",
-                edgecolor=mv.artist.get_color(),
-                alpha=0.5
+            self.figure.add_artist(
+                p := ConnectionPatch(
+                    xyA=xy_from, coordsA=self.cax.transAxes,
+                    xyB=xy_to, coordsB=self.hax.transData,
+                    arrowstyle="-",
+                    edgecolor=mv.artist.get_color(),
+                    alpha=0.5
+                )
             )
-            self.figure.add_artist(p)
-            self._cbar_hist_connectors[mv.artist] = p
+            connectors[mv.artist] = p
 
         self.sliders.centre.on_move.add(self._update_connectors)
+        self.sliders.artists |= set(connectors.values())
 
-        return self._cbar_hist_connectors
+        return connectors
 
     def _update_connectors(self, x, y):
         positions = [*self.sliders.positions, self.sliders.positions.mean()]
@@ -304,24 +365,33 @@ class ImageDisplay(BlitHelper, LoggingMixin):
 
         return self._cbar_hist_connectors.values()
 
-    def make_sliders(self, hist_kws=None):
+    def make_sliders(self, use_blit, hist_kws=None):
         # data = self.image.get_array()
 
         sliders = None
+        self.cbar.scroll
         if self.has_sliders:
             clim = self.image.get_clim()
             sliders = self.sliderClass(self.hax, clim, 'y',
                                        color='rbg',
                                        ms=(2, 1, 2),
-                                       extra_markers='>s<')
+                                       extra_markers='>s<',
+                                       use_blit=use_blit)
 
             sliders.lower.on_move.add(self.update_clim)
             sliders.upper.on_move.add(self.update_clim)
+            for mv in sliders.movable.values():
+                mv.on_pick.add(lambda *_: self.sliders.save_background())
+                mv.on_release.add(lambda *_: self.cbar.scroll.save_background())
 
         hist = None
         if self.has_hist:
             hist = PixelHistogram(self.hax, self.image, 'horizontal',
-                                  use_blit=self.use_blit, **(hist_kws or {}))
+                                  use_blit=use_blit, **(hist_kws or {}))
+
+            if sliders:
+                # add for blit
+                sliders.artists.add(hist.bars)
 
             # set ylim if reasonable to do so
             # if data.ptp():
@@ -332,6 +402,14 @@ class ImageDisplay(BlitHelper, LoggingMixin):
             self.hax.yaxis.tick_right()
             self.hax.grid(True)
 
+        # scroll blit
+        # self.cbar.scroll.add_artist(hist)
+        self.cbar.scroll.mappables.add(hist) # will call hist.set_cmap on scroll
+        self.cbar.scroll.artists.add(hist.bars)
+        self.cbar.scroll.artists |= set.union(
+            *(set(mv.draw_list) for mv in sliders.movable.values()),
+        )
+
         return sliders, hist
 
     def set_cmap(self, cmap):
@@ -339,6 +417,7 @@ class ImageDisplay(BlitHelper, LoggingMixin):
         if self.has_hist:
             self.histogram.set_cmap(cmap)
 
+        # FIXME: blit!
         self.canvas.draw()
 
     def clim_from_data(self, data, kws=None, **kws_):
@@ -398,9 +477,9 @@ class ImageDisplay(BlitHelper, LoggingMixin):
         """Set colour limits on slider move"""
         return self.set_clim(*self.sliders.positions)
 
-    def format_coord(self, x, y, precision=3, masked_str='masked'):
+    def format_coord(self, x, y, precision=3, masked_str='--'):
         """
-        Create string representation for cursor position in data coordinates
+        Create string representation for cursor position in data coordinates.
 
         Parameters
         ----------
@@ -416,9 +495,6 @@ class ImageDisplay(BlitHelper, LoggingMixin):
         -------
         str
         """
-
-        # MASKED_STR = 'masked'
-
         if not hasattr(self, 'image'):
             # prevents a swap of repeated errors flooding the terminal for
             # mouse over when no image has been drawn
@@ -443,11 +519,9 @@ class ImageDisplay(BlitHelper, LoggingMixin):
     def connect(self):
         super().connect()
 
-        if self.sliders is None:
-            return
-
         # connect sliders' interactions + save background for blitting
-        self.sliders.connect()
+        if self.sliders:
+            self.sliders.connect()
 
     def save(self, filename, *args, **kws):
         self.figure.savefig(filename, *args, **kws)
@@ -687,3 +761,56 @@ class ImageGrid:
         # Update histogram with data from all images
         self.imd.histogram.set_array(pixels)
         self.imd.histogram.autoscale_view()
+
+
+class Image3D:
+    def __init__(self, image,
+                 origin=(0, 0), cmap=None,
+                 image_kws=None, bar3d_kws=None):
+
+        self.fig, (axi, ax3) = self.setup_figure()
+        self.axi, self.ax3 = axi, ax3
+
+        y0, x0 = origin = np.array(origin)
+        y1, x1 = origin + image.shape
+        y, x = np.indices(image.shape) + origin[:, None, None]
+
+        cmap = get_cmap(cmap)
+        self.image = ImageDisplay(image, ax=self.axi, cmap=cmap,
+                                  extent=(x0, x1, y0, y1),
+                                  **{**(image_kws or {}),
+                                     **dict(hist=False, sliders=False)})
+
+        # remove cbar ticks / labels
+        self.image.cax.yaxis.set_tick_params(length=0)
+        self.image.cax.yaxis.major.formatter = ticker.NullFormatter()
+
+        self.bar3d = Bar3D(self.ax3, x, y, image,
+                           color=cmap(self.image.norm(image)),
+                           **(bar3d_kws or {}))
+
+        self.cbar = ZAxisCbar(ax3, cmap, self.image.get_clim(), corner=(0, 1))
+
+        self.image.image.callbacks.connect('changed', self.cbar.line.changed)
+        self.image.image.callbacks.connect('changed', self.bar3d.sm.changed)
+
+    def set_cmap(self, cmap):
+        for art in (self.image.image, self.bar3d, self.cbar.line):
+            art.set_cmap(cmap)
+
+    def setup_figure(self, **kws):
+        fig = plt.figure()  # size = (8.5, 5)
+        axi = fig.add_subplot(1, 2, 1)
+        ax3 = fig.add_subplot(1, 2, 2,
+                              projection='3d',
+                              azim=-125, elev=30)
+
+        # label axes
+        for xy in 'xy':
+            getattr(axi, f'set_{xy}label')(f'${xy}$')
+            getattr(axi, f'{xy}axis').set_major_locator(
+                ticker.MaxNLocator('auto', steps=[1, 2, 5, 10]))
+
+        ax3.set(facecolor='none', xlabel='$x$', ylabel='$y$')
+
+        return fig, (axi, ax3)
