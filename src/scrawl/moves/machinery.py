@@ -6,7 +6,7 @@ The main machinery enabling interactive artist movement.
 import time
 import itertools as itt
 from warnings import warn
-from collections import OrderedDict, defaultdict
+from collections import OrderedDict, abc, defaultdict
 
 # third-party
 import numpy as np
@@ -111,23 +111,30 @@ def filter_non_artist(objects):
         # warn if not art
         logger.warning('Object {!r} is not a matplotlib Artist', o)
 
-
 def art_summary(artists):
-    col = defaultdict(int)
+    
     if artists is None:
         return ''
+    
     if isinstance(artists, Artist):
         return {artists: 1}
 
-    for art in artists:
-        col[type(art)] += 1
-    return str(col)
+    if isinstance(artists, abc.Collection):
+        col = defaultdict(int)
+        for art in artists:
+            col[type(art)] += 1
+
+        return str(col)
+    
+    return str(artists)
 
 # ---------------------------------------------------------------------------- #
 
 
 class Observers(LoggingMixin):
-    """Container class for observer functions."""
+    """
+    Container class for observer functions.
+    """
 
     # TODO: MOST of the activities here already handled by CallbackRegister
 
@@ -186,7 +193,7 @@ class Observers(LoggingMixin):
 
     def activate(self, fun_or_id):
         """
-        Reactivate a non-active observer.  This method is useful for toggling
+        Reactivate a non-active observer. This method is useful for toggling
         the active state of an observer function without removing and re-adding
         it (and it's parameters) to the dict of functions. The function will use
         parameters and keywords (if any) that were initially passed when it was
@@ -259,7 +266,7 @@ class Observers(LoggingMixin):
                 if isinstance(art, (list, tuple)):  # np.ndarray
                     artists.extend(art)
 
-                elif art is not None:
+                elif isinstance(art, Artist):
                     artists.append(art)
 
             except Exception:
@@ -326,7 +333,7 @@ class MotionInterfaceArtist(LoggingMixin):
         # Manage with CallbackManager?
         self.tied = []
         self.linked = []
-        self.on_picked = Observers()
+        self.on_pick = self.on_picked = Observers()
         self.on_move = Observers()
         self.on_release = Observers()
         # self.on_clipped = Observers()
@@ -694,6 +701,10 @@ class CanvasBlitHelper(CallbackManager):
         self._use_blit = active
         self._draw_count = 0
         self._blit_count = 0
+        self._resize_count = 0
+        self._resizing = False
+        self._resize_time_last = None
+        self._post_resize_thread = None
 
     @property
     def canvas(self):
@@ -702,7 +713,7 @@ class CanvasBlitHelper(CallbackManager):
     @canvas.setter
     def canvas(self, canvas):
         return self.set_canvas(canvas)
-    
+
     def set_canvas(self, canvas):
         self._canvas = canvas
         if canvas:
@@ -747,7 +758,12 @@ class CanvasBlitHelper(CallbackManager):
 
         canvas = self.canvas
 
-        artists = self.artists if artists is None else set(filter_non_artist(artists))
+        artists = sorted(set(filter_non_artist(
+            self.artists if artists is None else artists)),
+            key=Artist.get_zorder
+        )
+
+        self.logger.debug('{} artists will be drawn.', len(artists))
 
         # set artist animated
         for art in artists:
@@ -755,7 +771,11 @@ class CanvasBlitHelper(CallbackManager):
             art.set_visible(False)
 
         # Draw everything (including our now-invisible art)
-        canvas.draw()
+        with canvas.callbacks.blocked(signal='draw_event'):
+            # block recursive invokations from `_on_first_draw` that does
+            # `save_background` which triggers a draw.
+            canvas.draw()
+
         # Save background region without animated artists
         background = canvas.copy_from_bbox(canvas.figure.bbox)
 
@@ -768,30 +788,19 @@ class CanvasBlitHelper(CallbackManager):
         return background
 
     @mpl_connect('draw_event', 1)
-    def _on_first_draw(self, event):
-        print('*')
-        print(self)
-        print(self.callbacks.callbacks['draw_event'])
+    def _on_first_draw(self, _):
+        # print(self.callbacks.callbacks['draw_event'])
+        #
+        self.logger.debug('First draw callback.')
+        # print('-'*100)
+        # tb.print_stack()
+        # print('-'*100)
 
         if self._draw_count > 0:
-            warn(f'Draw count is {self._draw_count = } > 0. Do not'
-                 ' do so call this method directly. If you did not,'
-                 ' the first draw callback did not disconnect!')
-            # except Exception as err:
-            # import sys, textwrap
-            # from IPython import embed
-            # from better_exceptions import format_exception
-            # embed(header=textwrap.dedent(
-            #         f"""\
-            #         Caught the following {type(err).__name__} at 'machinery.py':773:
-            #         %s
-            #         Exception will be re-raised upon exiting this embedded interpreter.
-            #         """) % '\n'.join(format_exception(*sys.exc_info()))
-            # )
-            # raise
+            warn(f'Draw count is {self._draw_count = } > 0. Do not call this'
+                 ' method directly. If you did not do so the first draw'
+                 ' callback did not disconnect!')
             return
-
-        self.logger.debug('First draw callback.')
 
         # disconnect callback to this function
         self.remove_callback('draw_event', 1)
@@ -802,12 +811,13 @@ class CanvasBlitHelper(CallbackManager):
     @mpl_connect('draw_event')
     def _on_draw(self, event):
         # connect on_draw for debugging
-        self.logger.debug('draw {}', self._draw_count)
+        self.logger.debug('Draw {}: {}', self._draw_count, self)
         self._draw_count += 1
 
-    def draw(self, artists):
+    def draw(self, artists=None):
         if self.use_blit:
-            self.draw_blit(artists)
+            # artists = self.artists if artists is None else artists
+            self.draw_blit(self.artists if artists is None else artists)
         else:
             self.canvas.draw()
 
@@ -822,22 +832,58 @@ class CanvasBlitHelper(CallbackManager):
                                        key=Artist.get_zorder)):
             art.draw(self.canvas.renderer)
 
-        self.logger.debug('Drew {} artists in {} sec.', i, time.time() - t0)
+        self.logger.debug('Drew {} artists in {} sec:\n', i, time.time() - t0, )
         # After rendering all the needed artists, blit each axes individually.
         # for ax in set(self.figure.axes):
         #     ax.figure.canvas.blit(ax.figure.bbox)
-        self.canvas.blit(self.figure.bbox)
+        self.canvas.blit(self.canvas.figure.bbox)
         self._blit_count += 1
 
-    def save_background(self, artist=None):
+    def save_background(self, artists=None):
         # save background (without artists)
-        self.background = self.blit_setup(artist or self.artists)
+        self.logger.debug('Saving background for {}.', self)
+        self.background = self.blit_setup(self.artists if artists is None else artists)
+
+    def _save_background_after_resize(self, artists=None, delay=1):
+        while True:
+            if self._resize_time_last and (elapsed := self._resize_time_last - time.time()) > delay:
+                self.logger.debug('Save background triggered after {} s delay.', delay)
+                self.save_background(artists)
+                self._resize_time_last = None
+                return
+            else:
+                self.logger.debug(f'Waiting a bit.. {self._resize_time_last = }, {elapsed = }', )
+
+                time.sleep(delay)
 
     @mpl_connect('resize_event')
     def on_resize(self, event):
         """Save the background for blit after canvas resize"""
+
         if self._draw_count:
+            self.logger.debug('Canvas is resizing! ')
+
             self.save_background()
+            
+            # if self._resize_time_last is None:
+            #     # first call to resize
+            #     if self._post_resize_thread:
+            #         # previous resize thread still running
+            #         self.logger.debug('Joining post resize thread.')
+            #         self._post_resize_thread.join()
+
+            #     self.logger.debug('Adding post resize thread.')
+            #     self._post_resize_thread = Thread(
+            #         target=self._save_background_after_resize, daemon=True)
+            #     self._post_resize_thread.start()
+
+            # self._resize_time_last = time.time()
+
+    # @mpl_connect('button_release_event')
+    # def on_release(self, event):
+    #     if self._resizing:
+    #         print('%' * 100)
+    #         self._resizing = False
 
 
 class MotionManager(CanvasBlitHelper):
@@ -1013,7 +1059,7 @@ class MotionManager(CanvasBlitHelper):
     @mpl_connect('button_press_event')
     def on_click(self, event):
         """Reset plot on middle mouse."""
-        self.logger.debug('Received mouse click button {event.button}', )
+        self.logger.debug('Received mouse click button {}', event.button)
         if event.button == 2:
             self.reset()
 

@@ -75,14 +75,20 @@ class CallbackManager(LoggingMixin, TagManagerBase,
                 ' callback.'
             )
 
-        self.logger.debug('Adding {} callback with id {!r}', method, identifier)
+        self.logger.debug('Adding {} callback with id {!r}', 
+                          pp.describe(method), identifier)
         self.cid_proxies[identifier] = self.callbacks.connect(signal, method)
 
     def remove_callback(self, signal, *identifier):
         self._check()
         identifier = (signal, *identifier) if identifier else signal
-        self.logger.debug('Removing callback {!r}', identifier)
-        self.callbacks.disconnect(self.cid_proxies.pop(identifier))
+        if cid := self.cid_proxies.pop(identifier, None):
+            self.logger.debug('Removing callback with id {!r} for {}.',
+                            identifier, self)
+            self.callbacks.disconnect(cid)
+        else:
+            self.logger.debug('No method with id {!r} in {}.', 
+                              identifier, cid, self)
 
     def connect(self):
         """
