@@ -11,16 +11,16 @@ from scrawl.moves.callbacks import CallbackManager, mpl_connect
 
 class ZAxisCbar(CallbackManager):
     @classmethod
-    def from_image(cls, image, corner=(0, 0), nseg=50, **kws):
+    def from_image(cls, image, corner=(0, 1), nseg=50, **kws):
         return cls(image.axes, image.get_cmap(), image.get_clim(), corner, nseg,
                    **kws)
 
     from_scalar_mappable = from_image
 
-    def __init__(self, ax, cmap=None, zrange=(), corner=(0, 0), nseg=50, **kws):
+    def __init__(self, ax, cmap=None, zrange=(), corner=(0, 1), nseg=50, **kws):
         self.ax = ax
         self.xyz = xyz = np.empty((3, nseg))
-        xy = np.array([ax.get_xlim()[corner[0]], 
+        xy = np.array([ax.get_xlim()[corner[0]],
                        ax.get_ylim()[corner[1]]])
         xyz[:2] = np.array(xy, ndmin=2).T
         xyz[2] = np.linspace(*(zrange or ax.get_zlim()), nseg)
@@ -34,7 +34,7 @@ class ZAxisCbar(CallbackManager):
 
         ax.add_collection(self.line, autolim=False)
         ax.zaxis.line.set_visible(False)
-        
+
         CallbackManager.__init__(self, self.ax.figure.canvas, connect=True)
 
     @mpl_connect('motion_notify_event')
