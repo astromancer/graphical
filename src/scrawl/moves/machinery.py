@@ -26,7 +26,6 @@ from recipes.dicts import IndexableOrderedDict
 from .callbacks import CallbackManager, mpl_connect
 
 
-# from matplotlib.axes import Axes
 # from matplotlib.offsetbox import MotionInterface
 
 
@@ -111,21 +110,21 @@ def filter_non_artist(objects):
         # warn if not art
         logger.warning('Object {!r} is not a matplotlib Artist', o)
 
+
 def art_summary(artists):
-    
+
     if artists is None:
         return ''
-    
-    if isinstance(artists, Artist):
-        return {artists: 1}
 
     if isinstance(artists, abc.Collection):
-        col = defaultdict(int)
+        col = defaultdict(list)
         for art in artists:
-            col[type(art)] += 1
+            col[type(art)].append(art)
 
-        return str(col)
-    
+        return pprint.pformat(col, '',
+                              lhs=op.attrgetter('__name__'),
+                              rhs=lambda l: '\n'.join(map(str, l)))
+
     return str(artists)
 
 # ---------------------------------------------------------------------------- #
@@ -136,26 +135,24 @@ class Observers(LoggingMixin):
     Container class for observer functions.
     """
 
-    # TODO: MOST of the activities here already handled by CallbackRegister
+    # TODO: Integrate with the activities already handled by CallbackRegister
 
-    def __init__(self):
+    def __init__(self, rate_limit=-1):
         self.counter = itt.count()
         self.funcs = OrderedDict()
         self.active = {}
 
+        self.timeout = float(1. / rate_limit)
+        self._previous_call_time = -1
+
     def __repr__(self):
-        return '\n'.join(
-            (self.__class__.__name__,
-             '\n'.join(map(self._repr_observer, self.funcs.keys()))))
+        return '\n'.join((self.__class__.__name__,
+                          '\n'.join(map(self._repr_observer, self.funcs.keys()))))
 
     def _repr_observer(self, id_):
-        func, active, args, kws = self.funcs[id_]
-        return (
-            f'{id_:d}{" *"[active]}: {pprint.method(func)}'
-            + ', '.join(['x', 'y',
-                         *map(str, args),
-                         *map('='.join, kws.items())]).join('()')
-        )
+        func, args, kws = self.funcs[id_]
+        active = self.active[func]
+        return f'{id_}{" *"[active]}: {pprint.method(func, args=args, kws=kws)}'
 
     def add(self, func, *args, **kws):
         """
@@ -232,9 +229,9 @@ class Observers(LoggingMixin):
                 'to make it an observer', fun
             )
 
-    def __call__(self, x, y):
+    def __call__(self, *args, **kws):
         """
-        Run all active observers for current data point.
+        Call all active observers.
 
         Parameters
         ----------
@@ -244,33 +241,37 @@ class Observers(LoggingMixin):
         -------
         Artists that need to be drawn
         """
-
-        # if self.logger.getEffectiveLevel() < logging.DEBUG:
-        #     _art_summary = null
-        # else:
-        #     _art_summary = art_summary
+        now = time.time()
+        if (elapsed := now - self._previous_call_time) < self.timeout:
+            self.logger.debug('Observer timed out for {}s. Time elapsed since '
+                              'previous call: {:.3f}s', self.timeout, elapsed)
+            return
 
         # Artists that need to be drawn (from observer functions)
         artists = []
-        for _, (func, args, kws) in self.funcs.items():
+        for _, (func, static_args, static_kws) in self.funcs.items():
             if not self.active[func]:
                 continue
 
             try:
-                art = func(x, y, *args, **kws)
-                self.logger.opt(lazy=True).debug(
-                    'observer: {0[0]:}({0[1]:.3f}, {0[2]:.3f}): {0[3]:}',
-                    lambda: (func.__name__, x, y, art_summary(art))
-                )
+                self.logger.debug('Calling observer function: {!r}', func.__name__)
+                art = func(*args, *static_args, *static_kws, **kws)
+                if art:
+                    self.logger.opt(lazy=True).debug(
+                        'The following artists have been changed by observer function '
+                        '{0[0]!r}:\n{0[1]}', lambda: (func.__name__, art_summary(art))
+                    )
+                else:
+                    self.logger.debug('No artists returned by observer {}.', func.__name__)
 
-                if isinstance(art, (list, tuple)):  # np.ndarray
+                if isinstance(art, abc.Iterable):  # np.ndarray
                     artists.extend(art)
 
                 elif isinstance(art, Artist):
                     artists.append(art)
 
             except Exception:
-                self.logger.exception('Observers error.')
+                self.logger.exception('Observer error!')
 
         return artists
 
@@ -575,9 +576,9 @@ class MotionInterfaceArtist(LoggingMixin):
         x, y = self.clip(x, y)
         offset = np.subtract((x, y), self.origin)
 
-        self.logger.debug('shifting {} to ({:.3f}, {:.3f})', self, x, y)
+        self.logger.trace('moving {} to ({:.3f}, {:.3f})', self, x, y)
         self.move_by(offset)
-        self.logger.debug('offset {} is ({:.3f}, {:.3f})', self, *self.offset)
+        self.logger.trace('offset {} is ({:.3f}, {:.3f})', self, *self.offset)
 
         return self.artist
 
@@ -595,7 +596,7 @@ class MotionInterfaceArtist(LoggingMixin):
         """
 
         self.offset = offset  # will adhere to positional locks
-        self.logger.debug('moving: {} {}', self, offset)
+        self.logger.trace('moving {} by {}', self, offset)
 
         # add the offset with transform
         offset_trans = Affine2D().translate(*self.offset)
@@ -603,14 +604,15 @@ class MotionInterfaceArtist(LoggingMixin):
         self.artist.set_transform(trans)
 
     def update(self, x, y):
-        self.logger.debug('update: {!r}', self)
+        self.logger.trace('update: {!r}', self)
 
         # Artists that need to be drawn (from observers)
         pos = self.position
         draw_list = self.on_move(x, y)
+
         # get the actual delta (respecting position locks etc)
         delta = self.position - pos
-        self.logger.debug('DELTA {}', delta)
+        self.logger.trace('DELTA {}', delta)
 
         # if propagate:
         for tied in self.tied:
@@ -745,7 +747,7 @@ class CanvasBlitHelper(CallbackManager):
 
         self.artists.add(artist)
 
-    def blit_setup(self, artists=None):  # save_background
+    def blit_setup(self, artists=None):
         """
         Setup canvas for blitting. First make all the artists in the list
         invisible, then redraw the canvas and save, then redraw all the artists.
@@ -758,13 +760,14 @@ class CanvasBlitHelper(CallbackManager):
 
         canvas = self.canvas
 
+        self.logger.debug('Blit setup received: {!r}', artists)
         artists = sorted(set(filter_non_artist(
             self.artists if artists is None else artists)),
             key=Artist.get_zorder
         )
 
-        self.logger.debug('{} artists will be drawn.', len(artists))
-
+        self.logger.debug('Blit setup for {} animated artists.', len(artists))
+        
         # set artist animated
         for art in artists:
             art.set_animated(True)
@@ -774,27 +777,29 @@ class CanvasBlitHelper(CallbackManager):
         with canvas.callbacks.blocked(signal='draw_event'):
             # block recursive invokations from `_on_first_draw` that does
             # `save_background` which triggers a draw.
+            self.logger.debug('Drawing background', len(artists))
             canvas.draw()
 
         # Save background region without animated artists
         background = canvas.copy_from_bbox(canvas.figure.bbox)
+        self.logger.debug('Background saved.')
 
         for art in artists:
             art.set_animated(False)
             art.set_visible(True)
             art.draw(canvas.renderer)
 
+        if artists:
+            self.logger.debug('Drew {} artists.', len(artists))
+
         canvas.blit(canvas.figure.bbox)
         return background
 
-    @mpl_connect('draw_event', 1)
+    @mpl_connect('draw_event', 0)
     def _on_first_draw(self, _):
         # print(self.callbacks.callbacks['draw_event'])
         #
         self.logger.debug('First draw callback.')
-        # print('-'*100)
-        # tb.print_stack()
-        # print('-'*100)
 
         if self._draw_count > 0:
             warn(f'Draw count is {self._draw_count = } > 0. Do not call this'
@@ -803,7 +808,7 @@ class CanvasBlitHelper(CallbackManager):
             return
 
         # disconnect callback to this function
-        self.remove_callback('draw_event', 1)
+        self.remove_callback('draw_event', 0)
 
         # save background (without artists)
         self.background = self.blit_setup(self.artists)
@@ -828,14 +833,13 @@ class CanvasBlitHelper(CallbackManager):
 
         t0 = time.time()
         # check for uniqueness to prevent unnecessary duplicate draw
+        i = 0
         for i, art in enumerate(sorted(set(filter_non_artist(artists)),
                                        key=Artist.get_zorder)):
+            self.logger.trace('Drawing: {}', art)
             art.draw(self.canvas.renderer)
 
         self.logger.debug('Drew {} artists in {} sec:\n', i, time.time() - t0, )
-        # After rendering all the needed artists, blit each axes individually.
-        # for ax in set(self.figure.axes):
-        #     ax.figure.canvas.blit(ax.figure.bbox)
         self.canvas.blit(self.canvas.figure.bbox)
         self._blit_count += 1
 
@@ -844,17 +848,17 @@ class CanvasBlitHelper(CallbackManager):
         self.logger.debug('Saving background for {}.', self)
         self.background = self.blit_setup(self.artists if artists is None else artists)
 
-    def _save_background_after_resize(self, artists=None, delay=1):
-        while True:
-            if self._resize_time_last and (elapsed := self._resize_time_last - time.time()) > delay:
-                self.logger.debug('Save background triggered after {} s delay.', delay)
-                self.save_background(artists)
-                self._resize_time_last = None
-                return
-            else:
-                self.logger.debug(f'Waiting a bit.. {self._resize_time_last = }, {elapsed = }', )
+    # def _save_background_after_resize(self, artists=None, delay=1):
+    #     while True:
+    #         if self._resize_time_last and (elapsed := self._resize_time_last - time.time()) > delay:
+    #             self.logger.debug('Save background triggered after {} s delay.', delay)
+    #             self.save_background(artists)
+    #             self._resize_time_last = None
+    #             return
+    #         else:
+    #             self.logger.debug(f'Waiting a bit.. {self._resize_time_last = }, {elapsed = }', )
 
-                time.sleep(delay)
+    #             time.sleep(delay)
 
     @mpl_connect('resize_event')
     def on_resize(self, event):
@@ -864,7 +868,7 @@ class CanvasBlitHelper(CallbackManager):
             self.logger.debug('Canvas is resizing! ')
 
             self.save_background()
-            
+
             # if self._resize_time_last is None:
             #     # first call to resize
             #     if self._post_resize_thread:
@@ -1268,8 +1272,6 @@ class MotionManager(CanvasBlitHelper):
 
         return draw_list
 
-    # @mpl_connect('axes_enter_event')
-    # @mpl_connect('axes_leave_event')
     def save_background(self, artists=None):
         # get all the movable artists by "moving" them with zero offset
 
@@ -1279,9 +1281,3 @@ class MotionManager(CanvasBlitHelper):
 
         # save background (without artists)
         self.background = self.blit_setup(artists)
-
-    # def connect(self):
-    #     # connect the methods decorated with `@mpl_connect`
-    #     CallbackManager.connect(self)
-    #
-    #     self.save_background()

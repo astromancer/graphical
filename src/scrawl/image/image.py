@@ -58,21 +58,36 @@ class Colorbar(cbar.Colorbar, LoggingMixin):
             self.scroll = CMapScroll(self)
 
 
-class CMapScroll(CanvasBlitHelper, TrackAxesUnderMouse, LoggingMixin):
+class ScrollAction(CanvasBlitHelper):
+
+    def __init__(self, artists=(), connect=False, use_blit=True, rate_limit=4):
+        super().__init__(artists, connect, use_blit)
+        # observer container for scroll callbacks
+        self.on_scroll = Observers(rate_limit)
+
+    @mpl_connect('scroll_event')  # , rate_limit=4, timeout=0.25
+    def _on_scroll(self, event):
+
+        # run callbacks
+        if art := self.on_scroll(event):
+            # draw the artists that were changed by scroll action
+            self.draw(art)
+
+
+class CMapScroll(ScrollAction, TrackAxesUnderMouse, LoggingMixin):
     # TODO: manage timeout through CallbackManager and mpl_connect
 
     def __init__(self, cbar, cmaps=SCROLL_CMAPS_R, timeout=0.25, use_blit=True):
+
         self.colorbar = cbar
         self.available = sorted(set(cmaps))
         self._letter_index = next(zip(self.available))
-        self._timeout = timeout
-        self._prev_switch_time = -1
-
         self.mappables = {self.colorbar.mappable}
-        self.on_scroll = Observers()
 
         # canvas = cbar.ax.figure.canvas if cbar.ax else None
-        CanvasBlitHelper.__init__(self, (self.mappable, self.colorbar.solids), use_blit)
+        ScrollAction.__init__(self, (self.mappable, self.colorbar.solids),
+                              use_blit, timeout)
+        self.on_scroll.add(self._scroll_cmap)
 
     def add_artist(self, artist):
         if isinstance(artist, ScalarMappable):
@@ -90,32 +105,21 @@ class CMapScroll(CanvasBlitHelper, TrackAxesUnderMouse, LoggingMixin):
         for sm in self.mappables:
             sm.set_cmap(cmap)
 
-    @mpl_connect('scroll_event')  # , rate_limit=4, timeout=0.25
-    def _on_scroll(self, event):
-
+    def _scroll_cmap(self, event):
         if self.colorbar is None or event.inaxes is not self.colorbar.ax:
-            return
-
-        now = time()
-        if now - self._prev_switch_time < self._timeout:
-            self.logger.debug('Scroll timeout.')
             return
 
         cmap = self.get_cmap()
         self.logger.debug('Current cmap: {}', cmap)
 
         avail = self.available
-        i = avail.index(cmap) if cmap in avail else -1
-        new = f'cmr.{avail[(i + 1) % len(avail)]}'
+        inc = [-1, +1][event.button == 'up']
+        idx = avail.index(cmap) if cmap in avail else -1
+        new = f'cmr.{avail[(idx + inc) % len(avail)]}'
         self.logger.info('Scrolling cmap: {} -> {}', cmap, new)
-
         self.set_cmap(new)
-        self._prev_switch_time = now
 
-        self.on_scroll(event.x, event.y)
-
-        # self.save_background(())
-        self.draw(self.artists)
+        return self.artists
 
     @mpl_connect('key_press_event')
     def _on_key(self, event):
@@ -388,13 +392,20 @@ class ImageDisplay(CanvasBlitHelper, LoggingMixin):
             sliders.lower.on_move.add(self.update_clim)
             sliders.upper.on_move.add(self.update_clim)
             for mv in sliders.movable.values():
-                mv.on_pick.add(lambda *_: self.sliders.save_background())
+                # mv.on_pick.add(self.sliders.save_background)
+                mv.on_release.add(lambda *_: sliders.save_background())
+
+                # save slider positioons in cmap scroll background
                 mv.on_release.add(lambda *_: self.cbar.scroll.save_background())
+
+            #
+            sliders.artists.add(self.image)
 
             # cmap scroll blit
             self.cbar.scroll.artists |= set.union(
                 *(set(mv.draw_list) for mv in sliders.movable.values()),
             )
+            self.cbar.scroll.on_scroll.add(lambda *_: sliders.save_background())
 
         hist = None
         if self.has_hist:
@@ -802,10 +813,10 @@ class Image3D:
         scroll.add_artist(bar3d.bars)
         scroll.add_artist(bar3d.cbar.line)
 
-        scroll.on_scroll.add(lambda *_: bar3d.bars.do_3d_projection())
-        scroll.on_scroll.add(lambda *_: bar3d.cbar.line.do_3d_projection())
+        scroll.on_scroll.add(bar3d.bars.do_3d_projection)
+        scroll.on_scroll.add(bar3d.cbar.line.do_3d_projection)
 
-        self.bar3d.on_rotate.add(lambda *_: scroll.save_background())
+        self.bar3d.on_rotate.add(scroll.save_background)
 
     def set_cmap(self, cmap):
         # change cmap for all mappables

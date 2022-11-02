@@ -2,43 +2,26 @@
 Efficient, scrollable image sequence visualisation.
 """
 
-
 # std
 import time
 import warnings
 
 # third-party
 import numpy as np
-from matplotlib import ticker
 from matplotlib.widgets import Slider
 
 # relative
 from ..utils import embossed
-from ..image import ImageDisplay
+from ..image import ImageDisplay, ScrollAction
 
 
-class VideoDisplay(ImageDisplay):
-    # FIXME: blitting not working - something is leading to auto draw
-    # FIXME: frame slider bar not drawing on blit
-    # TODO: lock the sliders in place with button??
+class VideoDisplay(ImageDisplay, ScrollAction):
+
+    # TODO: lock the sliders in place with doubleclick
 
     _scroll_wrap = True  # scrolling past the end leads to the beginning
 
-    def _check_data(self, data):
-        if not isinstance(data, np.ndarray):
-            data = np.ma.asarray(data)
-
-        n_dim = data.ndim
-        if n_dim == 2:
-            warnings.warn('Loading single image frame as 3D data cube. Use '
-                          '`ImageDisplay` instead to view single frames.')
-            data = np.ma.atleast_3d(data)
-
-        if n_dim != 3:
-            raise ValueError(f'Cannot image {n_dim}D data')
-        return data, len(data)
-
-    def __init__(self, data, clim_every=1, **kws):
+    def __init__(self, data, clim_every=0, **kws):
         """
         Image display for 3D data. Implements frame slider and image scroll.
 
@@ -58,45 +41,58 @@ class VideoDisplay(ImageDisplay):
         """
 
         #
-        data, nframes = self._check_data(data)
-
-        self.nframes = int(nframes)
+        data, self.nframes = self._check_data(data)
         self.clim_every = clim_every
 
-        # don't connect methods yet
-        connect = kws.pop('connect', True)
+        # Init scroll actions
+        ScrollAction.__init__(self, rate_limit=10)
+        self.on_scroll.add(self._scroll_frame)  # enable frame scrolling
 
         # setup image display
-        # parent sets data as 2D image.
+        connect = kws.pop('connect', True)  # don't connect methods just yet
+        # parent needs 2D data.
         n = self._frame = 0
         ImageDisplay.__init__(self, data[n], connect=False, **kws)
         # save data (this can be array_like (or np.mmap))
         self.data = data
 
-        # make observer container for scroll
-        # self.on_scroll = Observers()
-
         # make frame slider
         fsax = self.divider.append_axes('bottom', size=0.1, pad=0.3)
-        self.frameSlider = Slider(fsax, 'frame', n, self.nframes, valfmt='%d')
-        self.frameSlider.on_changed(self.update)
-        fsax.xaxis.set_major_locator(ticker.AutoLocator())
+        self.frame_slider = fs = Slider(fsax, 'frame', n, self.nframes, valfmt='%d')
+        self.frame_slider.on_changed(self.update)
+        # fsax.xaxis.set_major_locator(ticker.AutoLocator())
+
 
         if self.use_blit:
-            self.frameSlider.drawon = False
+            self.frame_slider.drawon = False
+            self.artists |= {fs.poly, fs._handle, fs.valtext}
+            
+            if self.has_sliders:
+                # save slider positions in frame scroll background
+                self.artists |= set.union(
+                    *(set(mv.draw_list) for mv in self.sliders.movable.values()))
 
-        # # save background for blitting
-        # self.background = self.figure.canvas.copy_from_bbox(
-        #     self.ax.bbox)
-
+            if self.has_cbar:
+                # save cbar in frame scroll background after cmap scroll
+                self.cbar.scroll.on_scroll.add(lambda *_: self.save_background())
+            
+        # connect callbacks
         if connect:
             self.connect()
 
-    def connect(self):
-        ImageDisplay.connect(self)
+    def _check_data(self, data):
+        if not isinstance(data, np.ndarray):
+            data = np.ma.asarray(data)
 
-        # enable frame scroll
-        self.figure.canvas.mpl_connect('scroll_event', self._scroll)
+        n_dim = data.ndim
+        if n_dim == 2:
+            warnings.warn('Loading single image frame as 3D data cube. Use '
+                          '`ImageDisplay` instead to view single frames.')
+            data = np.ma.atleast_3d(data)
+
+        if n_dim != 3:
+            raise ValueError(f'Cannot image {n_dim}D data')
+        return data, len(data)
 
     # def init_figure(self, **kws):
     #     fig, ax = ImageDisplay.init_figure(self, **kws)
@@ -186,7 +182,6 @@ class VideoDisplay(ImageDisplay):
 
         image = self.get_image_data(self.frame)
         # set the image data
-        # TODO: method set_image_data here??
         self.image.set_data(image)  # does not update normalization
 
         # FIXME: normalizer fails with boolean data
@@ -194,21 +189,7 @@ class VideoDisplay(ImageDisplay):
         #   self.update_normal(mappable)
         # File "/usr/local/lib/python3.6/dist-packages/matplotlib/colorbar.py", line 987, in update_normal
 
-        draw_list = [self.image]
-
-        # set the slider axis limits
-        if self.sliders:
-            # find min / max as float
-            min_max = float(np.nanmin(image)), float(np.nanmax(image))
-            if not np.isnan(min_max).any():
-                # self.sliders.ax.set_ylim(min_max)
-                self.sliders.valmin, self.sliders.valmax = min_max
-
-                # since we changed the axis limits, need to redraw tick labels
-                draw_list.extend(
-                    getattr(self.histogram.ax,
-                            f'get_{self.sliders.slide_axis}ticklabels')()
-                )
+        draw_list = list(self.artists)
 
         # update histogram
         if self.has_hist:
@@ -221,12 +202,17 @@ class VideoDisplay(ImageDisplay):
             self.image.set_clim(vmin, vmax)
 
             if self.sliders:
-                draw_list = self.sliders.set_positions((vmin, vmax),
-                                                       draw_on=False)
+                draw_list.extend(
+                    self.sliders.set_positions((vmin, vmax), draw_on=False)
+                )
 
             # set the axes limits slightly wider than the clims
             if self.has_hist:
                 self.histogram.autoscale_view()
+
+                # since we changed the axis limits, need to redraw tick labels
+                # axis = 'xy'[int(self.histogram.orientation.lower().startswith('h'))]
+                # draw_list.extend(getattr(self.histogram.ax,f'get_{axis}ticklabels')())
 
             # if getattr(self.norm, 'interval', None):
             #     vmin, vmax = self.norm.interval.get_limits(
@@ -237,28 +223,27 @@ class VideoDisplay(ImageDisplay):
 
         #
         if draw:
-            self.sliders.draw(draw_list)
+            self.draw(draw_list)
 
         return draw_list
         # return i, image
 
-    def _scroll(self, event):
+    def _scroll_frame(self, event):
+        # move to next / previous frame
         if event.inaxes is not self.ax:
             return
 
-        # FIXME: drawing on scroll.....
-        # try:
         inc = [-1, +1][event.button == 'up']
-        self.logger.debug('Scrolling to {} image.',
-                          'next' if inc > 0 else 'previous')
+        self.logger.debug('Scrolling to {} image.', ('next', 'previous')[inc < 0])
         new = self._frame + inc
-        if self.use_blit:
-            self.frameSlider.drawon = False
-        self.frameSlider.set_val(new)  # calls connected `update`
-        self.frameSlider.drawon = True
 
-        # except Exception as err:
-        #     self.logger.exception('Scroll failed:')
+        if self.use_blit:
+            self.frame_slider.drawon = False
+
+        self.frame_slider.set_val(new)  # calls connected `update`
+        self.frame_slider.drawon = True
+        
+        return self.artists
 
     def play(self, start=None, stop=None, pause=0):
         """
@@ -286,7 +271,7 @@ class VideoDisplay(ImageDisplay):
 
         # save background for blitting
         # FIXME: saved bg should be without
-        tmp_inviz = [self.frameSlider.poly, self.frameSlider.valtext]
+        tmp_inviz = [self.frame_slider.poly, self.frame_slider.valtext]
         # tmp_inviz.extend(self.histogram.ax.yaxis.get_ticklabels())
         tmp_inviz.append(self.histogram.bars)
         for s in tmp_inviz:
@@ -299,8 +284,8 @@ class VideoDisplay(ImageDisplay):
         for s in tmp_inviz:
             s.set_visible(True)
 
-        self.frameSlider.eventson = False
-        self.frameSlider.drawon = False
+        self.frame_slider.eventson = False
+        self.frame_slider.drawon = False
 
         # pause: inter-frame pause (millisecond)
         seconds = pause / 1000
@@ -310,14 +295,14 @@ class VideoDisplay(ImageDisplay):
         #  around 20 fps
         try:
             while i <= stop:
-                self.frameSlider.set_val(i)
+                self.frame_slider.set_val(i)
                 draw_list = self.update(i)
-                draw_list.extend([self.frameSlider.poly,
-                                  self.frameSlider.valtext])
+                draw_list.extend([self.frame_slider.poly,
+                                  self.frame_slider.valtext])
 
                 fig.canvas.restore_region(self.background)
 
-                # FIXME: self.frameSlider.valtext doesn't dissappear on blit
+                # FIXME: self.frame_slider.valtext doesn't dissappear on blit
 
                 for art in draw_list:
                     self.ax.draw_artist(art)
@@ -329,8 +314,8 @@ class VideoDisplay(ImageDisplay):
         except Exception as err:
             raise err
         finally:
-            self.frameSlider.eventson = True
-            self.frameSlider.drawon = True
+            self.frame_slider.eventson = True
+            self.frame_slider.drawon = True
 
     # def blit_setup(self):
 
@@ -460,11 +445,10 @@ class VideoFeatureDisplay(VideoDisplay):  # VideoFeatureDisplay
     def _get_coords_internal(self, i):
         i = int(round(i))
         return self.coords[i, :, ::-1]
-    
+
     # def set_frame(self, i):
     #     super().set_frame(i)
-        
-    
+
     def update(self, i, draw=True):
 
         i %= self.nframes
@@ -483,8 +467,10 @@ class VideoFeatureDisplay(VideoDisplay):  # VideoFeatureDisplay
 
         return draw_list
 
+
 #
 VideoDisplayX = VideoFeatureDisplay
+
 
 class VideoDisplayA(VideoDisplayX):  # VideoApertureDisplay
     # default aperture properties
