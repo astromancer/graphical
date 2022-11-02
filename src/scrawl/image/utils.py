@@ -1,9 +1,12 @@
+"""
+Image plotting utilities.
+"""
 
 # third-party
 import numpy as np
 from loguru import logger
 
-# relative
+FIGSIZE_MIN_INCHES = (5, 5)
 
 
 def _sanitize_data(data):
@@ -63,7 +66,8 @@ def get_screen_size_inches():
     # return size_inches
 
 
-def guess_figsize(image, fill_factor=0.75, max_pixel_size=0.2):
+def guess_figsize(image, fill_factor=0.75, max_pixel_size=0.2,
+                  min_size_inches=FIGSIZE_MIN_INCHES):
     """
     Make an educated guess of the size of the figure needed to display the
     image data.
@@ -83,17 +87,16 @@ def guess_figsize(image, fill_factor=0.75, max_pixel_size=0.2):
     -------
     size: tuple
         Size (width, height) of the figure in inches
-
-
     """
 
     # Sizes reported by mpl figures seem about half the actual size on screen
     shape = np.array(np.shape(image)[::-1])
-    return _guess_figsize(shape, fill_factor, max_pixel_size)
+    return _guess_figsize(shape, fill_factor, max_pixel_size, min_size_inches)
 
 
 def _guess_figsize(image_shape, fill_factor=0.75, max_pixel_size=0.2,
-                   min_size=(2, 2)):
+                   min_size=FIGSIZE_MIN_INCHES):
+
     # screen dimensions
     screen_size = np.array(get_screen_size_inches())
 
@@ -119,7 +122,7 @@ def get_clim(data, plims=(0.25, 99.75)):
     Get colour scale limits for data.
     """
     from .utils import get_percentile_limits
-    
+
     if np.all(np.ma.getmask(data)):
         return None, None
 

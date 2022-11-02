@@ -1,5 +1,14 @@
+"""
+Scatter plots with density inlays.
+"""
+
+# std
 import copy
+
+# third-party
 import numpy as np
+
+# local
 from recipes.utils import duplicate_if_scalar
 
 DEFAULT_BINS = 50
@@ -67,8 +76,8 @@ def scatter_density(ax, data, bins=DEFAULT_BINS, range=None, min_count=3,
     density_kws = density_kws or {}
 
     if tessellation not in FUNC_MAP:
-        raise ValueError('Invalid tessellation %r: Valid choices are %s',
-                         tessellation, tuple(FUNC_MAP.keys()))
+        raise ValueError(f'Invalid tessellation {tessellation!r}: Valid '
+                         f'choices are {tuple(FUNC_MAP.keys())}')
 
     if tessellation == 'rect':
         returns = hist2d_scatter(ax, data, bins, range, min_count,

@@ -76,4 +76,4 @@ class MovableLine():
             txt.set_text(self.annotation_format % offset)
 
 
-# class MovableLine(MotionInterface):
+# class MovableLine(MotionInterfaceArtist):

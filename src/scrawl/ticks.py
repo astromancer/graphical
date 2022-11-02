@@ -1,20 +1,22 @@
 
 """
-Additional matplotlib axes tick formatters
+Additional matplotlib axes tick formatters.
 """
 
 
+# std
 import warnings
 
+# third-party
 import numpy as np
 from scipy.stats import mode
 from matplotlib import ticker
-from matplotlib.transforms import (Transform,
-                                   IdentityTransform,
-                                   ScaledTranslation)
+from matplotlib.transforms import IdentityTransform, Transform
 
+# local
 from recipes import pprint as ppr
 
+# relative
 from .transforms import ReciprocalTransform
 
 
@@ -76,6 +78,7 @@ class OffsetLocator(ticker.MaxNLocator):
     Get the same tick locations as you would if plotting the variables with
     offset subtracted
     """
+
     def __call__(self):
         """Return the locations of the ticks."""
         # Note, these are untransformed coordinates
@@ -151,9 +154,12 @@ class InfiniteAwareness:
         if xs == 'inf':
             if self.latex:
                 return r'$\infty$'
+
             if self.unicode:
                 return '∞'
+
             return 'inf'
+
         return xs  #
 
 

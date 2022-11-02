@@ -117,10 +117,10 @@ class AxesSliders(MotionManager):
             line = Line2D(x, y, transform=transform, clip_on=clip_on, **props)
             ax.add_artist(line)
             sliders.append(line)
-            
-            # 
+
+            #
             mia = self.add_artist(line, (0, 0), annotate, haunted,
-                            trapped=trapped)
+                                  trapped=trapped)
 
             # add some markers for aesthetic           '>s<'
             for x, m in zip(np.linspace(0, 1, nem, 1), extra_markers):
@@ -281,10 +281,11 @@ class RangeSliders(AxesSliders):  # MinMaxMeanSliders # RangeSliders
         self.lower.on_release.add(self.set_centre_max)
         self.upper.on_release.add(self.set_centre_min)
 
-        # disconnect links to centre to avoid infinite recursion
+        # disconnect callbacks to centre to avoid infinite recursion
         self.centre.on_picked.add(self.deactivate_centre_control)
-        # re-link to the centre slider
+        # re-connect to the centre slider
         self.centre.on_release.add(self.activate_centre_control)
+
         # make sure we draw all the tied artists on centre move
         # NOTE: not sure why this is necessary since linking should draw all
         # tied artists, but trailing slider does not draw...
@@ -339,12 +340,10 @@ class RangeSliders(AxesSliders):  # MinMaxMeanSliders # RangeSliders
         # print('act')
         self.lower.on_move.activate(self._cid_lwr_mv_ctr)
         self.upper.on_move.activate(self._cid_upr_mv_ctr)
-
         self.centre.untie(self.lower, self.upper)
 
     def deactivate_centre_control(self, x=None, y=None):
         # print('deact')
         self.lower.on_move.deactivate(self._cid_lwr_mv_ctr)
         self.upper.on_move.deactivate(self._cid_upr_mv_ctr)
-
         self.centre.tie(self.lower, self.upper)

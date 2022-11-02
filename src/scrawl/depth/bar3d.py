@@ -296,8 +296,8 @@ class Bar3D(CanvasBlitHelper):  # Bar3DGrid
     def __init__(self, ax, x, y, z, dxy=0.8, cmap=None, shade=True,
                  zaxis_cbar=False, **kws):
         #
-        # assert hasattr(ax, 'bar3d')
-        # assert 0 < dxy <= 1
+        assert ax.name == '3d'
+        assert 0 < dxy <= 1
 
         had_data = ax.has_data()
 

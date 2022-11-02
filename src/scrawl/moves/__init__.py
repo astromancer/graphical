@@ -11,10 +11,10 @@ class TrackAxesUnderMouse(CallbackManager):
 
     @mpl_connect('axes_enter_event')
     def _on_enter(self, event):
-        self.logger.debug('Mouse over: {}', event.inaxes)
+        self.logger.trace('Mouse over: {}', event.inaxes)
         self._axes_under_mouse = event.inaxes
 
     @mpl_connect('axes_leave_event')
     def _on_leave(self, event):
-        self.logger.debug('Mouse left axes: {}', event.inaxes)
+        self.logger.trace('Mouse left axes: {}', event.inaxes)
         self._axes_under_mouse = None

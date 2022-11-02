@@ -1,6 +1,5 @@
 
 
-
 # third-party
 import numpy as np
 import matplotlib.pylab as plt
@@ -15,7 +14,7 @@ from recipes.dicts import AttrReadItem
 from recipes.array.neighbours import neighbours
 
 # relative
-from ..bar3d import bar3d
+from ..depth.bar3d import bar3d
 from ..moves.callbacks import CallbackManager, mpl_connect
 
 
@@ -26,6 +25,7 @@ class ImageModelPlot3D(CallbackManager):
     """
     Base class for plotting image data, model and residual for comparison.
     """
+
     # TODO: profile & speed up!
     # TODO: blit for view angle change...
     # TODO: optionally Include info as text in figure??????

@@ -21,7 +21,7 @@ null = object()
 
 
 class CallbackManager(LoggingMixin, TagManagerBase,
-                      tag='_is_callback', collection='_callbacks'):
+                      tag='_signal', collection='_callbacks'):
     """
     Mixin for managing canvas / artist callbacks as decorated methods.
     """
@@ -35,6 +35,7 @@ class CallbackManager(LoggingMixin, TagManagerBase,
 
         # connection id proxies
         self.cid_proxies = {}
+
         if object is None:
             callbacks = None
         elif isinstance(object, CallbackRegistry):
@@ -54,15 +55,14 @@ class CallbackManager(LoggingMixin, TagManagerBase,
                      'request.')
             self.connect()
 
-    
     def _check(self):
         if self.callbacks is None:
             raise ValueError('No callback registry available!')
-    
+
     def add_callback(self, signal, method, identifier=null):
 
         self._check()
-        
+
         identifier = signal if identifier is null else (signal, identifier)
 
         if identifier in self.cid_proxies:
@@ -75,7 +75,7 @@ class CallbackManager(LoggingMixin, TagManagerBase,
                 ' callback.'
             )
 
-        self.logger.debug('Adding {} callback with id {!r}', 
+        self.logger.debug('Adding {} callback with id {!r}',
                           pp.describe(method), identifier)
         self.cid_proxies[identifier] = self.callbacks.connect(signal, method)
 
@@ -84,10 +84,10 @@ class CallbackManager(LoggingMixin, TagManagerBase,
         identifier = (signal, *identifier) if identifier else signal
         if cid := self.cid_proxies.pop(identifier, None):
             self.logger.debug('Removing callback with id {!r} for {}.',
-                            identifier, self)
+                              identifier, self)
             self.callbacks.disconnect(cid)
         else:
-            self.logger.debug('No method with id {!r} in {}.', 
+            self.logger.debug('No method with id {!r} in {}.',
                               identifier, cid, self)
 
     def connect(self):
