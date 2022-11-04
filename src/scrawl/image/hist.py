@@ -47,7 +47,7 @@ class PixelHistogram(LoggingMixin):  # PixelHistogram
     _default_outer_style = dict(facecolor=None,
                                 edgecolor='0.75',
                                 linewidth=0.5,
-                                alpha=0.5)
+                                alpha=0.75)
 
     # @classmethod
     # def from_image(cls, image_plot):
@@ -95,9 +95,9 @@ class PixelHistogram(LoggingMixin):  # PixelHistogram
                                   self._outer_style['alpha'])
 
         # create collection
-        self.bars = PolyCollection([], cmap=cmap, norm=self.image.norm)
-        self.update()
-        ax.add_collection(self.bars)
+        self.bars = PolyCollection([]) # cmap=cmap, norm=self.image.norm
+        self.set_cmap(cmap)
+        ax.add_collection(self.update())
 
         if use_blit:
             # image.set_animated(True)
@@ -125,9 +125,9 @@ class PixelHistogram(LoggingMixin):  # PixelHistogram
     def cmap(self, cmap):
         self.set_cmap(cmap)
 
-    def set_cmap(self, cmap, outside_colour=None, outside_alpha=0.5):
+    def set_cmap(self, cmap, outside_colour=None, outside_alpha=0.75):
         self._cmap = self._compute_cmap(cmap, outside_colour, outside_alpha)
-        self.bars.set_cmap(cmap)
+        self.bars.set_cmap(self._cmap)
 
     def _compute_cmap(self, cmap, outside_colour, outside_alpha):
         # setup colormap (copy)
@@ -148,7 +148,9 @@ class PixelHistogram(LoggingMixin):  # PixelHistogram
         return cmap
 
     def _update_cmap_from_image(self, image):
-        self.set_cmap(image.get_cmap())
+        self.set_cmap(image.get_cmap(),
+                      self._outer_style['facecolor'], 
+                      self._outer_style['alpha'])
 
     def get_array(self):
         return self.image.get_array()
