@@ -3,6 +3,7 @@ Manage canvas callbacks.
 """
 
 # std
+import time
 from warnings import warn
 
 # third-party
@@ -11,13 +12,50 @@ from matplotlib.cbook import CallbackRegistry
 # local
 import recipes.pprint as pp
 from recipes.logging import LoggingMixin
-from recipes.oo.meta import TagManagerBase
+from recipes.oo.meta import MethodTagger, MethodTaggerFactory, TagManagerBase
 
 
 __all__ = ['mpl_connect', 'CallbackManager']
 
+
 # ---------------------------------------------------------------------------- #
 null = object()
+
+# ---------------------------------------------------------------------------- #
+
+
+class CallbackFactory(MethodTaggerFactory):
+    def __call__(self, *info, **kws):
+        return CallbackDecorator(self.tag, info, **kws)
+
+
+class CallbackDecorator(MethodTagger):
+
+    def __init__(self, tag, info, timeout=None, rate_limit=None):
+
+        if timeout and rate_limit:
+            raise ValueError('Either `timeout` or `rate_limit` can be give, but'
+                             ' not both.')
+
+        if rate_limit:
+            timeout = 1. / rate_limit
+
+        #
+        super().__init__(tag, info)
+
+        self.timeout = float(timeout or 0)
+        self.previous_call_time = -1
+
+    def __wrapper__(self, func, *args, **kws):
+        now = time.time()
+        if (elapsed := now - self.previous_call_time) < self.timeout:
+            self.logger.debug('Function {:.__name__!r} is rate limited at {:.3f} Hz. Time'
+                              ' elapsed since previous call: {:.3f} s.',
+                              func, 1. / self.timeout, elapsed)
+            return
+
+        self.previous_call_time = now
+        return func(*args, **kws)
 
 
 class CallbackManager(LoggingMixin, TagManagerBase,
@@ -113,4 +151,4 @@ class CallbackManager(LoggingMixin, TagManagerBase,
 
 
 # decorator
-mpl_connect = CallbackManager.tag
+mpl_connect = CallbackManager.tag = CallbackFactory(CallbackManager.tag.tag)
