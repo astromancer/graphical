@@ -425,6 +425,7 @@ class ImageDisplay(CanvasBlitHelper, LoggingMixin):
 
             sliders.lower.on_move.add(self.update_clim)
             sliders.upper.on_move.add(self.update_clim)
+
             for mv in sliders.movable.values():
                 # add sliders to animated art for blitting
                 self.add_art(mv.draw_list)
@@ -450,6 +451,8 @@ class ImageDisplay(CanvasBlitHelper, LoggingMixin):
             self.add_art(hist.bars)
 
             if sliders:
+                # set minimun slider separation 1 bin
+                sliders.min_span = np.diff(hist.bin_edges).max()
                 # add for blit
                 sliders.artists.add(hist.bars)
 
@@ -524,9 +527,9 @@ class ImageDisplay(CanvasBlitHelper, LoggingMixin):
             return self.image
 
         self.histogram.update()
-        self.sliders.min_span = (clim[0] - clim[1]) / self.histogram.bins
+        # minimum slider range is max bin size
+        self.sliders.min_span = np.diff(self.histogram.bin_edges).max()
 
-        # TODO: return COLOURBAR ticks?
         return self.image, self.histogram.bars
 
     def update_clim(self, *xydata):

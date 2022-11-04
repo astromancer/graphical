@@ -37,16 +37,17 @@ from .moves.machinery import MotionManager
 #     return hit, {}
 
 
-class AxesSliders(MotionManager):
+class AxisSliders(MotionManager):
     """
-    Sliders that move along an axes and hold min/max value state.
+    Sliders that move along an axis, holding and setting min/max position value
+    state.
 
     Basic interactions include:
         movement - click & drag with left mouse
         reset - middle mouse
 
     Connect listeners to the sliders with eg.:
-    >>> sliders.upper.on_move.add(func)
+    >>> sliders.upper.on_move.add(func, args, kws)
     """
 
     # TODO: Dragging sliders too slow for large images: option for update on
@@ -59,12 +60,10 @@ class AxesSliders(MotionManager):
     # marker_size = 10
     # valfmt = '%1.2f',
 
-    def __init__(self, ax, positions, slide_axis='x',
-                 dragging=True,  # FIXME: clarify what this does. is it useful??
+    # @api.synonyms({'slide_on': 'slide_axis'})
+    def __init__(self, ax, positions, min_span=0, slide_axis='x',
                  trapped=False, annotate=False, haunted=False,
-                 use_blit=True,
-                 extra_markers=(),
-                 **props):
+                 extra_markers=(), use_blit=True, **props):
         """
 
         Parameters
@@ -72,7 +71,6 @@ class AxesSliders(MotionManager):
         ax
         positions
         slide_axis
-        dragging
         trapped
         annotate
         haunted
@@ -90,8 +88,8 @@ class AxesSliders(MotionManager):
         self._ilock = int(not bool(i))
         self._locked = 'yx'[i]
         self._order = o = slice(None, None, [1, -1][i])
-        # minimal distance
-        self.min_span = None
+        # minimal slider range
+        self._min_span = min_span
         self._changed_axes_lim = False
 
         # check positions
@@ -151,10 +149,6 @@ class AxesSliders(MotionManager):
         self.upper.on_move.add(self.set_lower_ymax)
         self.lower.on_move.add(self.set_upper_ymin)
 
-        self.dragging = dragging
-        # FIXME: get this working to you update on release not motion for speed
-        # create sliders & add to axis
-
     def setup_axes(self, ax):
         """ """
         ax.set_navigate(False)  # turn off nav for this axis
@@ -176,24 +170,25 @@ class AxesSliders(MotionManager):
 
         if draw_on:
             self.draw(draw_list)
+
         return draw_list
 
-    def set_axes_lim(self, x, y, upper):
-        relate = op.gt if upper else op.lt
+    def set_axes_lim(self, x, y, index):
+        relate = op.gt if index else op.lt
         expanding = relate(self.delta[self._ifree], 0)
         lim = getattr(self.ax, f'get_{self.slide_axis}lim')()
-        beyond = relate(self.positions[upper], lim[upper])
+        beyond = relate(self.positions[index], lim[index])
         axis = getattr(self.ax, f'{self.slide_axis}axis')
         if expanding and beyond:
             limits = [None, None]
-            limits[upper] = (x, y)[self._ifree]
+            limits[index] = (x, y)[self._ifree]
             # set limits
             getattr(self.ax, f'set_{self.slide_axis}lim')(limits)
             self._changed_axes_lim = True
         elif self._changed_axes_lim:
             limits = [None, None]
-            relate = (min, max)[upper]
-            limits[upper] = relate(self._original_axes_limits[self._ifree, upper],
+            relate = (min, max)[index]
+            limits[index] = relate(self._original_axes_limits[self._ifree, index],
                                    (x, y)[self._ifree])
 
             # set limits
@@ -205,17 +200,37 @@ class AxesSliders(MotionManager):
         #  etc
         return axis
 
+    @property
+    def min_span(self):
+        return self._min_span
+
+    @min_span.setter
+    def min_span(self, min_span):
+
+        self._min_span = float(min_span)
+        pos = self.positions
+        if (δ := min_span - pos.ptp()) > 0:
+            pos += [-δ / 2, δ / 2]
+            self.set_positions(pos)
+
+        self.upper.ymin = pos[0] + min_span
+        self.lower.ymax = pos[1] - min_span
+
     def set_upper_ymin(self, x, y):
-        # pos = self.get_positions()
-        if self.min_span is not None:
-            self.upper.ymin = y + self.min_span
-            self.logger.trace('upper ymin: {:.2f}, {:.2f}', self.upper.ymin, y)
+
+        if self.min_span is None:
+            return
+
+        self.upper.ymin = y + self.min_span
+        self.logger.debug('upper ymin: {:.2f}, {:.2f}', self.upper.ymin, y)
 
     def set_lower_ymax(self, x, y):
-        # pos = self.get_positions()
-        if self.min_span is not None:
-            self.lower.ymax = y - self.min_span
-            self.logger.trace('lower ymax: {:.2f}, {:.2f}', self.lower.ymax, y)
+
+        if self.min_span is None:
+            return
+
+        self.lower.ymax = y - self.min_span
+        self.logger.debug('lower ymax: {:.2f}, {:.2f}', self.lower.ymax, y)
 
     # def reset(self):
     #     return super().reset()
@@ -235,19 +250,19 @@ class AxesSliders(MotionManager):
             mv.unlink(*artists)
 
 
-class RangeSliders(AxesSliders):  # MinMaxMeanSliders # RangeSliders
+class RangeSliders(AxisSliders):
     """
-    A set of 3 sliders for setting min/max/mean value.  Middle slider is
-    tied to both the upper and lower slider and will move both those when
-    changed.  This allows for easily altering the upper/lower range values
-    simultaneously.  The middle slider will also always be at the mean
-    position of the upper/lower sliders.
+    A set of 3 sliders for setting min/max/mean value.  Middle slider is tied to
+    both the upper and lower slider and will move both those when changed. This
+    allows for easily altering the upper/lower range values simultaneously. The
+    middle slider is always at the mean position of the upper/lower sliders.
     """
+
     _use_positions = [0, 1]
 
-    def __init__(self, ax, positions, slide_axis='x', dragging=True,
-                 trapped=False, annotate=False, haunted=False, use_blit=True,
-                 extra_markers=(), **props):
+    def __init__(self, ax, positions, slide_axis='x', min_span=0,
+                 trapped=False, annotate=False, haunted=False,
+                 extra_markers=(), use_blit=True, **props):
         """
 
         Parameters
@@ -256,7 +271,6 @@ class RangeSliders(AxesSliders):  # MinMaxMeanSliders # RangeSliders
         x0
         x1
         slide_axis
-        dragging
         trapped
         annotate
         haunted
@@ -264,10 +278,9 @@ class RangeSliders(AxesSliders):  # MinMaxMeanSliders # RangeSliders
         kwargs
         """
 
-        pos3 = np.hstack([positions, np.mean(positions)])
-        AxesSliders.__init__(self, ax, pos3, slide_axis, dragging, trapped,
-                             annotate, haunted, use_blit, extra_markers,
-                             **props)
+        positions = np.hstack([positions, np.mean(positions)])
+        AxisSliders.__init__(self, ax, positions, min_span, slide_axis, trapped,
+                             annotate, haunted, extra_markers, use_blit, **props)
         #
         self.centre = self.middle = self.movable[2]
         self.centre.lock(self._locked)
@@ -310,15 +323,15 @@ class RangeSliders(AxesSliders):  # MinMaxMeanSliders # RangeSliders
         self.centre.ymax = self.upper.ymax + self.min_span / 2
         self.logger.debug('centre ymax: {:.2f}, {:.2f}', self.centre.ymax, y)
 
-    def _animate(self, b):
-        for drg in self.movable.values():
-            drg.set_animated(b)
+    # def _animate(self, b):
+    #     for drg in self.movable.values():
+    #         drg.set_animated(b)
 
-    def animate(self, x, y):
-        self._animate(True)
+    # def animate(self, x, y):
+    #     self._animate(True)
 
-    def deanimate(self, x, y):
-        self._animate(False)
+    # def deanimate(self, x, y):
+    #     self._animate(False)
 
     def centre_moves(self, x, y):
 

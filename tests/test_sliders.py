@@ -22,4 +22,6 @@ print('!' * 88)
 print(str(sliders.lower), str(sliders.upper))
 print('!' * 88)
 
-plt.show()
+
+if __name__ == '__main__':
+    plt.show()
