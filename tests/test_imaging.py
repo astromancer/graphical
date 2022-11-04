@@ -1,19 +1,31 @@
+
 # third-party
 import numpy as np
 
 # local
-from scrawl.image import ImageDisplay
+from scrawl.image import ImageDisplay, hist
+from loguru import logger
 
 
-data = np.random.random((100, 100))
-ImageDisplay(data)
+# ---------------------------------------------------------------------------- #
+logger.enable('scrawl')
+
+# ---------------------------------------------------------------------------- #
+im = ImageDisplay(np.random.randn(100, 100))
 
 # TESTS:
 # all zero data
+# cbar, hist, sliders
+# 0, 0, 0
+# 0, 1, 0
+# 1, 0, 0
+# 1, 0, 1
+# 1, 1, 0
+# 1, 1, 1
 
-# fig, ax = plt.subplots(1,1, figsize=(2.5, 10), tight_layout=True)
-# ax.set_ylim(0, 250)
-# sliders = AxesSliders(ax, 0.2, 0.7, slide_axis='y')
-# sliders.connect()
 
-# plt.show()
+
+if __name__ == '__main__':
+    import matplotlib.pyplot as plt
+
+    plt.show()

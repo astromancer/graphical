@@ -152,7 +152,8 @@ class Observers(LoggingMixin):
     def _repr_observer(self, id_):
         func, args, kws = self.funcs[id_]
         active = self.active[func]
-        return f'{id_}{" *"[active]}: {pprint.method(func, args=args, kws=kws)}'
+        observers = pprint.method(func, args=args, kws=kws).replace('\n', '\n    ')
+        return f'{id_}{" *"[active]}: {observers}'
 
     def add(self, func, *args, **kws):
         """
@@ -249,6 +250,7 @@ class Observers(LoggingMixin):
 
         # Artists that need to be drawn (from observer functions)
         artists = []
+        self._previous_call_time = now
         for _, (func, static_args, static_kws) in self.funcs.items():
             if not self.active[func]:
                 continue
@@ -377,11 +379,6 @@ class MotionInterfaceArtist(LoggingMixin):
         return self.origin + self.offset
 
     position = property(get_position)
-
-    @property
-    def draw_list(self):
-        return [self.artist, *self.linked,
-                *(tied.artist for tied in self.tied)]
 
     def lock(self, which):
         """Lock movement for x or y coordinate"""
@@ -522,7 +519,7 @@ class MotionInterfaceArtist(LoggingMixin):
             elif art in tied:
                 self.tied.pop(tied.index(art))
 
-    def link(self, *artists):
+    def link(self, *artists):  # animates
         """
         Link other `artists` to this one to make then co-draw.
         """
@@ -535,6 +532,11 @@ class MotionInterfaceArtist(LoggingMixin):
         for art in artists:
             if art in self.linked:
                 self.linked.pop(self.linked.index(art))
+
+    @property
+    def draw_list(self):  # dependants / children
+        return [self.artist, *self.linked,
+                *(tied.artist for tied in self.tied)]
 
     def clip(self, x, y):
         # TODO: validate method for more complex movement restrictions
@@ -692,14 +694,6 @@ class CanvasBlitHelper(CallbackManager):
 
         self._canvas = None
         self.background = None
-
-        self.artists = set()
-        for art in set(filter_non_artist(artists)):
-            self.add_artist(art)
-
-        #
-        CallbackManager.__init__(self, self.canvas, connect)
-
         self._use_blit = active
         self._draw_count = 0
         self._blit_count = 0
@@ -707,6 +701,12 @@ class CanvasBlitHelper(CallbackManager):
         self._resizing = False
         self._resize_time_last = None
         self._post_resize_thread = None
+
+        self.artists = set()
+        self.add_art(artists)
+
+        # connect
+        CallbackManager.__init__(self, self.canvas, connect)
 
     @property
     def canvas(self):
@@ -733,7 +733,13 @@ class CanvasBlitHelper(CallbackManager):
                 self.canvas is not None and
                 self.canvas.supports_blit)
 
-    def add_artist(self, artist):
+    def add_art(self, *artists):
+        list(map(self._add_artist, filter_non_artist(artists)))
+
+    # alias
+    add_artists = add_art
+
+    def _add_artist(self, artist):
         """
         Add an animated artist.
         """
@@ -742,15 +748,17 @@ class CanvasBlitHelper(CallbackManager):
             # also sets `callbacks` to `canvas.callbacks` CallbackRegistry
 
         if self.canvas != artist.figure.canvas:
-            raise ValueError(f'Artists from multiple canvases. '
-                             f'{type(self)} only manages a single canvas.')
+            raise ValueError(f'Artists from multiple canvases. {type(self)}'
+                             f' can only manage artists on the same canvas.')
 
         self.artists.add(artist)
 
     def blit_setup(self, artists=None):
         """
-        Setup canvas for blitting. First make all the artists in the list
-        invisible, then redraw the canvas and save, then redraw all the artists.
+        Setup canvas for blitting. First make all the `artists` in the list
+        animated and invisible, then redraw the canvas and save, then redraw all
+        the animated artists. If no artists are passed, the internal list of
+        artists will be used.
         """
         if not self.canvas:
             raise ValueError('No canvas!')
@@ -767,7 +775,7 @@ class CanvasBlitHelper(CallbackManager):
         )
 
         self.logger.debug('Blit setup for {} animated artists.', len(artists))
-        
+
         # set artist animated
         for art in artists:
             art.set_animated(True)
@@ -775,7 +783,7 @@ class CanvasBlitHelper(CallbackManager):
 
         # Draw everything (including our now-invisible art)
         with canvas.callbacks.blocked(signal='draw_event'):
-            # block recursive invokations from `_on_first_draw` that does
+            # block recursive invocations from `_on_first_draw` that does
             # `save_background` which triggers a draw.
             self.logger.debug('Drawing background', len(artists))
             canvas.draw()
@@ -810,8 +818,9 @@ class CanvasBlitHelper(CallbackManager):
         # disconnect callback to this function
         self.remove_callback('draw_event', 0)
 
-        # save background (without artists)
-        self.background = self.blit_setup(self.artists)
+        # At this point save the background (without animated artists)
+        self.save_background()
+        
 
     @mpl_connect('draw_event')
     def _on_draw(self, event):
@@ -827,27 +836,45 @@ class CanvasBlitHelper(CallbackManager):
             self.canvas.draw()
 
     def draw_blit(self, artists):
-
+        
+        # Restore background
         self.logger.debug('blit {}', self._blit_count)
         self.canvas.restore_region(self.background)
 
+        # Draw the animated artists
+        self._draw_list(artists)
+        self.canvas.blit(self.canvas.figure.bbox)
+        self.canvas.flush_events()
+        self._blit_count += 1
+
+    def _draw_list(self, artists):
+        # draw a list of artists
+        i = 0
         t0 = time.time()
         # check for uniqueness to prevent unnecessary duplicate draw
-        i = 0
         for i, art in enumerate(sorted(set(filter_non_artist(artists)),
-                                       key=Artist.get_zorder)):
+                                       key=Artist.get_zorder), 1):
             self.logger.trace('Drawing: {}', art)
             art.draw(self.canvas.renderer)
 
-        self.logger.debug('Drew {} artists in {} sec:\n', i, time.time() - t0, )
-        self.canvas.blit(self.canvas.figure.bbox)
-        self._blit_count += 1
+        self.logger.debug('Drew {} artists in {} sec:\n', i, time.time() - t0)
 
     def save_background(self, artists=None):
         # save background (without artists)
         self.logger.debug('Saving background for {}.', self)
         self.background = self.blit_setup(self.artists if artists is None else artists)
 
+    def update_background(self, *artists):
+        # restore saved bg, draw `artists` list, save new bg with artists drawn
+        if not self.background:
+            raise ValueError('No background saved yet.')
+
+        self.logger.debug('Update background.')
+        self.draw_blit(artists)
+        
+        self.background = self.canvas.copy_from_bbox(self.canvas.figure.bbox)
+        
+        
     # def _save_background_after_resize(self, artists=None, delay=1):
     #     while True:
     #         if self._resize_time_last and (elapsed := self._resize_time_last - time.time()) > delay:
@@ -978,7 +1005,7 @@ class MotionManager(CanvasBlitHelper):
         self._original_offsets = np.r_['0,2', self._original_offsets, offset]
 
         # add artists to blit list
-        self.artists |= set(mv.draw_list)
+        self.add_art(*mv.draw_list)
         return mv
 
     @property
@@ -1272,12 +1299,12 @@ class MotionManager(CanvasBlitHelper):
 
         return draw_list
 
-    def save_background(self, artists=None):
-        # get all the movable artists by "moving" them with zero offset
+    # def save_background(self, artists=None):
+    #     # get all the movable artists by "moving" them with zero offset
 
-        if artists is None:
-            artists = [mv.update_offset((0, 0))
-                       for mv in self.movable.values()]
+    #     if artists is None:
+    #         artists = [mv.update_offset((0, 0))
+    #                    for mv in self.movable.values()]
 
-        # save background (without artists)
-        self.background = self.blit_setup(artists)
+    #     # save background (without artists)
+    #     self.background = self.blit_setup(artists)
