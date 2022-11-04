@@ -130,7 +130,7 @@ class AxesSliders(MotionManager):
                 ax.add_line(tied)  # move to link function??
                 mia.tie(tied)
 
-            self.artists |= set(mia.draw_list)
+            self.add_art(mia.draw_list)
 
         # set upper / lower attributes for convenience
         self.lower = self.movable[sliders[0]]

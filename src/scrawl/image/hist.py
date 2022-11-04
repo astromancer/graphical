@@ -11,6 +11,7 @@ import numpy as np
 from matplotlib import ticker
 from matplotlib.cm import get_cmap
 from matplotlib.colors import ListedColormap
+from matplotlib.collections import PolyCollection
 
 # local
 from recipes.logging import LoggingMixin
@@ -43,10 +44,10 @@ class PixelHistogram(LoggingMixin):  # PixelHistogram
 
     _default_n_bins = 50
 
-    _outer_style = dict(facecolor=None,
-                        edgecolor='0.75',
-                        linewidth=0.5,
-                        alpha=0.5)
+    _default_outer_style = dict(facecolor=None,
+                                edgecolor='0.75',
+                                linewidth=0.5,
+                                alpha=0.5)
 
     # @classmethod
     # def from_image(cls, image_plot):
@@ -55,7 +56,7 @@ class PixelHistogram(LoggingMixin):  # PixelHistogram
     # todo. better with data?
     def __init__(self, ax, image,
                  orientation='horizontal',
-                 outer_bar_style=MappingProxyType(_outer_style),
+                 outer_bar_style=MappingProxyType(_default_outer_style),
                  use_blit=True,
                  **kws):
         """
@@ -74,8 +75,6 @@ class PixelHistogram(LoggingMixin):  # PixelHistogram
         # TODO: integrate color stretch functionality
         #  FIXME: fails for all zero data
 
-        from matplotlib.collections import PolyCollection
-
         self.log = kws.pop('log', True)
         self.ax = ax
         self.image = image
@@ -89,16 +88,16 @@ class PixelHistogram(LoggingMixin):  # PixelHistogram
         self.counts = self.bin_edges = self.bin_centers = ()
         self.compute(self.get_array())
 
-        # create collection
-        cmap = self.image.get_cmap()
-        self.bars = PolyCollection(self.get_verts(self.counts, self.bin_edges),
-                                   array=self.bin_centers,
-                                   cmap=cmap)
-        ax.add_collection(self.bars)
-
         # colour map
-        self._outer_style = {**self._outer_style, **outer_bar_style}
-        self.set_cmap(cmap, self._outer_style['facecolor'], self._outer_style['alpha'])
+        self._outer_style = {**self._default_outer_style, **outer_bar_style}
+        cmap = self._compute_cmap(self.image.get_cmap(),
+                                  self._outer_style['facecolor'],
+                                  self._outer_style['alpha'])
+
+        # create collection
+        self.bars = PolyCollection([], cmap=cmap, norm=self.image.norm)
+        self.update()
+        ax.add_collection(self.bars)
 
         if use_blit:
             # image.set_animated(True)
@@ -113,11 +112,11 @@ class PixelHistogram(LoggingMixin):  # PixelHistogram
         # rescale if non-empty histogram
         if len(self.counts):
             self.autoscale_view()
-    
+
     @property
     def figure(self):
         return self.ax.figure
-    
+
     @property
     def cmap(self):
         return self._cmap
@@ -127,11 +126,14 @@ class PixelHistogram(LoggingMixin):  # PixelHistogram
         self.set_cmap(cmap)
 
     def set_cmap(self, cmap, outside_colour=None, outside_alpha=0.5):
+        self._cmap = self._compute_cmap(cmap, outside_colour, outside_alpha)
+        self.bars.set_cmap(cmap)
+
+    def _compute_cmap(self, cmap, outside_colour, outside_alpha):
         # setup colormap (copy)
         self.logger.debug('Adapting cmap {} for {}.', cmap, self)
         cmap = get_cmap(cmap)
         cmap = ListedColormap(cmap(np.linspace(0, 1, 256)))
-        self._cmap = cmap
 
         # optionally gray out out-of-bounds values
         if outside_colour is None:
@@ -143,11 +145,11 @@ class PixelHistogram(LoggingMixin):  # PixelHistogram
         #
         cmap.set_over(over)
         cmap.set_under(under)
-        self.bars.set_cmap(cmap)
+        return cmap
 
     def _update_cmap_from_image(self, image):
         self.set_cmap(image.get_cmap())
-    
+
     def get_array(self):
         return self.image.get_array()
 
@@ -184,13 +186,15 @@ class PixelHistogram(LoggingMixin):  # PixelHistogram
                 for xwidth, ymin in zip(counts, bin_edges)]
 
     def update(self):
-        self.bars.set_verts(self.get_verts(self.counts, self.bin_edges))
-        self.bars.set_array(self.bin_centers)
-        self.bars.set_clim(self.image.get_clim())
-
-        outside = ~np.ma.masked_inside(self.bin_centers, *self.bars.get_clim()).mask
-        self.bars.set_linewidth(outside * self._outer_style['linewidth'])
-        self.bars.set_edgecolor(self._outer_style['edgecolor'])
+        clim = self.image.get_clim()
+        outside = ~np.ma.masked_inside(self.bin_centers, *clim).mask
+        self.bars.set(
+            verts=self.get_verts(self.counts, self.bin_edges),
+            linewidth=outside * self._outer_style['linewidth'],
+            edgecolor=self._outer_style['edgecolor'],
+            array=self.bin_centers,
+            clim=clim
+        )
 
         # draw_list = [self.bars]
 
