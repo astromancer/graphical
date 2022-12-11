@@ -11,8 +11,12 @@ import numpy as np
 # local
 from recipes.utils import duplicate_if_scalar
 
+
+# ---------------------------------------------------------------------------- #
 DEFAULT_BINS = 50
 MAX_POINTS = 500
+KNOWN_TESSELATION = {'hex', 'rect'}
+SCATTER_STYLE_DEFAULTS = dict(marker='x', ls='')
 
 
 def _sanitize_data(data, allow_dim):
@@ -33,12 +37,12 @@ def _sanitize_data(data, allow_dim):
 
 
 def scatter_density(ax, data, bins=DEFAULT_BINS, range=None, min_count=3,
-                    max_points=MAX_POINTS, tessellation='hex', scatter_kws=None,
-                    density_kws=None):
+                    max_points=MAX_POINTS, tessellation='hex', cmap=None,
+                    scatter_kws=None, density_kws=None):
     """
-    Point cloud visualization with density map and scatter plot. Regions
-    with high point density are plotted as a 2d histogram image using either
-    rectangular or hexagonal binning.
+    Point cloud visualization combining a density map and scatter plot. Regions
+    with high point density are plotted as a 2D histogram image using either
+    rectangular or hexagonal tesselation.
 
     Parameters
     ----------
@@ -75,16 +79,16 @@ def scatter_density(ax, data, bins=DEFAULT_BINS, range=None, min_count=3,
     scatter_kws = scatter_kws or {}
     density_kws = density_kws or {}
 
-    if tessellation not in FUNC_MAP:
+    if tessellation not in KNOWN_TESSELATION:
         raise ValueError(f'Invalid tessellation {tessellation!r}: Valid '
-                         f'choices are {tuple(FUNC_MAP.keys())}')
+                         f'choices are {KNOWN_TESSELATION}')
 
     if tessellation == 'rect':
-        returns = hist2d_scatter(ax, data, bins, range, min_count,
+        returns = hist2d_scatter(ax, data, bins, range, min_count, cmap,
                                  scatter_kws, density_kws)
 
     if tessellation == 'hex':
-        returns = hexbin_scatter(ax, data, bins, range, min_count,
+        returns = hexbin_scatter(ax, data, bins, range, min_count, cmap,
                                  scatter_kws, density_kws)
 
     # div = make_axes_locatable(ax)
@@ -101,7 +105,7 @@ def scatter_density(ax, data, bins=DEFAULT_BINS, range=None, min_count=3,
 
 
 def hist2d_scatter(ax, data, bins=DEFAULT_BINS, range=None, min_count=None,
-                   scatter_kws=None, ensity_kws=None):
+                   cmap=None, scatter_kws=None, density_kws=None):
     """
 
     Parameters
@@ -120,16 +124,14 @@ def hist2d_scatter(ax, data, bins=DEFAULT_BINS, range=None, min_count=None,
     """
     assert len(data) > 0
 
-    do_density_plot = (min_count is not None) and np.isfinite(min_count)
-    if do_density_plot:
-        density_kws = density_kws or {}
+    if (min_count is not None) and np.isfinite(min_count):
+        density_kws = dict(density_kws or {}, cmap=cmap)
         bins = duplicate_if_scalar(bins)
 
         x_data, y_data = data.T
         # plot density map
         hvals, x_edges, y_edges, qmesh = ax.hist2d(x_data, y_data,
-                                                   bins, range,
-                                                   **density_kws)
+                                                   bins, range, **density_kws)
         # remove low density points
         fc = qmesh.get_facecolor()
         fc[np.ravel(hvals < min_count)] = 0
@@ -150,18 +152,16 @@ def hist2d_scatter(ax, data, bins=DEFAULT_BINS, range=None, min_count=None,
         x_scatter, y_scatter = data
 
     # plot scatter points
-    scatter_kws = scatter_kws or {}
-    scatter_kws.setdefault('color', qmesh.get_cmap()(0))
-    scatter_kws.setdefault('marker', 'o')
-    scatter_kws.setdefault('ls', '')
-
-    points = ax.plot(x_scatter, y_scatter, **scatter_kws)
+    points = ax.plot(x_scatter, y_scatter,
+                     **dict(**scatter_kws or {},
+                            **SCATTER_STYLE_DEFAULTS,
+                            color=qmesh.get_cmap()(0)))
 
     return hvals, qmesh, points
 
 
 def hexbin_scatter(ax, data, bins=DEFAULT_BINS, range=None, min_count=None,
-                   scatter_kws=None, density_kws=None):
+                   cmap=None, scatter_kws=None, density_kws=None):
     """
 
     Parameters
@@ -182,7 +182,7 @@ def hexbin_scatter(ax, data, bins=DEFAULT_BINS, range=None, min_count=None,
     scatter_kws = scatter_kws or {}
     do_density_plot = (min_count is not None) and np.isfinite(min_count)
     if do_density_plot:
-        density_kws = density_kws or {}
+        density_kws = dict(density_kws or {}, cmap=cmap)
         sparse_point_indices = []
 
         extent = None
@@ -221,11 +221,11 @@ def hexbin_scatter(ax, data, bins=DEFAULT_BINS, range=None, min_count=None,
 
     # plot scatter points
     points = ax.plot(*data[sparse_point_indices].T,
-                     **{**scatter_kws, **dict(marker='o', ls='')})
+                     **{**scatter_kws, **SCATTER_STYLE_DEFAULTS})
 
     return hvals, polygons, points
 
 
 #
-FUNC_MAP = dict(hex=hexbin_scatter,
-                rect=hist2d_scatter)
+# FUNC_MAP = dict(hex=hexbin_scatter,
+#                 rect=hist2d_scatter)

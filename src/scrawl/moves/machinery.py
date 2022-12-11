@@ -152,7 +152,7 @@ class Observers(LoggingMixin):
     def _repr_observer(self, id_):
         func, args, kws = self.funcs[id_]
         active = self.active[func]
-        observers = pprint.method(func, args=args, kws=kws).replace('\n', '\n    ')
+        observers = pprint.caller(func, args=args, kws=kws).replace('\n', '\n    ')
         return f'{id_}{" *"[active]}: {observers}'
 
     def add(self, func, *args, **kws):
@@ -258,19 +258,16 @@ class Observers(LoggingMixin):
             try:
                 self.logger.debug('Calling observer function: {!r}', func.__name__)
                 art = func(*args, *static_args, *static_kws, **kws)
+                art = list(filter_non_artist(art))
+                artists.extend(art)
                 if art:
                     self.logger.opt(lazy=True).debug(
                         'The following artists have been changed by observer function '
                         '{0[0]!r}:\n{0[1]}', lambda: (func.__name__, art_summary(art))
                     )
                 else:
-                    self.logger.debug('No artists returned by observer {}.', func.__name__)
-
-                if isinstance(art, abc.Iterable):  # np.ndarray
-                    artists.extend(art)
-
-                elif isinstance(art, Artist):
-                    artists.append(art)
+                    self.logger.debug('No artists returned by observer {}.',
+                                      func.__name__)
 
             except Exception:
                 self.logger.exception('Observer error!')
@@ -733,8 +730,9 @@ class CanvasBlitHelper(CallbackManager):
                 self.canvas is not None and
                 self.canvas.supports_blit)
 
-    def add_art(self, *artists):
-        list(map(self._add_artist, filter_non_artist(artists)))
+    def add_art(self, *artists, **kws):
+        for art in filter_non_artist(artists):
+            self._add_artist(art, **kws)
 
     # alias
     add_artists = add_art
@@ -820,7 +818,6 @@ class CanvasBlitHelper(CallbackManager):
 
         # At this point save the background (without animated artists)
         self.save_background()
-        
 
     @mpl_connect('draw_event')
     def _on_draw(self, event):
@@ -836,7 +833,7 @@ class CanvasBlitHelper(CallbackManager):
             self.canvas.draw()
 
     def draw_blit(self, artists):
-        
+
         # Restore background
         self.logger.debug('blit {}', self._blit_count)
         self.canvas.restore_region(self.background)
@@ -871,10 +868,9 @@ class CanvasBlitHelper(CallbackManager):
 
         self.logger.debug('Update background.')
         self.draw_blit(artists)
-        
+
         self.background = self.canvas.copy_from_bbox(self.canvas.figure.bbox)
-        
-        
+
     # def _save_background_after_resize(self, artists=None, delay=1):
     #     while True:
     #         if self._resize_time_last and (elapsed := self._resize_time_last - time.time()) > delay:

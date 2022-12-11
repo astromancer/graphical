@@ -109,16 +109,14 @@ class AxisSliders(MotionManager):
         clip_on = use_blit or trapped
         for pos, props in zip(self._original_position, prop_cycle):
             # create sliders Line2D
-            # add middle point to sliders since picking usually happens near the
-            # middle!
+            # add middle point to sliders since picking usually happens near the middle!
             x, y = [[pos], [0, 0.5, 1]][o]
             line = Line2D(x, y, transform=transform, clip_on=clip_on, **props)
             ax.add_artist(line)
             sliders.append(line)
 
             #
-            mia = self.add_artist(line, (0, 0), annotate, haunted,
-                                  trapped=trapped)
+            mia = self.add_artist(line, (0, 0), annotate, haunted, trapped=trapped)
 
             # add some markers for aesthetic           '>s<'
             for x, m in zip(np.linspace(0, 1, nem, 1), extra_markers):

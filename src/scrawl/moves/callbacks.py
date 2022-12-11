@@ -49,8 +49,8 @@ class CallbackDecorator(MethodTagger):
     def __wrapper__(self, func, *args, **kws):
         now = time.time()
         if (elapsed := now - self.previous_call_time) < self.timeout:
-            self.logger.debug('Function {:.__name__!r} is rate limited at {:.3f} Hz. Time'
-                              ' elapsed since previous call: {:.3f} s.',
+            self.logger.debug('Function {.__name__!r} is rate limited at {:.3f}'
+                              ' Hz. Time elapsed since previous call: {:.3f} s.',
                               func, 1. / self.timeout, elapsed)
             return
 

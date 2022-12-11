@@ -1,11 +1,14 @@
+
 import numpy as np
 from matplotlib import patheffects as path_effects
+from matplotlib.colors import to_rgba
 
 
-def emboss(art, linewidth=2, color='k'):
-    # add border around text to make it stand out (like the arrows)
+def emboss(art, linewidth=2, color='k', alpha=1):
+    # add border around artists to make them stand out
     art.set_path_effects([
-        path_effects.Stroke(linewidth=linewidth, foreground=color),
+        path_effects.Stroke(linewidth=linewidth, 
+                            foreground=to_rgba(color, alpha)),
         path_effects.Normal()
     ])
     return art

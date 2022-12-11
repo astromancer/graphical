@@ -49,4 +49,5 @@ ax.auto_scale_xyz((x.min(), (x + dx).max()),
                   (z.min(), z.max()),
                   False)
 
-plt.show()
+if __name__ == '__main__':
+    plt.show()

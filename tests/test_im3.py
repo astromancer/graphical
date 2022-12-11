@@ -35,4 +35,5 @@ im = Image3D(Zg)
 # bars = Bar3D(ax, X, Y, Zg, cmap=cmr.ocean, zaxis_cbar=True)
 
 
-plt.show()
+if __name__ == '__main__':
+    plt.show()
