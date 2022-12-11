@@ -72,14 +72,41 @@ CAMERA_VIEW_QUADRANT_TO_CUBE_FACE_ZORDER = {
     #          -z, +z, -y, +y, -x, +x
     #           0,  1,  2,  3,  4,  5
 
-    # viewing | cube face
-    # quadrant| indices                 | face name
-    0:         (5, 0, 4, 1, 3, 2),      # '-y', '-x'
-    1:         (5, 0, 4, 1, 2, 3),      # '-y', '+x'
-    2:         (5, 0, 1, 4, 2, 3),      # '+y', '+x'
-    3:         (5, 0, 1, 4, 3, 2)       # '+y', '-x'
+    # viewing | cube face               | cube face
+    # quadrant| indices                 | names order
+    0:         (5, 0, 4, 1, 3, 2),      # ('+z', '+y', '+x', '-x', '-y', '-z')
+    1:         (5, 0, 4, 1, 2, 3),      # ('+z', '+y', '-x', '+x', '-y', '-z')
+    2:         (5, 0, 1, 4, 2, 3),      # ('+z', '-y', '-x', '+x', '+y', '-z')
+    3:         (5, 0, 1, 4, 3, 2)       # ('+z', '-y', '+x', '-x', '+y', '-z')
 }
 
+# ---------------------------------------------------------------------------- #
+
+
+def _compute_verts(x, y, z, dx, dy, dz):
+    # indexed by [bar, face, vertex, coord]
+
+    # handle each coordinate separately
+    polys = np.empty(x.shape + CUBOID.shape)
+    for i, (p, dp) in enumerate(((x, dx), (y, dy), (z, dz))):
+        p = p[..., np.newaxis, np.newaxis]
+        dp = dp[..., np.newaxis, np.newaxis]
+        polys[..., i] = p + dp * CUBOID[..., i]
+
+    # collapse the first two axes
+    return polys.reshape((-1,) + polys.shape[-2:])
+
+# def _compute_verts(self):
+#     # indexed by [bar, face, vertex, coord]
+#     shape = (*self.xyz.shape[1:], 1, 1, 3)
+#     xyz = np.zeros(shape)
+#     xyz[..., 0, 0, :2] = np.moveaxis(self.xy, 0, -1)
+#     dxyz = np.full(shape, self.dxy)
+#     dxyz[..., 0, 0, -1] = self.z
+
+#     verts = xyz + dxyz * CUBOID
+#     # collapse all but the last two axes
+#     return verts.reshape((-1, 4, 3))
 
 # ---------------------------------------------------------------------------- #
 # TODO: back panels don't need to be drawn if alpha == 1
@@ -96,7 +123,7 @@ def get_cube_face_zorder(ax):
     if (ax.elev % 180) > 90:
         order[:2] = order[1::-1]
 
-    logger.trace('Panel draw order quadrant {}:\n{}\n{}', view_quadrant,  order,
+    logger.trace('Panel draw order quadrant {}:\n{}\n{}', view_quadrant, order,
                  list(np.take(['-z', '+z', '-y', '+y', '-x', '+x'],
                               order)))
 
@@ -106,14 +133,20 @@ def get_cube_face_zorder(ax):
 def is_one_colour(c):
     return (isinstance(c, (str, numbers.Real)) or np.size(c) in {3, 4})
 
+# ---------------------------------------------------------------------------- #
+
 
 class Bar3DCollection(Poly3DCollection):
+    """
+    Bars with base on a plane arrayed in a regular grid.
+    """
 
-    def __init__(self, x, y, z, dxy=0.8, shade=True, **kws):
+    def __init__(self, x, y, z, dxy=0.8, z0=0, shade=True, **kws):
         #
         assert 0 < dxy <= 1
 
         self.xyz = np.atleast_3d([x, y, z])
+        self.z0 = float(z0)
         self.dxy = dxy = float(dxy)
 
         # bar width and breadth
@@ -132,8 +165,7 @@ class Bar3DCollection(Poly3DCollection):
         verts = self._compute_verts()
 
         # init Poly3DCollection
-        print(kws)
-        Poly3DCollection.__init__(self, verts, **kws)  # facecolor=facecolors,
+        Poly3DCollection.__init__(self, verts, **kws)
         self.set_array(z.ravel())
 
     @property
@@ -142,46 +174,37 @@ class Bar3DCollection(Poly3DCollection):
 
     @property
     def z(self):
-        return self.xyz[1]
+        return self.xyz[2]
 
-    def set_data(self, xyz):
-        self.xyz = np.atleast_3d(xyz)
+    def set_z0(self, z0):
+        self.z0 = float(z0)
         super().set_verts(self._compute_verts())
 
-        # if self._face_is_mapped or self._edge_is_mapped:
-        #     self.set_array(np.tile(self.z, (6,1,1)))
+    def set_z(self, z, clim=None):
+        self.xyz[2] = z
+        self.set_data(self.xyz, clim)
 
-        self.do_3d_projection()
+    def set_data(self, xyz, clim=None):
+        self.xyz = np.atleast_3d(xyz)
+        super().set_verts(self._compute_verts())
+        self.set_array(z := self.z.ravel())
 
-    # def _compute_verts(self):
-    #     # indexed by [bar, face, vertex, coord]
-    #     shape = (*self.xyz.shape[1:], 1, 1, 3)
-    #     xyz = np.zeros(shape)
-    #     xyz[..., 0, 0, :2] = np.moveaxis(self.xy, 0, -1)
-    #     dxyz = np.full(shape, self.dxy)
-    #     dxyz[..., 0, 0, -1] = self.z
+        if clim is None or clim is True:
+            clim = (z.min(), z.max())
+        if clim is not False:
+            self.set_clim(*clim)
 
-    #     verts = xyz + dxyz * CUBOID
-    #     # collapse all but the last two axes
-    #     return verts.reshape((-1, 4, 3))
+        if not self.axes:
+            return
 
-    def _compute_verts(self, xyz=None):
-        # indexed by [bar, face, vertex, coord]
-        if xyz is None:
-            xyz = self.xyz
+        if self.axes.M is not None:
+            self.do_3d_projection()
 
-        # indexed by [bar, face, vertex, coord]
-        x, y, dz = xyz
+    def _compute_verts(self):
+        x, y, dz = self.xyz
         dx = dy = np.full(x.shape, self.dxy)
-        # handle each coordinate separately
-        polys = np.empty(x.shape + CUBOID.shape)
-        for i, p, dp in [(0, x, dx), (1, y, dy), (2, np.zeros_like(x), dz)]:
-            p = p[..., np.newaxis, np.newaxis]
-            dp = dp[..., np.newaxis, np.newaxis]
-            polys[..., i] = p + dp * CUBOID[..., i]
-
-        # collapse the first two axes
-        return polys.reshape((-1,) + polys.shape[-2:])
+        z = np.full(x.shape, self.z0)
+        return _compute_verts(x, y, z, dx, dy, dz)
 
     def do_3d_projection(self):
         """
@@ -328,6 +351,28 @@ class Bar3D(CanvasBlitHelper):  # Bar3DGrid
     def set_cmap(self, cmap):
         self.bars.set_cmap(cmap)
         self.cbar.line.set_cmap(cmap)
+
+    def set_z(self, z, clim=None, zlim=None):
+
+        self.bars.set_z(z, clim)
+
+        if zlim is False:
+            return 
+        
+        if zlim is None or zlim is True:
+            zlim = clim
+        
+        if zlim is False:
+            return 
+        
+        if zlim is None or zlim is True:
+            zlim = self.bars.get_clim()
+        
+        self.axes.set_zlim(*zlim)
+
+        # update zaxis cbar
+        self.cbar.xyz[2] = np.linspace(*zlim)
+        self.cbar.update()
 
     @mpl_connect('motion_notify_event')
     def on_rotate(self, event):  # sourcery skip: de-morgan
