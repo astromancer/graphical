@@ -13,6 +13,7 @@ from matplotlib.widgets import Slider
 # relative
 from ..utils import embossed
 from ..image import ImageDisplay, ScrollAction
+from recipes.functionals import ignore_params
 
 
 class VideoDisplay(ImageDisplay, ScrollAction):
@@ -62,20 +63,16 @@ class VideoDisplay(ImageDisplay, ScrollAction):
         self.frame_slider.on_changed(self.update)
         # fsax.xaxis.set_major_locator(ticker.AutoLocator())
 
-
         if self.use_blit:
             self.frame_slider.drawon = False
-            self.artists |= {fs.poly, fs._handle, fs.valtext}
-            
+            self.add_art(fs.poly, fs._handle, fs.valtext,
+                         self._cbar_hist_connectors.values())
+
             if self.has_sliders:
                 # save slider positions in frame scroll background
-                self.artists |= set.union(
-                    *(set(mv.draw_list) for mv in self.sliders.movable.values()))
+                self.add_art(*(set(mv.draw_list)
+                               for mv in self.sliders.movable.values()))
 
-            if self.has_cbar:
-                # save cbar in frame scroll background after cmap scroll
-                self.cbar.scroll.on_scroll.add(lambda *_: self.save_background())
-            
         # connect callbacks
         if connect:
             self.connect()
@@ -143,6 +140,28 @@ class VideoDisplay(ImageDisplay, ScrollAction):
         i = int(round(i, 0))  # make sure we have an int
         self._frame = i  # store current frame
 
+    def _scroll_frame(self, event):
+        # move to next / previous frame
+        if event.inaxes is not self.ax:
+            return
+
+        inc = [-1, +1][event.button == 'up']
+        self.logger.debug('Scrolling to {} image.', ('next', 'previous')[inc < 0])
+        i = self._frame + inc
+
+        if self.use_blit:
+            self.frame_slider.drawon = False
+
+        # TODO: make frame_slider an AxesSlider to get the updated artistst
+        # direct from set_positions
+        with self.frame_slider._observers.blocked():
+            self.frame_slider.set_val(i)  # don't call connected `update`
+            art = self.update(i)
+
+        self.frame_slider.drawon = True
+
+        return self.artists, art
+
     def get_image_data(self, i):
         """
         Get the image data to be displayed.
@@ -178,9 +197,18 @@ class VideoDisplay(ImageDisplay, ScrollAction):
         draw_list: list
             list of artists that have been changed and need to be redrawn
         """
+
         self.set_frame(i)
 
         image = self.get_image_data(self.frame)
+        draw_list = self.set_image_data(image)
+
+        if draw:
+            self.draw(draw_list)
+
+        return draw_list
+
+    def set_image_data(self, image):
         # set the image data
         self.image.set_data(image)  # does not update normalization
 
@@ -220,30 +248,7 @@ class VideoDisplay(ImageDisplay, ScrollAction):
 
             # else:
             #     self.logger.debug('Auto clims: ({:.1f}, {:.1f})', vmin, vmax)
-
-        #
-        if draw:
-            self.draw(draw_list)
-
         return draw_list
-        # return i, image
-
-    def _scroll_frame(self, event):
-        # move to next / previous frame
-        if event.inaxes is not self.ax:
-            return
-
-        inc = [-1, +1][event.button == 'up']
-        self.logger.debug('Scrolling to {} image.', ('next', 'previous')[inc < 0])
-        new = self._frame + inc
-
-        if self.use_blit:
-            self.frame_slider.drawon = False
-
-        self.frame_slider.set_val(new)  # calls connected `update`
-        self.frame_slider.drawon = True
-        
-        return self.artists
 
     def play(self, start=None, stop=None, pause=0):
         """
@@ -317,25 +322,6 @@ class VideoDisplay(ImageDisplay, ScrollAction):
             self.frame_slider.eventson = True
             self.frame_slider.drawon = True
 
-    # def blit_setup(self):
-
-    # @expose.args()
-    # def draw_blit(self, artists):
-    #
-    #     self.logger.debug('draw_blit')
-    #
-    #     fig = self.figure
-    #     fig.canvas.restore_region(self.background)
-    #
-    #     for art in artists:
-    #         try:
-    #             self.ax.draw_artist(art)
-    #         except Exception as err:
-    #             self.logger.debug('drawing FAILED %s', art)
-    #             traceback.print_exc()
-    #
-    #     fig.canvas.blit(fig.bbox)
-
     # def format_coord(self, x, y):
     #     s = ImageDisplay.format_coord(self, x, y)
     #     return 'frame %d: %s' % (self.frame, s)
@@ -350,11 +336,12 @@ class VideoDisplay(ImageDisplay, ScrollAction):
     #         return 'x=%1.3f, y=%1.3f' % (x, y)
 
 
-class VideoFeatureDisplay(VideoDisplay):  # VideoFeatureDisplay
+class VideoFeatureDisplay(VideoDisplay):
 
     # config
-    default_marker_style = dict(s=25, edgecolor='r', facecolor='none',
-                                linewidth=1.5, alpha=0.5)
+    default_marker_style = dict(s=25,
+                                edgecolor='r', facecolor='none',
+                                linewidths=0.75, alpha=1)
 
     def __init__(self, data, coords=None,
                  markers='XPoHd*s',
@@ -384,6 +371,14 @@ class VideoFeatureDisplay(VideoDisplay):  # VideoFeatureDisplay
         # create marker art
         marker_style = {**self.default_marker_style, **(marker_style or {})}
         self.marks = self.mark(first, markers, **marker_style)
+
+        if self.cbar:
+            # NOTE, we don't want the cmap to switch for these when scrolling
+            self.cbar.scroll.artists |= {*self.marks}
+
+        if self.sliders:
+            self.sliders.add_art(*self.marks)
+            self.sliders.link(*self.marks)
 
     def set_coords(self, coords):
         # check coords
@@ -420,26 +415,30 @@ class VideoFeatureDisplay(VideoDisplay):  # VideoFeatureDisplay
         self.coords = coords
         return coords[0]
 
-    def mark(self, xy, markers, emboss=2, **style):
+    def mark(self, xy, markers, emboss=1.5, alpha=1, **style):
         # create markers
+
         if xy.ndim == 2:
             xy = xy[None, ...]
 
         art = []
+        style = dict(style or self.default_marker_style)
         for points, marker in zip(xy, markers):
-            marks = self.ax.scatter(*points.T, marker=marker,
-                                    **dict(style or self.default_marker_style))
+            marks = self.ax.scatter(*points.T, marker=marker, alpha=alpha, **style)
 
             if emboss:
-                embossed(marks, emboss)
+                embossed(marks, emboss, alpha=alpha)
 
             # redraw markers after color adjust
             self.sliders.link(marks)
             art.append(marks)
 
+        self.add_art(*art)
         return art
 
     def get_coords(self, i):
+        # Subclasses can implement
+        # return None by default
         return
 
     def _get_coords_internal(self, i):
@@ -451,14 +450,20 @@ class VideoFeatureDisplay(VideoDisplay):  # VideoFeatureDisplay
 
     def update(self, i, draw=True):
 
-        i %= self.nframes
-        draw_list = VideoDisplay.update(self, i, False)
-        #
+        # update image
+        draw_list = super().update(i, False)
+        i = self.frame # rounded and wrapped
+
+        # Try get feature coordinates
         coords = self.get_coords(i)
         self.logger.debug('Coords: {}\n{}', coords.shape, coords)
 
         if coords is None:
             return draw_list
+
+        # update markers
+        if coords.ndim == 2:
+            coords = coords[None]
 
         for coo, marks in zip(coords, self.marks):
             marks.set_offsets(coo)
@@ -468,11 +473,7 @@ class VideoFeatureDisplay(VideoDisplay):  # VideoFeatureDisplay
         return draw_list
 
 
-#
-VideoDisplayX = VideoFeatureDisplay
-
-
-class VideoDisplayA(VideoDisplayX):  # VideoApertureDisplay
+class VideoApertureDisplay(VideoFeatureDisplay):  # VideoApertureDisplay
     # default aperture properties
     apProps = dict(ec='m', lw=1,
                    picker=False,
@@ -484,10 +485,10 @@ class VideoDisplayA(VideoDisplayX):  # VideoApertureDisplay
         """
         if ap_props is None:
             ap_props = {}
-        VideoDisplayX.__init__(self, data, coords, **kws)
+        VideoFeatureDisplay.__init__(self, data, coords, **kws)
 
         # create apertures
-        props = VideoDisplayA.apProps.copy()
+        props = VideoApertureDisplay.apProps.copy()
         props.update(ap_props)
         self.aps = self.create_apertures(**props)
 
@@ -507,10 +508,15 @@ class VideoDisplayA(VideoDisplayX):  # VideoApertureDisplay
 
     def update(self, i, draw=True):
         # get all the artists that changed by calling parent update
-        draw_list = VideoDisplayX.update(self, i, False)
+        draw_list = super().update(i, False)
         coo = self.marks.get_offsets()
 
         art = self.update_apertures(i, coo.T)
         draw_list.append(art)
 
         return draw_list
+
+
+# aliases
+VideoDisplayX = VideoFeatureDisplay
+VideoDisplayA = VideoApertureDisplay

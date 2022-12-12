@@ -8,16 +8,15 @@ import numpy as np
 import cmasher as cmr
 import matplotlib.pyplot as plt
 import matplotlib.colorbar as cbar
-from matplotlib import ticker
+from matplotlib import cm, ticker
 from matplotlib.gridspec import GridSpec
-from matplotlib.cm import ScalarMappable, get_cmap
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 
 # local
 from recipes.pprint import describe
 from recipes.logging import LoggingMixin
 from recipes.string import remove_prefix
-from recipes.functionals import ignore_params
+from recipes.functionals import ignore_params, ignore_returns
 
 # relative
 from ..depth.bar3d import Bar3D
@@ -34,8 +33,39 @@ from .utils import _sanitize_data, guess_figsize, set_clim_connected
 # TODO: maybe display things like contrast ratio ??
 
 # ---------------------------------------------------------------------------- #
-SCROLL_CMAPS = cmr.get_cmap_list()
-SCROLL_CMAPS_R = [_ for _ in SCROLL_CMAPS if _.endswith('_r')]
+# SCROLL_CMAPS = cmr.get_cmap_list()
+# SCROLL_CMAPS_R = [_ for _ in SCROLL_CMAPS if _.endswith('_r')]
+
+cmap_categories = {
+    'Perceptually Uniform Sequential':
+        {'viridis', 'plasma', 'inferno', 'magma', 'cividis'},
+    'Sequential':
+        {'Greys', 'Purples', 'Blues', 'Greens', 'Oranges', 'Reds',
+         'YlOrBr', 'YlOrRd', 'OrRd', 'PuRd', 'RdPu', 'BuPu',
+         'GnBu', 'PuBu', 'YlGnBu', 'PuBuGn', 'BuGn', 'YlGn'},
+    'Sequential (2)':
+        {'binary', 'gist_yarg', 'gist_gray', 'gray', 'bone', 'pink',
+         'spring', 'summer', 'autumn', 'winter', 'cool', 'Wistia',
+         'hot', 'afmhot', 'gist_heat', 'copper'},
+    'Diverging':
+        {'PiYG', 'PRGn', 'BrBG', 'PuOr', 'RdGy', 'RdBu',
+         'RdYlBu', 'RdYlGn', 'Spectral', 'coolwarm', 'bwr', 'seismic'},
+    'Cyclic':
+        {'twilight', 'twilight_shifted', 'hsv'},
+    'Qualitative':
+        {'Pastel1', 'Pastel2', 'Paired', 'Accent',
+         'Dark2', 'Set1', 'Set2', 'Set3',
+         'tab10', 'tab20', 'tab20b', 'tab20c'},
+    'Miscellaneous':
+        {'flag', 'prism', 'ocean', 'gist_earth', 'terrain', 'gist_stern',
+         'gnuplot', 'gnuplot2', 'CMRmap', 'cubehelix', 'brg',
+         'gist_rainbow', 'rainbow', 'jet', 'turbo', 'nipy_spectral',
+         'gist_ncar'}
+}
+
+_remove = cmap_categories['Qualitative'] | {'flag', 'prism'}
+_remove |= {f'{r}_r' for r in _remove}
+SCROLL_CMAPS = ({*cm._colormaps._cmaps.keys()} - _remove)
 
 # ---------------------------------------------------------------------------- #
 
@@ -74,14 +104,25 @@ class ScrollAction(CanvasBlitHelper):
             self.draw(art)
 
 
+
 class CMapScroll(ScrollAction, TrackAxesUnderMouse, LoggingMixin):
     # TODO: manage timeout through CallbackManager and mpl_connect
 
-    def __init__(self, cbar, cmaps=SCROLL_CMAPS_R, timeout=0.25, use_blit=True):
+    def __init__(self, cbar, cmaps=SCROLL_CMAPS, timeout=0.25, use_blit=True):
 
         self.colorbar = cbar
-        self.available = sorted(set(cmaps))
-        self._letter_index = next(zip(self.available))
+        
+        prefixes = {}
+        for cmap in cmaps:
+            prefix = ''
+            if '.' in cmap:
+                prefix, cmap = cmap.split('.')
+                prefix += '.'
+            prefixes[cmap] = prefix
+        
+        self.available = sorted(prefixes.keys(), key=str.lower)
+        self.prefixes = prefixes
+        self._letter_index = next(zip(*self.available))
         self.mappables = {self.colorbar.mappable}
 
         # canvas = cbar.ax.figure.canvas if cbar.ax else None
@@ -94,17 +135,22 @@ class CMapScroll(ScrollAction, TrackAxesUnderMouse, LoggingMixin):
         # `_on_first_draw` after saving the initial background
         self.on_scroll.add(self._scroll_cmap)
 
-    def add_artist(self, artist):
-        if isinstance(artist, ScalarMappable):
+    def _add_artist(self, artist, mappable=None):
+
+        if mappable is None:
+            mappable = isinstance(artist, cm.ScalarMappable)
+
+        if mappable:
             self.mappables.add(artist)
-        return super().add_artist(artist)
+
+        return super()._add_artist(artist)
 
     @property
     def mappable(self):
         return self.colorbar.mappable
 
-    def get_cmap(self):
-        return remove_prefix(self.mappable.get_cmap().name, 'cmr.')
+    # def get_cmap(self):
+    #     return remove_prefix(self.mappable.get_cmap().name, 'cmr.')
 
     def set_cmap(self, cmap):
         for sm in self.mappables:
@@ -118,22 +164,27 @@ class CMapScroll(ScrollAction, TrackAxesUnderMouse, LoggingMixin):
 
     def _on_first_draw(self, _):
         super()._on_first_draw(_)
-        self.artists.remove(self.colorbar.solids)
+        if self.colorbar.solids in self.artists:
+            self.artists.remove(self.colorbar.solids)
 
     def _scroll_cmap(self, event):
         # called during scroll callback
-        cmap = self.get_cmap()
-        self.logger.debug('Current cmap: {}', cmap)
+        current = self.mappable.get_cmap().name
+        self.logger.debug('Current cmap: {}', current)
+        if '.' in current:
+            _, current = current.split('.')
 
         avail = self.available
         inc = [-1, +1][event.button == 'up']
-        idx = avail.index(cmap) if cmap in avail else -1
-        new = f'cmr.{avail[(idx + inc) % len(avail)]}'
-        self.logger.info('Scrolling cmap: {} -> {}', cmap, new)
+        idx = avail.index(current) if current in avail else -1
+        new = f'{avail[(idx + inc) % len(avail)]}'
+        new = f'{self.prefixes[new]}{new}'
+        
+        self.logger.info('Scrolling cmap: {} -> {}', current, new)
         self.set_cmap(new)
 
         cb = self.colorbar
-        return self.artists, cb.solids, cb.lines,  cb.dividers
+        return self.artists, cb.solids, cb.lines, cb.dividers
 
     @mpl_connect('key_press_event')
     def _on_key(self, event):
@@ -143,17 +194,21 @@ class CMapScroll(ScrollAction, TrackAxesUnderMouse, LoggingMixin):
             return
 
         if event.key not in self._letter_index:
-            self.logger.debug('No cmaps starting with {!r}', event.key)
+            self.logger.debug('No cmaps starting with letter {!r}', event.key)
             return
 
-        current = self.get_cmap()
+        current = self.mappable.get_cmap().name
+        if '.' in current:
+            _, current = current.split('.')
+            
         i = self._letter_index.index(event.key)
-        new = f'cmr.{self.available[i]}'
+        new = self.available[i]
+        new = f'{self.prefixes[new]}{new}'
         self.logger.info('Scrolling cmap: {} -> {}', current, new)
         self.set_cmap(new)
 
         cb = self.colorbar
-        self.draw((self.mappables,  cb.solids, cb.lines,  cb.dividers))
+        self.draw((self.artists, cb.solids, cb.lines, cb.dividers))
 
 
 # ---------------------------------------------------------------------------- #
@@ -166,7 +221,6 @@ class ImageDisplay(CanvasBlitHelper, LoggingMixin):
     # TODO: better histogram for integer / binary data with narrow ranges
     # TODO: method pixels corresponding to histogram bin?
 
-    # TODO: remove ticks on cbar ax
     # TODO: plot scale func on hist axis
 
     sliderClass = RangeSliders
@@ -244,7 +298,8 @@ class ImageDisplay(CanvasBlitHelper, LoggingMixin):
         # create the colourbar / histogram / sliders
         self.cbar = None
         if self.has_cbar:
-            self.cbar = self.colorbar()
+            cbar_kws = {} if cbar is True else dict(cbar)
+            self.cbar = self.colorbar(**cbar_kws)
 
         # init blit and callbacks
         CanvasBlitHelper.__init__(self, self.image, connect=False, active=use_blit)
@@ -260,6 +315,9 @@ class ImageDisplay(CanvasBlitHelper, LoggingMixin):
                 self.cbar.scroll.add_art(self._cbar_hist_connectors.values())
 
             # cmap scroll blit
+            # save cbar in image background after cmap scroll
+            # TODO: optimize between sliders and cmap scroll which both save
+            # background and share some artists
             self.cbar.scroll.on_scroll.add(ignore_params(self.save_background))
             # NOTE: Updating via method below causes a undesirable white flash
             # from the background even though it's faster.
@@ -304,17 +362,18 @@ class ImageDisplay(CanvasBlitHelper, LoggingMixin):
         figsize = kws.pop('figsize', 'auto')
         # sidebar = kws.pop('sidebar', True)
 
-        # create axes if required
-        if fig is None:
-            if figsize == 'auto':
-                # automatically determine the figure size based on the data
-                figsize = self.guess_figsize(self.data)
-                # FIXME: the guessed size does not account for the colorbar
-                #  histogram
-
-            fig = plt.figure(figsize=figsize)
-
+        # create figure / axes if required
         if ax is None:
+            if fig is None:
+                if figsize == 'auto':
+                    # automatically determine the figure size based on the data
+                    figsize = self.guess_figsize(self.data)
+                    # FIXME: the guessed size does not account for the colorbar
+                    #  histogram
+
+                fig = plt.figure(figsize=figsize)
+
+            # axes
             self._gs = gs = GridSpec(1, 1,
                                      left=0.05, right=0.95,
                                      top=0.98, bottom=0.05, )
@@ -366,8 +425,11 @@ class ImageDisplay(CanvasBlitHelper, LoggingMixin):
     def colorbar(self, **kws):
         # No need for the data labels on the colourbar since it will be on the
         # histogram axis.
-        fmt = ticker.NullFormatter() if self.has_hist else None
-        return Colorbar(self.cax, self.image,  format=fmt, ticks=[], **kws)
+        if self.has_hist:
+            kws = {**dict(ticks=[], format=ticker.NullFormatter()),
+                   **kws}
+
+        return Colorbar(self.cax, self.image, **kws)
 
     def connect_cbar_hist(self):
         if not (self.histogram and self.sliders):
@@ -423,6 +485,7 @@ class ImageDisplay(CanvasBlitHelper, LoggingMixin):
                                        extra_markers='>s<',
                                        use_blit=use_blit)
 
+            # lambda *_: self.set_clim(*self.sliders.positions)
             sliders.lower.on_move.add(self.update_clim)
             sliders.upper.on_move.add(self.update_clim)
 
@@ -454,11 +517,12 @@ class ImageDisplay(CanvasBlitHelper, LoggingMixin):
                 # set minimun slider separation 1 bin
                 sliders.min_span = np.diff(hist.bin_edges).max()
                 # add for blit
-                sliders.artists.add(hist.bars)
+                sliders.add_art(hist.bars)
+                # sliders.link([t.gridline for t in self.hax.xaxis.majorTicks])
 
             # cmap scroll blit
             cbar.scroll.mappables.add(hist)  # will call hist.set_cmap on scroll
-            cbar.scroll.artists.add(hist.bars)
+            cbar.scroll.add_art(hist.bars)
 
             # set ylim if reasonable to do so
             # if data.ptp():
@@ -521,6 +585,8 @@ class ImageDisplay(CanvasBlitHelper, LoggingMixin):
         return clims
 
     def set_clim(self, *clim):
+        # NOTE: for some unfathomable reason, this only works if done twice. ???
+        self.image.set_clim(*clim)
         self.image.set_clim(*clim)
 
         if not self.has_hist:
@@ -533,7 +599,7 @@ class ImageDisplay(CanvasBlitHelper, LoggingMixin):
         return self.image, self.histogram.bars
 
     def update_clim(self, *xydata):
-        """Set colour limits on slider move"""
+        """Set colour limits on slider move."""
         return self.set_clim(*self.sliders.positions)
 
     def format_coord(self, x, y, precision=3, masked_str='--'):
@@ -605,6 +671,82 @@ class ImageDisplay(CanvasBlitHelper, LoggingMixin):
 #         return clim
 
 # ---------------------------------------------------------------------------- #
+
+
+class Image3D:
+    def __init__(self, image,
+                 origin=(0, 0), cmap=None, figure=None,
+                 bar3d_kws=None, **image_kws):
+
+        self.figure, (axi, ax3) = self.setup_figure(figure)
+        self.axi, self.ax3 = axi, ax3
+
+        y0, x0 = origin = np.array(origin)
+        y1, x1 = origin + image.shape
+        y, x = np.indices(image.shape) + origin[:, None, None]
+
+        cmap = cm.get_cmap(cmap)
+        self.image = im = ImageDisplay(
+            image, ax=self.axi, cmap=cmap, extent=(x0, x1, y0, y1),
+            **{**dict(hist=False, sliders=False,
+                      cbar={'format': ticker.NullFormatter()}),
+               **image_kws}
+        )
+
+        # remove cbar ticks / labels
+        # im.cax.yaxis.set_tick_params(length=0)
+        # im.cax.yaxis.major.formatter = ticker.NullFormatter()
+
+        self.bar3d = bar3d = Bar3D(self.ax3, x, y, image, cmap=cmap,
+                                   **{**dict(zaxis_cbar=True),
+                                      **(bar3d_kws or {})})
+
+        # Cmap scroll callbacks
+        scroll = im.cbar.scroll
+        for art in (bar3d.bars, bar3d.cbar.line):
+            scroll.add_art(art)
+            scroll.on_scroll.add(ignore_returns(ignore_params(art.do_3d_projection)))
+
+        # save background after 3d rotation
+        # FIXME: this slows down the rotation interaction significantly
+        self.bar3d.on_rotate.add(ignore_params(scroll.save_background))
+
+    def set_cmap(self, cmap):
+        # change cmap for all mappables
+        self.image.cbar.scroll.set_cmap(cmap)
+
+    def set_data(self, image, clim=None):
+
+        self.image.image.set_data(image)
+
+        if (clim is None) or (clim is not False):
+            clim = self.image.clim_from_data(image)
+            self.image.set_clim(*clim)
+
+        self.bar3d.set_z(image, clim)
+
+    def setup_figure(self, fig=None):
+        if fig is None:
+            fig = plt.figure()  # size = (8.5, 5)
+
+        axi = fig.add_subplot(1, 2, 1)
+        ax3 = fig.add_subplot(1, 2, 2,
+                              projection='3d',
+                              azim=-125, elev=30)
+
+        # label axes
+        for xy in 'xy':
+            for ax in (axi, ax3):
+                getattr(ax, f'set_{xy}label')(f'${xy}$')
+                getattr(ax, f'{xy}axis').set_major_locator(
+                    ticker.MaxNLocator('auto', steps=[1, 2, 5, 10]))
+
+        ax3.set(facecolor='none')  # xlabel='$x$', ylabel='$y$'
+
+        return fig, (axi, ax3)
+
+# ---------------------------------------------------------------------------- #
+
 
 def plot_image_grid(images, layout=(), titles=(), title_kws=None, figsize=None,
                     plims=None, clim_all=False, **kws):
@@ -820,64 +962,3 @@ class ImageGrid:
         # Update histogram with data from all images
         self.imd.histogram.set_array(pixels)
         self.imd.histogram.autoscale_view()
-
-
-class Image3D:
-    def __init__(self, image,
-                 origin=(0, 0), cmap=None, figure=None,
-                 bar3d_kws=None, **image_kws):
-
-        self.figure, (axi, ax3) = self.setup_figure(figure)
-        self.axi, self.ax3 = axi, ax3
-
-        y0, x0 = origin = np.array(origin)
-        y1, x1 = origin + image.shape
-        y, x = np.indices(image.shape) + origin[:, None, None]
-
-        cmap = get_cmap(cmap)
-        self.image = im = ImageDisplay(image, ax=self.axi, cmap=cmap,
-                                       extent=(x0, x1, y0, y1),
-                                       **{**dict(hist=False, sliders=False),
-                                          **image_kws, })
-
-        # remove cbar ticks / labels
-        im.cax.yaxis.set_tick_params(length=0)
-        im.cax.yaxis.major.formatter = ticker.NullFormatter()
-
-        self.bar3d = bar3d = Bar3D(self.ax3, x, y, image, cmap=cmap,
-                                   **{**dict(zaxis_cbar=True),
-                                       **(bar3d_kws or {})})
-
-        # Cmap scroll callbacks
-        scroll = im.cbar.scroll
-        scroll.add_artist(bar3d.bars)
-        scroll.add_artist(bar3d.cbar.line)
-
-        scroll.on_scroll.add(bar3d.bars.do_3d_projection)
-        scroll.on_scroll.add(bar3d.cbar.line.do_3d_projection)
-
-        self.bar3d.on_rotate.add(scroll.save_background)
-
-    def set_cmap(self, cmap):
-        # change cmap for all mappables
-        self.image.cbar.scroll.set_cmap(cmap)
-
-    def setup_figure(self, fig=None):
-        if fig is None:
-            fig = plt.figure()  # size = (8.5, 5)
-
-        axi = fig.add_subplot(1, 2, 1)
-        ax3 = fig.add_subplot(1, 2, 2,
-                              projection='3d',
-                              azim=-125, elev=30)
-
-        # label axes
-        for xy in 'xy':
-            for ax in (axi, ax3):
-                getattr(ax, f'set_{xy}label')(f'${xy}$')
-                getattr(ax, f'{xy}axis').set_major_locator(
-                    ticker.MaxNLocator('auto', steps=[1, 2, 5, 10]))
-
-        ax3.set(facecolor='none')  # xlabel='$x$', ylabel='$y$'
-
-        return fig, (axi, ax3)
