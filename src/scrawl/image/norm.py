@@ -45,13 +45,13 @@ class FromNameMixin:
         Construct derived subtype from `method` string and `kws`
         """
 
-        from recipes.oo import iter_subclasses
+        from recipes import iter as itr
 
         if not isinstance(method, str):
             raise TypeError('method should be a string.')
 
         allowed_names = set()
-        for sub in iter_subclasses(cls.__bases__[0]):
+        for sub in itr.subclasses(cls.__bases__[0]):
             name = sub.__name__
             if name.lower().startswith(method.lower()):
                 break
@@ -60,7 +60,7 @@ class FromNameMixin:
 
         else:
             raise ValueError(f'Unrecognized method {method!r}. Please use one'
-                             f' of the following {tuple(allowed_names)}')
+                             f' of the following {tuple(allowed_names)}.')
 
         return sub(*args, **kws)
 
