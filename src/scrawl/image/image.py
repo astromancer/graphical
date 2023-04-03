@@ -1,11 +1,9 @@
 
 # std
-import itertools as itt
 from collections import abc
 
 # third-party
 import numpy as np
-import cmasher as cmr
 import matplotlib.pyplot as plt
 import matplotlib.colorbar as cbar
 from matplotlib import cm, ticker
@@ -15,7 +13,6 @@ from mpl_toolkits.axes_grid1 import make_axes_locatable
 # local
 from recipes.pprint import describe
 from recipes.logging import LoggingMixin
-from recipes.string import remove_prefix
 from recipes.functionals import ignore_params, ignore_returns
 
 # relative
@@ -25,7 +22,7 @@ from ..utils import get_percentile_limits
 from ..moves import TrackAxesUnderMouse, mpl_connect
 from ..moves.machinery import CanvasBlitHelper, Observers
 from .hist import PixelHistogram
-from .utils import _sanitize_data, guess_figsize, set_clim_connected
+from .utils import _sanitize_data, guess_figsize
 
 
 # TODO: docstrings (when stable)
@@ -67,13 +64,6 @@ _remove = cmap_categories['Qualitative'] | {'flag', 'prism'}
 _remove |= {f'{r}_r' for r in _remove}
 SCROLL_CMAPS = ({*cm._colormaps._cmaps.keys()} - _remove)
 
-# ---------------------------------------------------------------------------- #
-
-
-def auto_grid(n):
-    x = int(np.floor(np.sqrt(n)))
-    y = int(np.ceil(n / x))
-    return x, y
 
 # ---------------------------------------------------------------------------- #
 
@@ -104,14 +94,13 @@ class ScrollAction(CanvasBlitHelper):
             self.draw(art)
 
 
-
 class CMapScroll(ScrollAction, TrackAxesUnderMouse, LoggingMixin):
     # TODO: manage timeout through CallbackManager and mpl_connect
 
     def __init__(self, cbar, cmaps=SCROLL_CMAPS, timeout=0.25, use_blit=True):
 
         self.colorbar = cbar
-        
+
         prefixes = {}
         for cmap in cmaps:
             prefix = ''
@@ -119,7 +108,7 @@ class CMapScroll(ScrollAction, TrackAxesUnderMouse, LoggingMixin):
                 prefix, cmap = cmap.split('.')
                 prefix += '.'
             prefixes[cmap] = prefix
-        
+
         self.available = sorted(prefixes.keys(), key=str.lower)
         self.prefixes = prefixes
         self._letter_index = next(zip(*self.available))
@@ -179,7 +168,7 @@ class CMapScroll(ScrollAction, TrackAxesUnderMouse, LoggingMixin):
         idx = avail.index(current) if current in avail else -1
         new = f'{avail[(idx + inc) % len(avail)]}'
         new = f'{self.prefixes[new]}{new}'
-        
+
         self.logger.info('Scrolling cmap: {} -> {}', current, new)
         self.set_cmap(new)
 
@@ -200,7 +189,7 @@ class CMapScroll(ScrollAction, TrackAxesUnderMouse, LoggingMixin):
         current = self.mappable.get_cmap().name
         if '.' in current:
             _, current = current.split('.')
-            
+
         i = self._letter_index.index(event.key)
         new = self.available[i]
         new = f'{self.prefixes[new]}{new}'
@@ -474,66 +463,73 @@ class ImageDisplay(CanvasBlitHelper, LoggingMixin):
 
     def make_sliders(self, use_blit, hist_kws=None):
         # data = self.image.get_array()
-
-        sliders = None
         cbar = self.cbar
-        if self.has_sliders:
-            clim = self.image.get_clim()
-            sliders = self.sliderClass(self.hax, clim, 'y',
-                                       color='rbg',
-                                       ms=(2, 1, 2),
-                                       extra_markers='>s<',
-                                       use_blit=use_blit)
+        sliders = self._make_sliders(use_blit, cbar) if self.has_sliders else None
+        hist = self._make_hist(use_blit, hist_kws, sliders, cbar) if self.has_hist else None
+        return sliders, hist
 
-            # lambda *_: self.set_clim(*self.sliders.positions)
-            sliders.lower.on_move.add(self.update_clim)
-            sliders.upper.on_move.add(self.update_clim)
+    def _make_hist(self, use_blit, hist_kws, sliders, cbar):
+        hist = PixelHistogram(self.hax,
+                              self.image,
+                              'horizontal',
+                              use_blit=use_blit,
+                              **(hist_kws or {}))
+        self.add_art(hist.bars)
 
-            for mv in sliders.movable.values():
-                # add sliders to animated art for blitting
-                self.add_art(mv.draw_list)
-            #     # mv.on_pick.add(self.sliders.save_background)
-                mv.on_release.add(ignore_params(sliders.save_background))
-
-            if cbar:
-                # cmap scroll blit
-                # sliders to redraw on cmap scroll
-                cbar.scroll.add_art(*(set(mv.draw_list)
-                                      for mv in sliders.movable.values()))
-                # sliders to save background on cmap scrol
-                cbar.scroll.on_scroll.add(ignore_params(sliders.save_background))
-
-                # for mv in sliders.movable.values():
-                #     # save slider positioons in cmap scroll background
-                #     mv.on_release.add(ignore_params(cbar.scroll.save_background))
-
-        hist = None
-        if self.has_hist:
-            hist = PixelHistogram(self.hax, self.image, 'horizontal',
-                                  use_blit=use_blit, **(hist_kws or {}))
-            self.add_art(hist.bars)
-
-            if sliders:
-                # set minimun slider separation 1 bin
-                sliders.min_span = np.diff(hist.bin_edges).max()
-                # add for blit
-                sliders.add_art(hist.bars)
-                # sliders.link([t.gridline for t in self.hax.xaxis.majorTicks])
+        if sliders:
+            # set minimun slider separation 1 bin
+            sliders.min_span = np.diff(hist.bin_edges).max()
+            # add for blit
+            sliders.add_art(hist.bars)
+            # sliders.link([t.gridline for t in self.hax.xaxis.majorTicks])
 
             # cmap scroll blit
-            cbar.scroll.mappables.add(hist)  # will call hist.set_cmap on scroll
-            cbar.scroll.add_art(hist.bars)
+        cbar.scroll.mappables.add(hist)
+        cbar.scroll.add_art(hist.bars)
 
-            # set ylim if reasonable to do so
-            # if data.ptp():
-            #     # avoid warnings in setting upper/lower limits identical
-            #     hax.set_ylim((data.min(), data.max()))
+        # set ylim if reasonable to do so
+        # if data.ptp():
+        #     # avoid warnings in setting upper/lower limits identical
+        #     hax.set_ylim((data.min(), data.max()))
 
-            # FIXME: will have to change with different orientation
-            self.hax.yaxis.tick_right()
-            self.hax.grid(True)
+        # FIXME: will have to change with different orientation
+        self.hax.yaxis.tick_right()
+        self.hax.grid(True)
 
-        return sliders, hist
+        return hist
+
+    def _make_sliders(self, use_blit, cbar):
+        clim = self.image.get_clim()
+        slide = self.sliderClass(self.hax,
+                                 clim,
+                                 'y',
+                                 color='rbg',
+                                 ms=(2, 1, 2),
+                                 extra_markers='>s<',
+                                 use_blit=use_blit)
+
+        # lambda *_: self.set_clim(*self.sliders.positions)
+        slide.lower.on_move.add(self.update_clim)
+        slide.upper.on_move.add(self.update_clim)
+
+        for mv in slide.movable.values():
+            # add sliders to animated art for blitting
+            self.add_art(mv.draw_list)
+            #     # mv.on_pick.add(self.sliders.save_background)
+            mv.on_release.add(ignore_params(slide.save_background))
+
+        if cbar:
+            # cmap scroll blit
+            # sliders to redraw on cmap scroll
+            cbar.scroll.add_art(*(set(mv.draw_list) for mv in slide.movable.values()))
+            # sliders to save background on cmap scrol
+            cbar.scroll.on_scroll.add(ignore_params(slide.save_background))
+
+            # for mv in sliders.movable.values():
+            #     # save slider positioons in cmap scroll background
+            #     mv.on_release.add(ignore_params(cbar.scroll.save_background))
+
+        return slide
 
     def set_cmap(self, cmap):
         self.image.set_cmap(cmap)
@@ -626,8 +622,8 @@ class ImageDisplay(CanvasBlitHelper, LoggingMixin):
             return 'no image'
 
         # xy repr
-        xs = f'x={x:1.{precision:d}f}'
-        ys = f'y={y:1.{precision:d}f}'
+        xs = f'{x:=1.{precision:d}f}'
+        ys = f'{y:=1.{precision:d}f}'
         # z
         col, row = int(x + 0.5), int(y + 0.5)
         nrows, ncols = self.ishape
@@ -636,10 +632,10 @@ class ImageDisplay(CanvasBlitHelper, LoggingMixin):
             z = data[row, col]
             # handle masked data
             # prevent Warning: converting a masked element to nan.
-            zs = f'z={masked_str}' if np.ma.is_masked(z) else f'z={z:1.{precision:d}f}'
-            return ',\t'.join((xs, ys, zs)).expandtabs()
-        else:
-            return ', '.join((xs, ys))
+            zs = f'z={masked_str}' if np.ma.is_masked(z) else f'{z=:1.{precision:d}f}'
+            return ',    '.join((xs, ys, zs))
+
+        return ', '.join((xs, ys))
 
     def connect(self):
         super().connect()
@@ -697,19 +693,19 @@ class Image3D:
         # im.cax.yaxis.set_tick_params(length=0)
         # im.cax.yaxis.major.formatter = ticker.NullFormatter()
 
-        self.bar3d = bar3d = Bar3D(self.ax3, x, y, image, cmap=cmap,
-                                   **{**dict(zaxis_cbar=True),
-                                      **(bar3d_kws or {})})
+        self.bars = bars = Bar3D(self.ax3, x, y, image, cmap=cmap,
+                                 **{**dict(zaxis_cbar=True),
+                                    **(bar3d_kws or {})})
 
         # Cmap scroll callbacks
         scroll = im.cbar.scroll
-        for art in (bar3d.bars, bar3d.cbar.line):
+        for art in (bars.bars, bars.cbar.line):
             scroll.add_art(art)
             scroll.on_scroll.add(ignore_returns(ignore_params(art.do_3d_projection)))
 
         # save background after 3d rotation
         # FIXME: this slows down the rotation interaction significantly
-        self.bar3d.on_rotate.add(ignore_params(scroll.save_background))
+        self.bars.on_rotate.add(ignore_params(scroll.save_background))
 
     def set_cmap(self, cmap):
         # change cmap for all mappables
@@ -723,7 +719,7 @@ class Image3D:
             clim = self.image.clim_from_data(image)
             self.image.set_clim(*clim)
 
-        self.bar3d.set_z(image, clim)
+        self.bars.set_z(image, clim)
 
     def setup_figure(self, fig=None):
         if fig is None:
@@ -744,221 +740,3 @@ class Image3D:
         ax3.set(facecolor='none')  # xlabel='$x$', ylabel='$y$'
 
         return fig, (axi, ax3)
-
-# ---------------------------------------------------------------------------- #
-
-
-def plot_image_grid(images, layout=(), titles=(), title_kws=None, figsize=None,
-                    plims=None, clim_all=False, **kws):
-    """
-
-    Parameters
-    ----------
-    images
-    layout
-    titles
-    clim_all:
-        Compute colour limits from the full set of pixel values for all
-        images.  Choose this if your images are all normalised to roughly the
-        same scale. If False clims will be computed individually and the
-        colourbar sliders will be disabled.
-
-    Returns
-    -------
-
-    """
-
-    # TODO: plot individual histograms - clim_each
-    # todo: guess fig size
-
-    n = len(images)
-    assert n, 'No images to plot!'
-    # assert clim_mode in ('all', 'row')
-
-    # get grid layout
-    if not layout:
-        layout = auto_grid(n)
-    n_rows, n_cols = layout
-    if n_rows == -1:
-        n_rows = int(np.ceil(n / n_cols))
-    if n_cols == -1:
-        n_cols = int(np.ceil(n / n_rows))
-
-    # create figure
-    fig = plt.figure(figsize=figsize)
-
-    # ticks
-    tick_par = dict(color='w', direction='in',
-                    bottom=1, top=1, left=1, right=1)
-
-    # Use gridspec rather than ImageGrid since the latter tends to resize
-    # the axes
-    if clim_all:
-        cbar_size, hist_size = 3, 5
-    else:
-        cbar_size = hist_size = 0
-
-    gs = GridSpec(n_rows, n_cols * (100 + cbar_size + hist_size),
-                  hspace=0.005,
-                  wspace=0.005,
-                  left=0.03,  # fixme: need more for ticks
-                  right=0.97,
-                  bottom=0.03,
-                  top=0.98
-                  )  # todo: maybe better with tight layout.
-
-    # create colourbar and pixel histogram axes
-
-    #
-    kws = {**dict(origin='lower',
-                  cbar=False, sliders=False, hist=False,
-                  clim=not clim_all,
-                  plims=plims),
-           **kws}
-    title_kws = {**dict(color='w',
-                        va='top',
-                        fontweight='bold'),
-                 **(title_kws or {})}
-
-    art = []
-    w = len(str(n))
-    axes = np.empty((n_rows, n_cols), 'O')
-    indices = enumerate(np.ndindex(n_rows, n_cols))
-    for (i, (j, k)), title in itt.zip_longest(indices, titles, fillvalue=''):
-        if i == n:
-            break
-
-        # last
-        if (i == n - 1) and clim_all:
-            # do colourbar + pixel histogram if clim all
-            kws.update(cbar=True, sliders=True, hist=True,
-                       cax=fig.add_subplot(
-                           gs[:, -(cbar_size + hist_size) * n_cols:]),
-                       hax=fig.add_subplot(gs[:, -hist_size * n_cols:]))
-
-        # create axes!
-        axes[j, k] = ax = fig.add_subplot(
-            gs[j:j + 1, (100 * k):(100 * (k + 1))])
-
-        # plot image
-        imd = ImageDisplay(images[i], ax=ax, **kws)
-        art.append(imd.image)
-
-        # do ticks
-        top = (j == 0)
-        bot = (j == n_rows - 1)
-        left = (k == 0)  # leftmost
-        # right = (j == n_cols - 1)
-
-        # set the ticks to white and visible on all spines for aesthetic
-        ax.tick_params('both', **{**dict(labelbottom=bot, labeltop=top,
-                                         labelleft=left, labelright=0),
-                                  **tick_par})
-
-        for lbl, spine in ax.spines.items():
-            spine.set_color('w')
-
-        # add title text
-        title = title.replace("\n", "\n     ")
-        ax.text(0.025, 0.95, f'{i: <{w}}: {title}',
-                transform=ax.transAxes, **title_kws)
-
-    # Do colorbar
-    # fig.colorbar(imd.image, cax)
-    img = ImageGrid(fig, axes, imd)
-    if clim_all:
-        img._clim_all(images, plims)
-
-    return img
-
-
-class ImageGrid:
-    def __init__(self, fig, axes, imd):
-        self.figure = fig
-        self.axes = axes
-        self.imd = imd
-
-    def __iter__(self):
-        yield from (self.figure, self.axes, self.imd)
-
-    def save(self, filenames):
-        from matplotlib.transforms import Bbox
-
-        fig = self.figure
-
-        assert len(filenames) == self.axes.size
-
-        ax_per_image = (len(fig.axes) // self.axes.size)
-        # axit = mit.chunked(self.figure.axes, ax_per_image)
-
-        for ax, name in zip(self.axes.ravel(), filenames):
-            # mn, mx = (np.inf, np.inf), (0, 0)
-            # for ax in axes[::-1]:
-            #     # Save just the portion _inside_ the second axis's boundaries
-            #     mn1, mx1 = ax.get_window_extent().transformed(
-            #         fig.dpi_scale_trans.inverted()).get_points()
-            #     mn = np.min((mn, mn1), 0)
-            #     mx = np.max((mx, mx1), 0)
-
-            #     ticklabels = ax.xaxis.get_ticklabels() + ax.yaxis.get_ticklabels()
-            #     for txt in ticklabels:
-            #         mn1, mx1 = txt.get_window_extent().transformed(
-            #         fig.dpi_scale_trans.inverted()).get_points()
-            #         mn = np.min((mn, mn1), 0)
-            #         mx = np.max((mx, mx1), 0)
-
-            # remove ticks
-            # ax.set_axis_off()
-            if len(ax.texts):
-                ax.texts[0].set_visible(False)
-
-            # Pad the saved area by 10% in the x-direction and 20% in the y-direction
-            fig.savefig(name, bbox_inches=ax.get_window_extent().transformed(
-                fig.dpi_scale_trans.inverted()).expanded(1.2, 1))
-
-    @property
-    def images(self):
-        return [ax.images[0].get_array() for ax in self.figure.axes]
-
-    def _clim_all(self, art, imd, images, plims):
-        # connect all image clims to the sliders.
-        for image in art:
-            # noinspection PyUnboundLocalVariable
-            imd.sliders.lower.on_move.add(set_clim_connected, image,
-                                          imd.sliders)
-            imd.sliders.upper.on_move.add(set_clim_connected, image,
-                                          imd.sliders)
-
-        # The same as above can be accomplished in pure matplolib as follows:
-        # https://matplotlib.org/3.1.1/gallery/images_contours_and_fields/multi_image.html
-        # Make images respond to changes in the norm of other images (e.g. via
-        # the "edit axis, curves and images parameters" GUI on Qt), but be
-        # careful not to recurse infinitely!
-        # def update(changed_image):
-        #     for im in art:
-        #         if (changed_image.get_cmap() != im.get_cmap()
-        #                 or changed_image.get_clim() != im.get_clim()):
-        #             im.set_cmap(changed_image.get_cmap())
-        #             im.set_clim(changed_image.get_clim())
-        #
-        # for im in art:
-        #     im.callbacksSM.connect('changed', update)
-
-        # update clim for all plots
-
-        # for the general case where images are non-uniform shape, we have to
-        # flatten them all to get the colour percentile values.
-        # TODO: will be more efficient for large number of images to sample
-        #  evenly from each image
-        pixels = []
-        for im in images:
-            # getattr(im, ('ravel', 'compressed')[np.ma.isMA(im)])()
-            pixels.extend(im.compressed() if np.ma.isMA(im) else im.ravel())
-        pixels = np.array(pixels)
-
-        clim = self.imd.clim_from_data(pixels, plims=plims)
-        self.imd.sliders.set_positions(clim, draw_on=False)  # no canvas yet!
-
-        # Update histogram with data from all images
-        self.imd.histogram.set_array(pixels)
-        self.imd.histogram.autoscale_view()
