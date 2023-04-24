@@ -204,6 +204,7 @@ class CMapScroll(ScrollAction, TrackAxesUnderMouse, LoggingMixin):
 
 
 class ImageDisplay(CanvasBlitHelper, LoggingMixin):
+
     # TODO: move cursor with arrow keys when hovering over figure (like ds9)
     # TODO: optional zoomed image window
 
@@ -245,6 +246,7 @@ class ImageDisplay(CanvasBlitHelper, LoggingMixin):
 
         # set origin
         kws.setdefault('origin', 'lower')
+        kws.setdefault('interpolation', 'none')
 
         self.has_cbar = bool(cbar)
         self.has_hist = bool(hist)
@@ -252,18 +254,7 @@ class ImageDisplay(CanvasBlitHelper, LoggingMixin):
 
         hist = (self._default_hist_kws if hist is True else dict(hist)) if hist else {}
 
-        # check data
-        image = np.ma.asarray(image).squeeze()  # remove redundant dimensions
-        if image.ndim != 2:
-            msg = f'{describe(type(self))} cannot display {image.ndim}D data.'
-            if image.ndim == 3:
-                msg += ('Use the `VideoDisplay` class to display 3D data as '
-                        'scrollable video.')
-            raise ValueError(msg)
-
-        # convert boolean to integer (for colour scale algorithm)
-        if image.dtype.name == 'bool':
-            image = image.astype(int)
+        image = self._resolve_image(image)
 
         self.data = image
         self.ishape = self.data.shape
@@ -322,6 +313,23 @@ class ImageDisplay(CanvasBlitHelper, LoggingMixin):
     def __iter__(self):
         yield self.figure
         yield self.ax
+
+    def _resolve_image(self, image):
+        # check data
+        image = np.ma.asarray(image)   # try remove redundant dimensions
+        if (nd := image.ndim) != 2 and (image := image.squeeze()).ndim != 2:
+            msg = f'{describe(type(self))} cannot display {nd}D data.'
+            if image.ndim == 3:
+                msg += ('Use the `VideoDisplay` class to display 3D data as'
+                        ' scrollable video.')
+
+            raise ValueError(msg)
+
+        # convert boolean to integer (for colour scale algorithm)
+        if image.dtype.name == 'bool':
+            image = image.astype(int)
+
+        return image
 
     # def set_canvas(self, canvas):
     #     super().set_canvas(canvas)
