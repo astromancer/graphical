@@ -1,0 +1,12 @@
+
+scatter:
+    bins:           50
+    max_points:     500
+    min_count:      3
+    tessellation:   hex
+    cmap:           null
+    alpha:          0.75
+
+    style:
+        marker:     x
+        ls:         ''
