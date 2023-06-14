@@ -1,0 +1,175 @@
+
+# std
+import itertools as itt
+import functools as ftl
+# third-party
+import pytest
+import numpy as np
+import matplotlib.pyplot as plt
+from matplotlib.colors import CSS4_COLORS
+from scipy.stats import multivariate_normal
+
+# local
+from scrawl.depth.prisms3d import Bar3DCollection, HexBar3DCollection, hexbin
+
+
+# from mpl_toolkits.mplot3d.art3d import Bar3DCollection
+
+
+# ---------------------------------------------------------------------------- #
+# helper functions
+
+def get_gaussian_bars(mu=(0, 0),
+                      sigma=([0.8,  0.3],
+                             [0.3,  0.5]),
+                      range=(-3, 3),
+                      res=2 ** 3,
+                      seed=123):
+    np.random.seed(seed)
+    rv = multivariate_normal(mu, np.array(sigma))
+    sl = slice(*range, complex(res))
+    xy = np.array(np.mgrid[sl, sl][::-1])
+    z = rv.pdf(xy.transpose(1, 2, 0)).T
+
+    return *xy, z
+
+
+def get_gaussian_hexs(mu=(0, 0),
+                      sigma=([0.8,  0.3],
+                             [0.3,  0.5]),
+                      n=10_000,
+                      res=8,
+                      seed=123):
+    np.random.seed(seed)
+    rv = multivariate_normal(mu, np.array(sigma))
+    xyz, dxy = hexbin(*rv.rvs(n).T, gridsize=res)
+    return *xyz, np.array(dxy) * 0.9
+
+
+data_generators = {
+    Bar3DCollection: get_gaussian_bars,
+    HexBar3DCollection: get_gaussian_hexs
+}
+
+
+# ---------------------------------------------------------------------------- #
+# fixtures
+
+@pytest.fixture(params=(Bar3DCollection, HexBar3DCollection))
+def bar3d_class(request):
+    return request.param
+
+
+# ---------------------------------------------------------------------------- #
+# tests
+
+@pytest.mark.mpl_image_compare(baseline_dir='images', style='default')
+def test_bar3d_1d_data(bar3d_class):
+    fig, ax = plt.subplots(subplot_kw={'projection': '3d'})
+    _plot_bar3d(ax, bar3d_class, 0, 0, 1, ec='0.5', lw=0.5)
+    return fig
+
+
+@pytest.mark.mpl_image_compare(baseline_dir='images', style='default')
+def test_bar3d_zsort(bar3d_class):
+
+    fig, axes = plt.subplots(2, 4, subplot_kw={'projection': '3d'})
+    elev = 45
+    azim0, astep = -22.5, 45
+    camera = itt.product(np.r_[azim0:(180 + azim0):astep], (elev, -elev))
+    # sourcery skip: no-loop-in-tests
+    for ax, (azim, elev) in zip(axes.T.ravel(), camera):
+        _plot_bar3d(ax, bar3d_class,
+                    [0, 1], [0, 1], [1, 2],
+                    azim=azim, elev=elev,
+                    ec='0.5', lw=0.5)
+
+    return fig
+
+
+@pytest.mark.mpl_image_compare(baseline_dir='images', style='default')
+def test_bar3d_with_2d_data(bar3d_class):
+    fig, ax = plt.subplots(subplot_kw={'projection': '3d'})
+    _plot_bar3d(ax, bar3d_class, *data_generators[bar3d_class](),
+                ec='0.5', lw=0.5)
+    return fig
+
+
+@pytest.mark.parametrize('shade', (0, 1))
+@pytest.mark.mpl_image_compare(baseline_dir='images', style='default')
+def test_bar3d_colors(bar3d_class, shade):
+    fig, ax = plt.subplots(subplot_kw={'projection': '3d'})
+
+    xyz = data_generators[bar3d_class]()
+    bars = _plot_bar3d(ax, bar3d_class, *xyz,
+                       facecolors=list(CSS4_COLORS)[:xyz[0].size],
+                       edgecolors='0.5', lw=0.5,
+                       shade=shade)
+    return fig
+
+
+@pytest.mark.parametrize('shade', (0, 1))
+@pytest.mark.mpl_image_compare(baseline_dir='images', style='default')
+def test_bar3d_cmap(bar3d_class, shade):
+    fig, ax = plt.subplots(subplot_kw={'projection': '3d'})
+
+    xyz = data_generators[bar3d_class]()
+    bars = _plot_bar3d(ax, bar3d_class, *xyz,
+                       cmap='viridis',
+                       shade=shade,
+                       edgecolors='0.5', lw=0.5)
+    return fig
+
+
+def _plot_bar3d(ax, kls, x, y, z, dxy='0.8', azim=None, elev=None, **kws):
+
+    # print(list(map(np.shape, (x,y,z))))
+
+    bars = kls(x, y, z, dxy=dxy, **kws)
+    ax.add_collection(bars)
+
+    viewlim = np.array([(np.min(x), np.max(np.add(x, bars.dx))),
+                        (np.min(y), np.max(np.add(y, bars.dy))),
+                        (min(bars.z0, np.min(z)), np.max(z))])
+
+    if kls is HexBar3DCollection:
+        viewlim[:2, 0] = viewlim[:2, 0] - np.array([bars.dx / 2, bars.dy / 2]).T
+
+    ax.auto_scale_xyz(*viewlim, False)
+    # ax.set(xlabel='x', ylabel='y', zlabel='z')
+
+    if azim:
+        ax.azim = azim
+    if elev:
+        ax.elev = elev
+
+    return bars
+
+
+# _test_bar3d_with_2d_data(Bar3DCollection)
+
+# plt.show()
+
+
+# def test_hex3d():
+
+#     color = 'darkslategrey'
+#     # rv = multivariate_normal((0, 0),
+#     #                         [[0.8,  0.3],
+#     #                         [0.3,  0.5]])
+#     # n = 10_000
+#     # xyz = hexbin(*rv.rvs(n).T)
+#     # dx = dy = 0.8
+
+
+# if __name__ == '__main__':
+#     bars = test_hex3d_basic()
+#     plt.show()
+
+
+# if __name__ == '__main__':
+#     # [0, 1], [0, 1], [1, 2]
+#     test_bar3d([0, 1], [0, 1], [1, 2])
+
+#     # test_bar3d()
+#     plt.show()
