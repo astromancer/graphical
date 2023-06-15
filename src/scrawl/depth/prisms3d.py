@@ -23,7 +23,6 @@ from recipes.utils import duplicate_if_scalar
 from ..moves.machinery import CanvasBlitHelper, Observers
 from . import camera
 from .zaxis_cbar import ZAxisCbar
-from .bar3d import Bar3DCollection
 
 
 # ---------------------------------------------------------------------------- #
@@ -34,22 +33,8 @@ CLASSIC_LIGHTSOURCE = LightSource(azdeg=225, altdeg=19.4712)
 # All faces are oriented facing outwards - when viewed from the
 # outside, their vertices are in a counterclockwise ordering.
 # shape (6, 4, 3)
-# panel order:   +x, +y, -x, -y, -z, +z
+# panel order:  -x, -y, +x, +y, -z, +z
 CUBOID = np.array([
-    # +x
-    (
-        (1, 0, 0),
-        (1, 1, 0),
-        (1, 1, 1),
-        (1, 0, 1),
-    ),
-    # +y
-    (
-        (0, 1, 0),
-        (0, 1, 1),
-        (1, 1, 1),
-        (1, 1, 0),
-    ),
     # -x
     (
         (0, 0, 0),
@@ -63,6 +48,20 @@ CUBOID = np.array([
         (1, 0, 0),
         (1, 0, 1),
         (0, 0, 1),
+    ),
+    # +x
+    (
+        (1, 0, 0),
+        (1, 1, 0),
+        (1, 1, 1),
+        (1, 0, 1),
+    ),
+    # +y
+    (
+        (0, 1, 0),
+        (0, 1, 1),
+        (1, 1, 1),
+        (1, 1, 0),
     ),
     # -z
     (
@@ -466,7 +465,7 @@ class Bar3DCollection(Poly3DCollection):
                 cface[:, -1] = self._original_alpha
 
         if len(cface) != n:
-            raise ValueError('bleh!')
+            raise ValueError
             # cface = cface.repeat(n, axis=0)
 
         if len(cedge) != n:
@@ -479,8 +478,9 @@ class Bar3DCollection(Poly3DCollection):
         zorder = camera.distance(self.axes, *self.xy)
         zorder = (zorder - zorder.min()) / (zorder.ptp() or 1)
         zorder = zorder.ravel() * len(zorder)
-        panel_order = get_face_zorder(self.axes, self._original_alpha == 1)
-        return (zorder[..., None] + panel_order).ravel()
+        face_zorder = get_prism_face_zorder(self.axes, self._original_alpha == 1, 
+                                            self._n_faces - 2)
+        return (zorder[..., None] + face_zorder).ravel()
 
 
 class HexBar3DCollection(Bar3DCollection):
@@ -523,85 +523,30 @@ class HexBar3DCollection(Bar3DCollection):
             verts.extend([*s, b, t])
         return verts
 
-    def _compute_zorder(self):
-        # sort by depth (furthest drawn first)
-        zorder = camera.distance(self.axes, *self.xy)
-        zorder = (zorder - zorder.min()) / (zorder.ptp() or 1)
-        zorder = zorder.ravel() * len(zorder)
-        panel_order = get_face_zorder(self.axes, self._original_alpha == 1)
-        return (zorder[..., None] + panel_order).ravel()
-
 
 # ---------------------------------------------------------------------------- #
 
-def _get_prism_face_index_for_camera_position(ax, nfaces):
-    # 
-    angle = 360 / nfaces
-    zero = -angle / 2
-    
-    flip = (np.abs(ax.elev) % 180 > 90)
-    return (((ax.azim - zero + 180 * flip) % 360) / angle) % nfaces
 
-
-def get_face_zorder(ax, mask_occluded=True, nfaces=4):
+def get_prism_face_zorder(ax, mask_occluded=True, nfaces=4):
     # compute panel sequence based on camera position
-    
-    sector = _get_prism_face_index_for_camera_position(ax, nfaces)
-    first = int(sector)
 
-    second = (first + (-1, 1)[int((sector - first) > 0.5)]) % nfaces
-    # third = (first + nfaces - 1) % nfaces
-    # if (sector - first) < 0.5:
-    #     second, third = third, second
-
+    # these index positions are determined by the order of the faces returned
+    # by `_compute_verts`
     base, top = nfaces, nfaces + 1
     if ax.elev < 0:
         base, top = top, base
 
-    # get indices for panels in plot order
-    sequence = [top, first, second]
-    sequence = [*sequence, *np.setdiff1d(np.arange(nfaces), sequence), base]
-
-    # reverse the panel sequence if elevation has flipped the axes by 180 multiple
-    if np.abs(ax.elev) % 360 > 180:
-        sequence = sequence[::-1]
-
-    # normalize zorder to < 1
-    zorder = np.argsort(sequence) / len(sequence)
-
-    if mask_occluded:
-        # NOTE: we don't need to draw back 4 panels since they are behind others
-        zorder[zorder > 0.5] = np.nan
-
-    #
-    # names = ['+x', '+y',  '-x', '-y', '-z', '+z']
-    # print('',
-    #       f'Panel draw sequence ({ax.azim = :}, {ax.elev = :}):',
-    #       f'{sector = :}',
-    #       f'{sequence = :}',
-    #       f'names = {list(np.take(names, sequence))}',
-    #       f'zorder = {pformat(dict(zip(names, zorder)))}',
-    #       sep='\n'
-    #       )
-
-    return zorder
-
-
-def get_face_zorder(ax, mask_occluded=True, nfaces=6):
-    # compute panel sequence based on camera position
-    
-    sector = _get_prism_face_index_for_camera_position(ax, nfaces)
+    # this is to figure out which of the vertical faces to draw firstChild()
+    angle = 360 / nfaces
+    zero = -angle / 2
+    flip = (np.abs(ax.elev) % 180 > 90)
+    sector = (((ax.azim - zero + 180 * flip) % 360) / angle) % nfaces
     first = int(sector)
 
     second = (first + 1) % nfaces
     third = (first + nfaces - 1) % nfaces
-
-    # if (sector - first) < 0.5:
-    #     second, third = third, second
-
-    base, top = nfaces, nfaces + 1
-    if ax.elev < 0:
-        base, top = top, base
+    if (sector - first) < 0.5:
+        second, third = third, second
 
     # get indices for panels in plot order
     sequence = [base, first, second, third]
@@ -615,10 +560,12 @@ def get_face_zorder(ax, mask_occluded=True, nfaces=6):
     zorder = np.argsort(sequence) / len(sequence)
 
     if mask_occluded:
-        # NOTE: we don't need to draw back panels since they are behind others
+        #  we don't need to draw back panels since they are behind others
         zorder[zorder < 0.5] = np.nan
+    #
+    # names = {4: ['+x', '+y',  '-x', '-y', '-z', '+z'],
+    #          6: ['W', 'SW', 'SE', 'E', 'NE', 'NW', 'BASE', 'TOP']}
 
-    # names = ['W', 'SW', 'SE', 'E', 'NE', 'NW', 'BASE', 'TOP']
     # print('',
     #       f'Panel draw sequence ({ax.azim = :}, {ax.elev = :}):',
     #       f'{sector = :}',
@@ -633,6 +580,8 @@ def get_face_zorder(ax, mask_occluded=True, nfaces=6):
 
 
 # ---------------------------------------------------------------------------- #
+
+
 class Bar3D(CanvasBlitHelper):  # Bar3DGrid
     """
     3D bar plot that renders correctly for different viewing angles.

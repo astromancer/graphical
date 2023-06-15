@@ -90,3 +90,4 @@ lib/z.lib
 .ipynb_checkpoints/
 
 src/scrawl/moves/core.py
+tests/results/
