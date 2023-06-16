@@ -16,7 +16,6 @@ from mpl_toolkits.mplot3d.art3d import (Poly3DCollection, PolyCollection,
                                         _generate_normals, _shade_colors)
 
 # local
-from recipes.array import fold
 from recipes.utils import duplicate_if_scalar
 
 # relative
@@ -81,6 +80,8 @@ CUBOID = np.array([
 ])
 
 
+# Base hexagon for creating prisms (HexBar3DCollection).
+# sides are ordered anti-clockwise from left: ['W', 'SW', 'SE', 'E', 'NE', 'NW']
 # autopep8: off
 HEXAGON = np.array([
     [-2,  1],
@@ -95,9 +96,13 @@ HEXAGON = np.array([
 
 # ---------------------------------------------------------------------------- #
 
+
 def hexbin(x, y, C=None, gridsize=100,
-           xscale='linear', yscale='linear',  extent=None,
+           xscale='linear', yscale='linear', extent=None,
            reduce_C_function=np.mean, mincnt=None):
+    """
+    Function to support histogramming over hexagonal tesselations.
+    """
 
     # Set the size of the hexagon grid
     if np.iterable(gridsize):
@@ -105,9 +110,6 @@ def hexbin(x, y, C=None, gridsize=100,
     else:
         nx = gridsize
         ny = int(nx / math.sqrt(3))
-    # Count the number of data in each hexagon
-    x = np.asarray(x, float)
-    y = np.asarray(y, float)
 
     # Will be log()'d if necessary, and then rescaled.
     tx = x
@@ -169,7 +171,7 @@ def hexbin(x, y, C=None, gridsize=100,
         accum = np.concatenate([counts1, counts2]).astype(float)
         if mincnt is not None:
             accum[accum < mincnt] = np.nan
-        C = np.ones(len(x))
+
     else:
         # store the C values in a list per hexagon index
         Cs_at_i1 = [[] for _ in range(1 + nx1 * ny1)]
@@ -182,9 +184,9 @@ def hexbin(x, y, C=None, gridsize=100,
         if mincnt is None:
             mincnt = 0
         accum = np.array(
-            [reduce_C_function(acc) if len(acc) > mincnt else np.nan
-             for Cs_at_i in [Cs_at_i1, Cs_at_i2]
-             for acc in Cs_at_i[1:]],  # [1:] drops out-of-range points.
+            [reduce_C_function(acc) if len(acc) >= mincnt else np.nan
+                for Cs_at_i in [Cs_at_i1, Cs_at_i2]
+                for acc in Cs_at_i[1:]],  # [1:] drops out-of-range points.
             float)
 
     good_idxs = ~np.isnan(accum)
@@ -202,7 +204,7 @@ def hexbin(x, y, C=None, gridsize=100,
     offsets = offsets[good_idxs, :]
     accum = accum[good_idxs]
 
-    return (*offsets.T, accum), (sx, sy / np.sqrt(3))
+    return (*offsets.T, accum), (xmin, xmax), (ymin, ymax), (nx, ny)
 
 
 # ---------------------------------------------------------------------------- #
@@ -218,27 +220,14 @@ def not_none(*args):
         yield not t
 
 
-def _get_data_step(x, axis=0):
-
-    # deal with singular dimension (this ignores axis param)
-    if x.ndim == 1:
-        if d := next(filter(None, map(np.diff, mit.pairwise(x))), None):
-            return d
-
-    if x.shape[axis % x.ndim] == 1:
-        return 1
-
-    key = [0] * x.ndim
-    key[axis] = np.s_[:2]
-    return np.diff(x[tuple(key)]).item()
-
 # ---------------------------------------------------------------------------- #
 
 
 class Bar3DCollection(Poly3DCollection):
     """
-    Bars with constant square cross section, bases located on z-plane at *z0*,
-    aranged in a regular grid at *x*, *y* locations and height *z - z0*.
+    Bars (rectangular prisms) with constant square cross section, bases located
+    on z-plane at *z0*, arranged in a regular grid at *x*, *y* locations and
+    with height *z - z0*.
     """
 
     _n_faces = 6
@@ -273,23 +262,22 @@ class Bar3DCollection(Poly3DCollection):
         self._lightsource = lightsource
 
         COLOR_KWS = {'color', 'facecolor', 'facecolors'}
-        if not (no_cmap := (cmap is None)) and (ckw := COLOR_KWS.intersection(kws)):
-            warnings.warn(f'Ignoring cmap since {ckw!r} provided.')
-            kws.pop('cmap', None)
+        if cmap is not None:
+            if (ckw := COLOR_KWS.intersection(kws)):
+                warnings.warn(f'Ignoring cmap since {ckw!r} provided.')
+            else:
+                kws.update(cmap=cmap)
 
         # init Poly3DCollection
         #                               rectangle side panel vertices
         Poly3DCollection.__init__(self, self._compute_verts(), **kws)
 
-        if not no_cmap:
+        if cmap:
             self.set_array(self.z.ravel())
 
     def _resolve_dx_dy(self, dxy):
 
         d = list(duplicate_if_scalar(dxy))
-
-        # if self._xyz.ndim < 3:
-        #     return np.array(d).astype(float)
 
         for i, xy in enumerate(self.xy):
             # if dxy a number -> use it directly else if str,
@@ -298,13 +286,6 @@ class Bar3DCollection(Poly3DCollection):
             # -2/-1)
             data_step = _get_data_step(xy, -i - 1) if isinstance(d[i], str) else 1
             d[i] = float(d[i]) * data_step
-
-            # warnings.warning(
-            #     'Singular axis in array position {i}. Cannot determine '
-            #     'data step, assuming data step is 1. Ensure you provide'
-            #     ' a real number value for parameter `dxy` to avoid this '
-            #     'warning.')
-            # else:
 
         dx, dy = d
         assert (dx != 0)
@@ -478,7 +459,8 @@ class Bar3DCollection(Poly3DCollection):
         zorder = camera.distance(self.axes, *self.xy)
         zorder = (zorder - zorder.min()) / (zorder.ptp() or 1)
         zorder = zorder.ravel() * len(zorder)
-        face_zorder = get_prism_face_zorder(self.axes, self._original_alpha == 1, 
+        face_zorder = get_prism_face_zorder(self.axes,
+                                            self._original_alpha == 1,
                                             self._n_faces - 2)
         return (zorder[..., None] + face_zorder).ravel()
 
@@ -492,39 +474,55 @@ class HexBar3DCollection(Bar3DCollection):
 
     def _compute_verts(self):
 
+        # scale the base hexagon
         hexagon = np.array([self.dx, self.dy]).T * HEXAGON
-        xy_pairs = fold.fold(hexagon, 2, 1, pad='wrap')
-        xy = xy_pairs[np.newaxis] + self.xy[:, None, None].T  # (n,6,2,2)
+        xy_pairs = np.moveaxis([hexagon, np.roll(hexagon, -1, 0)], 0, 1)
+        xy_sides = xy_pairs[np.newaxis] + self.xy[:, None, None].T  # (n,6,2,2)
 
-        # sides (rectangles)
-        # Array of vertices of the panels composing the cylinceder moving counter
-        # clockwise when looking from above starting at West facing panel.
+        # sides (rectangle faces)
+        # Array of vertices of the faces composing the prism moving counter
+        # clockwise when looking from above starting at west (-x) facing panel.
         # Vertex sequence is counter-clockwise when viewed from outside.
-        # shape: (n, [...], 6, 4, 3) indexed by [bar, face,
-        # vertex, axis]
+        # shape:     (n, [...], 6,    4,      3)
+        # indexed by [bars...,  face, vertex, axis]
         data_shape = np.shape(self.z)
         shape = (*data_shape, 6, 2, 1)
         z0 = np.full(shape, self.z0)
         z1 = self.z0 + (self.z * np.ones(shape[::-1])).T
         sides = np.concatenate(
-            [np.concatenate([xy, z0], -1),
-             np.concatenate([xy, z1], -1)[..., ::-1, :]],
+            [np.concatenate([xy_sides, z0], -1),
+             np.concatenate([xy_sides, z1], -1)[..., ::-1, :]],
             axis=-2)  # (n, [...], 6, 4, 3)
 
         # endcaps (hexagons) # (n, [...], 6, 3)
-        xy = (self.xy[..., None] + hexagon.T[:, None])
+        xy_ends = (self.xy[..., None] + hexagon.T[:, None])
         z0 = self.z0 * np.ones((1, *data_shape, 6))
-        base = np.moveaxis(np.vstack([xy, z0]), 0, -1)
-        top = np.moveaxis(np.vstack([xy, z0 + self.z[None, ..., None]]), 0, -1)
+        z1 = z0 + self.z[None, ..., None]
+        base = np.moveaxis(np.vstack([xy_ends, z0]), 0, -1)
+        top = np.moveaxis(np.vstack([xy_ends, z1]), 0, -1)
 
         # get list of arrays of polygon vertices
         verts = []
         for s, b, t in zip(sides, base, top):
             verts.extend([*s, b, t])
+
         return verts
 
 
 # ---------------------------------------------------------------------------- #
+def _get_data_step(x, axis=0):
+
+    # deal with singular dimension (this ignores axis param)
+    if x.ndim == 1:
+        if d := next(filter(None, map(np.diff, mit.pairwise(x))), None):
+            return d
+
+    if x.shape[axis % x.ndim] == 1:
+        return 1
+
+    key = [0] * x.ndim
+    key[axis] = np.s_[:2]
+    return np.diff(x[tuple(key)]).item()
 
 
 def get_prism_face_zorder(ax, mask_occluded=True, nfaces=4):
@@ -541,8 +539,9 @@ def get_prism_face_zorder(ax, mask_occluded=True, nfaces=4):
     zero = -angle / 2
     flip = (np.abs(ax.elev) % 180 > 90)
     sector = (((ax.azim - zero + 180 * flip) % 360) / angle) % nfaces
-    first = int(sector)
 
+    # get indices for panels in plot order
+    first = int(sector)
     second = (first + 1) % nfaces
     third = (first + nfaces - 1) % nfaces
     if (sector - first) < 0.5:
@@ -562,10 +561,10 @@ def get_prism_face_zorder(ax, mask_occluded=True, nfaces=4):
     if mask_occluded:
         #  we don't need to draw back panels since they are behind others
         zorder[zorder < 0.5] = np.nan
-    #
-    # names = {4: ['+x', '+y',  '-x', '-y', '-z', '+z'],
-    #          6: ['W', 'SW', 'SE', 'E', 'NE', 'NW', 'BASE', 'TOP']}
 
+    # # This order is determined by the ordering of `CUBOID` and `HEXAGON` globals
+    # names = {4: ['+x', '+y',  '-x', '-y', '-z', '+z'],
+    #          6: ['W', 'SW', 'SE', 'E', 'NE', 'NW', 'BASE', 'TOP']}[nfaces]
     # print('',
     #       f'Panel draw sequence ({ax.azim = :}, {ax.elev = :}):',
     #       f'{sector = :}',
@@ -573,8 +572,7 @@ def get_prism_face_zorder(ax, mask_occluded=True, nfaces=4):
     #       f'names = {list(np.take(names, sequence))}',
     #       f'{zorder = :}',
     #       f'zorder = {pformat(dict(zip(*cosort(zorder, names)[::-1])))}',
-    #       sep='\n'
-    #       )
+    #       sep='\n')
 
     return zorder
 

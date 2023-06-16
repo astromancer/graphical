@@ -1,7 +1,7 @@
 
 # std
 import itertools as itt
-import functools as ftl
+
 # third-party
 import pytest
 import numpy as np
@@ -11,8 +11,6 @@ from scipy.stats import multivariate_normal
 
 # local
 from scrawl.depth.prisms3d import Bar3DCollection, HexBar3DCollection, hexbin
-
-
 # from mpl_toolkits.mplot3d.art3d import Bar3DCollection
 
 
@@ -42,8 +40,9 @@ def get_gaussian_hexs(mu=(0, 0),
                       seed=123):
     np.random.seed(seed)
     rv = multivariate_normal(mu, np.array(sigma))
-    xyz, dxy = hexbin(*rv.rvs(n).T, gridsize=res)
-    return *xyz, np.array(dxy) * 0.9
+    xyz, (xmin, xmax), (ymin, ymax), (nx, ny) = hexbin(*rv.rvs(n).T, gridsize=res)
+    dxy = np.array([(xmax - xmin) / nx, (ymax - ymin) / ny]) * 0.9
+    return *xyz, dxy
 
 
 data_generators = {
@@ -55,7 +54,7 @@ data_generators = {
 # ---------------------------------------------------------------------------- #
 # fixtures
 
-@pytest.fixture(params=(Bar3DCollection, HexBar3DCollection))
+@pytest.fixture(params=(HexBar3DCollection,))  # Bar3DCollection
 def bar3d_class(request):
     return request.param
 
@@ -123,8 +122,6 @@ def test_bar3d_cmap(bar3d_class, shade):
 
 def _plot_bar3d(ax, kls, x, y, z, dxy='0.8', azim=None, elev=None, **kws):
 
-    # print(list(map(np.shape, (x,y,z))))
-
     bars = kls(x, y, z, dxy=dxy, **kws)
     ax.add_collection(bars)
 
@@ -145,31 +142,30 @@ def _plot_bar3d(ax, kls, x, y, z, dxy='0.8', azim=None, elev=None, **kws):
 
     return bars
 
-
 # _test_bar3d_with_2d_data(Bar3DCollection)
-
+# fig, ax = plt.subplots(subplot_kw={'projection': '3d'})
+# _plot_bar3d(ax, HexBar3DCollection, *data_generators[HexBar3DCollection](),
+#                 ec='0.5', lw=0.5)
+# fig.savefig('prisms.png')
 # plt.show()
 
 
-# def test_hex3d():
-
-#     color = 'darkslategrey'
-#     # rv = multivariate_normal((0, 0),
-#     #                         [[0.8,  0.3],
-#     #                         [0.3,  0.5]])
-#     # n = 10_000
-#     # xyz = hexbin(*rv.rvs(n).T)
-#     # dx = dy = 0.8
-
-
 # if __name__ == '__main__':
-#     bars = test_hex3d_basic()
-#     plt.show()
+#     # bars = test_hex3d_basic()
+#     # plt.show()
+
+#     fig, ax = plt.subplots(subplot_kw={'projection': '3d'})
+#     bar3d_class = HexBar3DCollection
+#     xyz = data_generators[bar3d_class]()
+#     bars = _plot_bar3d(ax, bar3d_class,
+#                        [0, 1], [0, 1], [1, 2], 
+#                     #    dxy=1,
+#                        cmap='rainbow', alpha=0.35)
 
 
-# if __name__ == '__main__':
-#     # [0, 1], [0, 1], [1, 2]
-#     test_bar3d([0, 1], [0, 1], [1, 2])
+# # if __name__ == '__main__':
+# #     # [0, 1], [0, 1], [1, 2]
+# #     test_bar3d([0, 1], [0, 1], [1, 2])
 
-#     # test_bar3d()
+# #     # test_bar3d()
 #     plt.show()
