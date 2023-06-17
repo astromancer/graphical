@@ -16,7 +16,7 @@ from recipes.logging import LoggingMixin
 from recipes.functionals import ignore_params, ignore_returns
 
 # relative
-from ..depth.bar3d import Bar3D
+from ..depth.prisms import Bar3D
 from ..sliders import RangeSliders
 from ..utils import get_percentile_limits
 from ..moves import TrackAxesUnderMouse, mpl_connect

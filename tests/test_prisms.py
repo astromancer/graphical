@@ -10,7 +10,7 @@ from matplotlib.colors import CSS4_COLORS
 from scipy.stats import multivariate_normal
 
 # local
-from scrawl.depth.prisms3d import Bar3DCollection, HexBar3DCollection, hexbin
+from scrawl.depth.prisms import Bar3DCollection, HexBar3DCollection, hexbin
 # from mpl_toolkits.mplot3d.art3d import Bar3DCollection
 
 
