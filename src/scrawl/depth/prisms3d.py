@@ -284,7 +284,7 @@ class Bar3DCollection(Poly3DCollection):
             # scale dxy to data step.
             # get x/y step along axis -1/-2 (x/y considered constant along axis
             # -2/-1)
-            data_step = _get_data_step(xy, -i - 1) if isinstance(d[i], str) else 1
+            data_step = _get_grid_step(xy, -i - 1) if isinstance(d[i], str) else 1
             d[i] = float(d[i]) * data_step
 
         dx, dy = d
@@ -483,8 +483,8 @@ class HexBar3DCollection(Bar3DCollection):
         # Array of vertices of the faces composing the prism moving counter
         # clockwise when looking from above starting at west (-x) facing panel.
         # Vertex sequence is counter-clockwise when viewed from outside.
-        # shape:     (n, [...], 6,    4,      3)
-        # indexed by [bars...,  face, vertex, axis]
+        # shape:     (n, [m ...], 6,    4,      3)
+        # indexed by [bars ... ,  face, vertex, axis]
         data_shape = np.shape(self.z)
         shape = (*data_shape, 6, 2, 1)
         z0 = np.full(shape, self.z0)
@@ -492,9 +492,9 @@ class HexBar3DCollection(Bar3DCollection):
         sides = np.concatenate(
             [np.concatenate([xy_sides, z0], -1),
              np.concatenate([xy_sides, z1], -1)[..., ::-1, :]],
-            axis=-2)  # (n, [...], 6, 4, 3)
+            axis=-2)  # (n, [m ...], 6, 4, 3)
 
-        # endcaps (hexagons) # (n, [...], 6, 3)
+        # endcaps (hexagons) # (n, [m ...], 6, 3)
         xy_ends = (self.xy[..., None] + hexagon.T[:, None])
         z0 = self.z0 * np.ones((1, *data_shape, 6))
         z1 = z0 + self.z[None, ..., None]
@@ -510,7 +510,7 @@ class HexBar3DCollection(Bar3DCollection):
 
 
 # ---------------------------------------------------------------------------- #
-def _get_data_step(x, axis=0):
+def _get_grid_step(x, axis=0):
 
     # deal with singular dimension (this ignores axis param)
     if x.ndim == 1:
@@ -526,21 +526,24 @@ def _get_data_step(x, axis=0):
 
 
 def get_prism_face_zorder(ax, mask_occluded=True, nfaces=4):
-    # compute panel sequence based on camera position
+    # compute panel draw sequence based on camera position
 
     # these index positions are determined by the order of the faces returned
     # by `_compute_verts`
+    
+    # horizontal faces 
     base, top = nfaces, nfaces + 1
-    if ax.elev < 0:
+    if ax.elev < 0: 
+        # flip order if viewed from below
         base, top = top, base
 
-    # this is to figure out which of the vertical faces to draw firstChild()
+    # vertical faces
     angle = 360 / nfaces
-    zero = -angle / 2
+    zero = -angle / 2 # starting point of the first vertical face
     flip = (np.abs(ax.elev) % 180 > 90)
     sector = (((ax.azim - zero + 180 * flip) % 360) / angle) % nfaces
 
-    # get indices for panels in plot order
+    # get indices for panels in draw order
     first = int(sector)
     second = (first + 1) % nfaces
     third = (first + nfaces - 1) % nfaces
