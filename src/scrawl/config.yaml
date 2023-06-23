@@ -1,11 +1,11 @@
 
-scatter:
-    bins:           50
-    max_points:     500
-    min_count:      3
-    tessellation:   hex
-    cmap:           null
-    alpha:          0.75
+density:
+    bins:               50
+    max_points:         500
+    min_count:          3
+    tessellation:       hex
+    cmap:               'cmr.voltage_r'
+    alpha:              1
 
     style:
         marker:     x

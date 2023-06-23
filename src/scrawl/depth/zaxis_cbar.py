@@ -39,12 +39,15 @@ class ZAxisCbar(CallbackManager):
 
     @mpl_connect('motion_notify_event')
     def update(self, event=None):
-        zax = self.ax.zaxis
+        if self.ax.M is not None:
+            zax = self.ax.zaxis
+            mins, maxs, *_, highs = zax._get_coord_info(self.ax.figure._cachedRenderer)
+            (x1, y1, _), _ = zax._get_axis_line_edge_points(
+                np.where(highs, maxs, mins),
+                np.where(~highs, maxs, mins)
+            )
 
-        mins, maxs, *_, highs = zax._get_coord_info(self.ax.figure._cachedRenderer)
-        (x1, y1, _), _ = zax._get_axis_line_edge_points(
-            np.where(highs, maxs, mins),
-            np.where(~highs, maxs, mins)
-        )
-        self.xyz[:2] = np.array((x1, y1), ndmin=2).T
+            self.xyz[:2] = np.array((x1, y1), ndmin=2).T
+
         self.line.set_segments(fold.fold(self.xyz.T, 2, 1, pad=False))
+        # self.line.do_3d_projection()

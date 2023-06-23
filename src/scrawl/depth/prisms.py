@@ -1,5 +1,5 @@
 """
-3D prisms (bars and hexagons) plots that actually render correctly.
+3D prism plots (bars and hexagons).
 """
 
 # std
@@ -95,117 +95,6 @@ HEXAGON = np.array([
 
 
 # ---------------------------------------------------------------------------- #
-
-
-def hexbin(x, y, C=None, gridsize=100,
-           xscale='linear', yscale='linear', extent=None,
-           reduce_C_function=np.mean, mincnt=None):
-    """
-    Function to support histogramming over hexagonal tesselations.
-    """
-
-    # Set the size of the hexagon grid
-    if np.iterable(gridsize):
-        nx, ny = gridsize
-    else:
-        nx = gridsize
-        ny = int(nx / math.sqrt(3))
-
-    # Will be log()'d if necessary, and then rescaled.
-    tx = x
-    ty = y
-
-    if xscale == 'log':
-        if np.any(x <= 0.0):
-            raise ValueError(
-                "x contains non-positive values, so cannot be log-scaled")
-        tx = np.log10(tx)
-    if yscale == 'log':
-        if np.any(y <= 0.0):
-            raise ValueError(
-                "y contains non-positive values, so cannot be log-scaled")
-        ty = np.log10(ty)
-    if extent is not None:
-        xmin, xmax, ymin, ymax = extent
-    else:
-        xmin, xmax = (tx.min(), tx.max()) if len(x) else (0, 1)
-        ymin, ymax = (ty.min(), ty.max()) if len(y) else (0, 1)
-
-        # to avoid issues with singular data, expand the min/max pairs
-        xmin, xmax = mtransforms.nonsingular(xmin, xmax, expander=0.1)
-        ymin, ymax = mtransforms.nonsingular(ymin, ymax, expander=0.1)
-
-    nx1 = nx + 1
-    ny1 = ny + 1
-    nx2 = nx
-    ny2 = ny
-    n = nx1 * ny1 + nx2 * ny2
-
-    # In the x-direction, the hexagons exactly cover the region from
-    # xmin to xmax. Need some padding to avoid roundoff errors.
-    padding = 1.e-9 * (xmax - xmin)
-    xmin -= padding
-    xmax += padding
-    sx = (xmax - xmin) / nx
-    sy = (ymax - ymin) / ny
-    # Positions in hexagon index coordinates.
-    ix = (tx - xmin) / sx
-    iy = (ty - ymin) / sy
-    ix1 = np.round(ix).astype(int)
-    iy1 = np.round(iy).astype(int)
-    ix2 = np.floor(ix).astype(int)
-    iy2 = np.floor(iy).astype(int)
-    # flat indices, plus one so that out-of-range points go to position 0.
-    i1 = np.where((0 <= ix1) & (ix1 < nx1) & (0 <= iy1) & (iy1 < ny1),
-                  ix1 * ny1 + iy1 + 1, 0)
-    i2 = np.where((0 <= ix2) & (ix2 < nx2) & (0 <= iy2) & (iy2 < ny2),
-                  ix2 * ny2 + iy2 + 1, 0)
-
-    d1 = (ix - ix1) ** 2 + 3.0 * (iy - iy1) ** 2
-    d2 = (ix - ix2 - 0.5) ** 2 + 3.0 * (iy - iy2 - 0.5) ** 2
-    bdist = (d1 < d2)
-
-    if C is None:  # [1:] drops out-of-range points.
-        counts1 = np.bincount(i1[bdist], minlength=1 + nx1 * ny1)[1:]
-        counts2 = np.bincount(i2[~bdist], minlength=1 + nx2 * ny2)[1:]
-        accum = np.concatenate([counts1, counts2]).astype(float)
-        if mincnt is not None:
-            accum[accum < mincnt] = np.nan
-
-    else:
-        # store the C values in a list per hexagon index
-        Cs_at_i1 = [[] for _ in range(1 + nx1 * ny1)]
-        Cs_at_i2 = [[] for _ in range(1 + nx2 * ny2)]
-        for i in range(len(x)):
-            if bdist[i]:
-                Cs_at_i1[i1[i]].append(C[i])
-            else:
-                Cs_at_i2[i2[i]].append(C[i])
-        if mincnt is None:
-            mincnt = 0
-        accum = np.array(
-            [reduce_C_function(acc) if len(acc) >= mincnt else np.nan
-                for Cs_at_i in [Cs_at_i1, Cs_at_i2]
-                for acc in Cs_at_i[1:]],  # [1:] drops out-of-range points.
-            float)
-
-    good_idxs = ~np.isnan(accum)
-
-    offsets = np.zeros((n, 2), float)
-    offsets[:nx1 * ny1, 0] = np.repeat(np.arange(nx1), ny1)
-    offsets[:nx1 * ny1, 1] = np.tile(np.arange(ny1), nx1)
-    offsets[nx1 * ny1:, 0] = np.repeat(np.arange(nx2) + 0.5, ny2)
-    offsets[nx1 * ny1:, 1] = np.tile(np.arange(ny2), nx2) + 0.5
-    offsets[:, 0] *= sx
-    offsets[:, 1] *= sy
-    offsets[:, 0] += xmin
-    offsets[:, 1] += ymin
-    # remove accumulation bins with no data
-    offsets = offsets[good_idxs, :]
-    accum = accum[good_idxs]
-
-    return (*offsets.T, accum), (xmin, xmax), (ymin, ymax), (nx, ny)
-
 
 # ---------------------------------------------------------------------------- #
 
@@ -530,16 +419,16 @@ def get_prism_face_zorder(ax, mask_occluded=True, nfaces=4):
 
     # these index positions are determined by the order of the faces returned
     # by `_compute_verts`
-    
-    # horizontal faces 
+
+    # horizontal faces
     base, top = nfaces, nfaces + 1
-    if ax.elev < 0: 
+    if ax.elev < 0:
         # flip order if viewed from below
         base, top = top, base
 
     # vertical faces
     angle = 360 / nfaces
-    zero = -angle / 2 # starting point of the first vertical face
+    zero = -angle / 2  # starting point of the first vertical face
     flip = (np.abs(ax.elev) % 180 > 90)
     sector = (((ax.azim - zero + 180 * flip) % 360) / angle) % nfaces
 
@@ -582,12 +471,16 @@ def get_prism_face_zorder(ax, mask_occluded=True, nfaces=4):
 
 # ---------------------------------------------------------------------------- #
 
+PRISM_WORKERS = dict(
+    rect=Bar3DCollection,
+    hex=HexBar3DCollection
+)
+
 
 class Bar3D(CanvasBlitHelper):  # Bar3DGrid
     """
-    3D bar plot that renders correctly for different viewing angles.
+    3D bar plot blit and cmap support.
     """
-    #  TODO inherit from collection ??
 
     @classmethod
     def from_image(cls, ax, image, dxy="", **kws):
@@ -598,16 +491,15 @@ class Bar3D(CanvasBlitHelper):  # Bar3DGrid
                    color=cmap(image.norm(image)),
                    **kws)
 
-    def __init__(self, ax, x, y, z, dxy="", cmap=None, shade=True,
-                 zaxis_cbar=False, **kws):
+    def __init__(self, ax, x, y, z, dxy='0.8', cmap=None, zaxis_cbar=False, **kws):
         #
         assert ax.name == '3d'
-        assert 0 < dxy <= 1
 
         had_data = ax.has_data()
 
         self.ax = self.axes = ax
-        self.bars = Bar3DCollection(x, y, z, dxy, shade, cmap=cmap, **kws)
+
+        self.bars = Bar3DCollection(x, y, z, dxy, cmap=cmap, **kws)
         ax.add_collection(self.bars)
 
         ax.auto_scale_xyz((x.min(), (x + x[0, :2].ptp()).max()),
