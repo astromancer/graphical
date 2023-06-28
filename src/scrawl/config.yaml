@@ -1,12 +1,52 @@
+image:
+    fig:     
+        size: auto
+        fill:           0.75 # Max fraction of screen size allowed in any direction
+        max_pixel_size: 0.2  # Max pixel size allowed in inches
+    subplot:
+        left:       0.05
+        right:      0.95
+        top:        0.98
+        bottom:     0.05
+
+    cbar:
+        quack:         1
+        size:       0.2
+        pad:        0
+    hist:
+        quack:         1
+        bins:       100
+        size:       0.2
+        pad:        0
+    sliders:
+        quack:         1
+        color:          [r, g, b]
+        ms:             [2, 1, 2]
+        extra_markers:  ['>', s, <]
+
+    plims:          [0.25, 99.75]
+    origin:         lower
+    interpolation:  none
+
+image3d:
+    zaxis_cbar:     True
 
 density:
-    bins:               50
-    max_points:         500
-    min_count:          3
-    tessellation:       hex
-    cmap:               'cmr.voltage_r'
-    alpha:              1
+    bins:           50
+    max_points:     500
+    min_count:      3
+    tessellation:   hex
+    cmap:           cmr.voltage_r
+    alpha:          1
 
-    style:
+    density:        # parameters passed to the PolyCollection
+        linewidth:      0       # This is needed for the hexbins to be correct with
+        #  large number of bins:  see https://github.com/matplotlib/matplotlib/issues/26202
+
+    scatter:
         marker:     x
         ls:         ''
+
+prisms:
+    dxy:            '0.8'
+    cmap:           null

@@ -9,18 +9,14 @@ from matplotlib.colors import to_rgba
 from matplotlib import patheffects as path_effects
 
 
-def emboss(art, linewidth=2, color='k', alpha=1):
-    # add border around artists to make them stand out
-    art.set_path_effects([
-        path_effects.Stroke(linewidth=linewidth,
-                            foreground=to_rgba(color, alpha)),
-        path_effects.Normal()
-    ])
-    return art
+def is_none(*args):
+    for a in args:
+        yield a is None
 
 
-# alias
-embossed = emboss
+def not_none(*args):
+    for t in is_none(*args):
+        yield not t
 
 
 def percentile(data, p, axis=None):
@@ -86,7 +82,7 @@ def percentile(data, p, axis=None):
     return np.squeeze(u * mn + v * mx + s2 * d)
 
 
-def get_percentile_limits(data, plims=(-5, 105), errorbars=(), axis=None):
+def get_percentiles(data, plims=(-5, 105), errorbars=(), axis=None):
     """
     Return suggested axis limits based on the extrema of `data` and optional
     1 sigma standard deviation `errorbars`.
@@ -105,6 +101,9 @@ def get_percentile_limits(data, plims=(-5, 105), errorbars=(), axis=None):
     axis :  int, tuple
         axis along which to compute percentile
     """
+    if np.ptp(plims) == 0:
+        raise ValueError('Percentile values for colour limits must differ. '
+                         f'Received: {plims}.')
 
     x = get_data_pm_1sigma(data, errorbars)
     lims = np.empty(2, data.dtype)
@@ -137,9 +136,28 @@ def get_data_pm_1sigma(x, e=()):
     n = len(e)
     if n == 0:
         return x, x
-    if n == 2:
+
+    # sourcery skip: assign-if-exp, reintroduce-else
+    if n == 2:  
         return x - e[0], x + e[1]
+
     return x - e, x + e
+
+
+def emboss(art, linewidth=2, color='k', alpha=1):
+    # add border around artists to make them stand out
+    art.set_path_effects([
+        path_effects.Stroke(linewidth=linewidth,
+                            foreground=to_rgba(color, alpha)),
+        path_effects.Normal()
+    ])
+    return art
+
+
+# alias
+embossed = emboss
+
+# ---------------------------------------------------------------------------- #
 
 
 def _check_log_scalable(x):

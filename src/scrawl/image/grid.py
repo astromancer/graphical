@@ -8,6 +8,7 @@ import matplotlib.pyplot as plt
 from matplotlib.gridspec import GridSpec
 
 # relative
+from .image import ImageDisplay
 from .utils import set_clim_connected
 
 
@@ -37,12 +38,10 @@ def resolve_layout(layout, n):
     return n_rows, n_cols
 
 
-
 def auto_grid_layout(n):
     x = int(np.floor(np.sqrt(n)))
     y = int(np.ceil(n / x))
     return x, y
-
 
 
 def plot_image_grid(images, layout=(), titles=(), title_kws=None, figsize=None,
@@ -149,7 +148,6 @@ def plot_image_grid(images, layout=(), titles=(), title_kws=None, figsize=None,
         img._clim_all(images, plims)
 
     return img
-
 
 
 # ---------------------------------------------------------------------------- #

@@ -5,9 +5,9 @@ from .callbacks import CallbackManager, mpl_connect
 
 class DynamicLegend(CallbackManager):
     # TODO: subclass Legend??
-    '''
+    """
     Enables toggling marker / bar / cap visibility by selecting on the legend.
-    '''
+    """
     
     _default_legend = dict(fancybox=True,
                            framealpha=0.5,
@@ -20,7 +20,7 @@ class DynamicLegend(CallbackManager):
 
     
     def __init__(self, ax, plots, legendkw={}):
-        '''enable legend picking'''
+        """enable legend picking"""
 
         # initialize auto-connect
         CallbackManager.__init__(self, ax.figure)
@@ -65,17 +65,17 @@ class DynamicLegend(CallbackManager):
 
     @mpl_connect('pick_event')
     def on_pick(self, event):
-        '''Pick event handler.'''
+        """Pick event handler."""
         # print('RARARARA', event.artist)
         if event.artist in self.to_orig:
             self.toggle_vis(event)
 
     # @unhookPyQt
     def toggle_vis(self, event):
-        '''
+        """
         on the pick event, find the orig line corresponding to the
         legend proxy line, and toggle the visibility.
-        '''
+        """
         # Toggle vis of axes artists
         art = self.to_orig[event.artist]
         vis = not art.get_visible()
@@ -91,9 +91,9 @@ class DynamicLegend(CallbackManager):
 
 # class DynamicLegend(CallbackManager):  # TODO: move to seperate script....
 #     # TODO: subclass Legend??
-#     '''
+#     """
 #     Enables toggling marker / bar / cap visibility by selecting on the legend.
-#     '''
+#     """
 #     # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 #     _default_legend = dict(fancybox=True,
 #                            framealpha=0.5,
@@ -104,7 +104,7 @@ class DynamicLegend(CallbackManager):
 #
 #     # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 #     def __init__(self, ax, plots, legendkw={}):
-#         '''enable legend picking'''
+#         """enable legend picking"""
 #
 #         # initialize auto-connect
 #         CallbackManager.__init__(self, ax.figure)
@@ -147,17 +147,17 @@ class DynamicLegend(CallbackManager):
 #     # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 #     @mpl_connect('pick_event')
 #     def on_pick(self, event):
-#         '''Pick event handler.'''
+#         """Pick event handler."""
 #         if event.artist in self.to_orig:
 #             self.toggle_vis(event)
 #
 #     # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 #     # @unhookPyQt
 #     def toggle_vis(self, event):
-#         '''
+#         """
 #         on the pick event, find the orig line corresponding to the
 #         legend proxy line, and toggle the visibility.
-#         '''
+#         """
 #
 #         def get_part(mapping, event):
 #             part = getattr(mapping[event.artist], event.part)

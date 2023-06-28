@@ -5,15 +5,20 @@ Efficient, scrollable image sequence visualisation.
 # std
 import time
 import warnings
+from collections import abc
 
 # third-party
+import cycler
 import numpy as np
 from matplotlib.widgets import Slider
 
 # relative
 from ..utils import embossed
-from ..image import ImageDisplay, ScrollAction
-from recipes.functionals import ignore_params
+from ..image import ImageDisplay
+from ..moves import ScrollAction
+
+
+# ---------------------------------------------------------------------------- #
 
 
 class VideoDisplay(ImageDisplay, ScrollAction):
@@ -252,7 +257,7 @@ class VideoDisplay(ImageDisplay, ScrollAction):
 
     def play(self, start=None, stop=None, pause=0):
         """
-        Show a video of images in the stack
+        Show a video of images in the stack.
 
         Parameters
         ----------
@@ -276,9 +281,13 @@ class VideoDisplay(ImageDisplay, ScrollAction):
 
         # save background for blitting
         # FIXME: saved bg should be without
-        tmp_inviz = [self.frame_slider.poly, self.frame_slider.valtext]
         # tmp_inviz.extend(self.histogram.ax.yaxis.get_ticklabels())
-        tmp_inviz.append(self.histogram.bars)
+        tmp_inviz = [
+            self.frame_slider.poly,
+            self.frame_slider.valtext,
+            self.histogram.bars,
+        ]
+
         for s in tmp_inviz:
             s.set_visible(False)
 
@@ -336,16 +345,21 @@ class VideoDisplay(ImageDisplay, ScrollAction):
     #         return 'x=%1.3f, y=%1.3f' % (x, y)
 
 
+DEFAULT_MARKER_CYCLE = cycler.cycler(marker=list('XPoHd*s'))
+
+
 class VideoFeatureDisplay(VideoDisplay):
 
     # config
-    default_marker_style = dict(s=25,
-                                edgecolor='r', facecolor='none',
-                                linewidths=0.75, alpha=1)
+    default_marker_style = dict(
+        s=25,
+        alpha=1,
+        linewidths=0.75
+    )
 
     def __init__(self, data, coords=None,
-                 markers='XPoHd*s',
-                 marker_style: dict = None,
+                 marker_cycle=DEFAULT_MARKER_CYCLE,
+                 marker_style: dict = (),
                  **kws):
         """
 
@@ -369,8 +383,13 @@ class VideoFeatureDisplay(VideoDisplay):
         first = self.set_coords(coords)
 
         # create marker art
+        if isinstance(marker_cycle, abc.MutableMapping):
+            marker_cycle = cycler.cycler(**marker_cycle)
+        else:
+            marker_cycle = cycler.cycler(marker_cycle)
+
         marker_style = {**self.default_marker_style, **(marker_style or {})}
-        self.marks = self.mark(first, markers, **marker_style)
+        self.marks = self.mark(first, marker_cycle, **marker_style)
 
         if self.cbar:
             # NOTE, we don't want the cmap to switch for these when scrolling
@@ -383,25 +402,25 @@ class VideoFeatureDisplay(VideoDisplay):
     def set_coords(self, coords):
         # check coords
         if coords is None:
-            # get xy coords for frame 0
+            # create masked xy coords for frame 0
             self.coords = None
             return np.array([[None], [None]])
 
-        coords = np.asarray(coords)
+        coords = np.asanyarray(coords)
         nd = coords.ndim
-        m, *_, d = coords.shape
         n = len(self.data)
-        if (nd not in (2, 3, 4) or (d != 2) or (nd != 2 and n != m)):
+        m, *_, d = coords.shape
+
+        if nd not in {2, 3, 4} or (d != 2):
             raise ValueError(
                 'Coordinate array `coords` has incorrect dimensions: '
                 f'{coords.shape}. Expected array dimentions to be: '
-                '([n_frames], [n_features], [n_points_per_frame], 2)'
+                '([n_frames], [n_features], n_points, 2)'
             )
 
-        if n != m:
+        if n != m and nd in {2, 3}:
             # use as initializing coordinates for first frame
-            self.logger.info('Using coordinates as locations for first '
-                             'frame: {}', coords)
+            self.logger.info('Using coordinates as initializer: {}', coords)
             self.coords = None
             return coords
 
@@ -415,16 +434,23 @@ class VideoFeatureDisplay(VideoDisplay):
         self.coords = coords
         return coords[0]
 
-    def mark(self, xy, markers, emboss=1.5, alpha=1, **style):
+    def mark(self, xy, marker_cycle, emboss=1.5, alpha=1, **style):
         # create markers
 
         if xy.ndim == 2:
             xy = xy[None, ...]
 
         art = []
-        style = dict(style or self.default_marker_style)
-        for points, marker in zip(xy, markers):
-            marks = self.ax.scatter(*points.T, marker=marker, alpha=alpha, **style)
+        style = {**dict(style or self.default_marker_style),
+                 'alpha': alpha}
+
+        for points, kws in zip(xy, marker_cycle):
+            if kws['marker'] not in '+x':
+                kws['edgecolor'] = kws.pop('color', None)
+                kws['facecolor'] = 'none'
+
+            #
+            marks = self.ax.scatter(*points.T, **{**style, **kws})
 
             if emboss:
                 embossed(marks, emboss, alpha=alpha)
@@ -443,7 +469,7 @@ class VideoFeatureDisplay(VideoDisplay):
 
     def _get_coords_internal(self, i):
         i = int(round(i))
-        return self.coords[i, :, ::-1]
+        return self.coords[i]
 
     # def set_frame(self, i):
     #     super().set_frame(i)
@@ -452,19 +478,21 @@ class VideoFeatureDisplay(VideoDisplay):
 
         # update image
         draw_list = super().update(i, False)
-        i = self.frame # rounded and wrapped
+        i = self.frame  # rounded and wrapped
 
         # Try get feature coordinates
         coords = self.get_coords(i)
         self.logger.debug('Coords: {}\n{}', coords.shape, coords)
 
         if coords is None:
+            self.logger.debug('Not updating marks since coords is {}', coords)
             return draw_list
 
         # update markers
         if coords.ndim == 2:
             coords = coords[None]
 
+        self.logger.debug('Updating coords: {}', coords)
         for coo, marks in zip(coords, self.marks):
             marks.set_offsets(coo)
             marks.set_visible(True)

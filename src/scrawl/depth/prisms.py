@@ -22,6 +22,11 @@ from recipes.utils import duplicate_if_scalar
 from ..moves.machinery import CanvasBlitHelper, Observers
 from . import camera
 from .zaxis_cbar import ZAxisCbar
+from recipes.config import ConfigNode
+
+# ---------------------------------------------------------------------------- #
+# module config
+CONFIG = ConfigNode.load_module(__file__)
 
 
 # ---------------------------------------------------------------------------- #
@@ -99,15 +104,6 @@ HEXAGON = np.array([
 # ---------------------------------------------------------------------------- #
 
 
-def is_none(*args):
-    for a in args:
-        yield a is None
-
-
-def not_none(*args):
-    for t in is_none(*args):
-        yield not t
-
 
 # ---------------------------------------------------------------------------- #
 
@@ -121,8 +117,8 @@ class Bar3DCollection(Poly3DCollection):
 
     _n_faces = 6
 
-    def __init__(self, x, y, z, dxy='0.8', z0=0, shade=True, lightsource=None,
-                 cmap=None, **kws):
+    def __init__(self, x, y, z, dxy=CONFIG.dxy, z0=0, shade=True, lightsource=None,
+                 cmap=CONFIG.cmap, **kws):
         #
         x, y, z, z0 = np.ma.atleast_1d(x, y, z, z0)
         assert x.shape == y.shape == z.shape

@@ -2,9 +2,15 @@
 Image plotting utilities.
 """
 
+# std
+from collections import abc
+
 # third-party
 import numpy as np
 from loguru import logger
+
+# relative
+from ..utils import not_none
 
 FIGSIZE_MIN_INCHES = (5, 5)
 
@@ -16,6 +22,7 @@ def _sanitize_data(data):
     """
     if np.ma.is_masked(data):
         data = data[~data.mask]
+
     return np.asarray(data[~np.isnan(data)])
 
 
@@ -35,20 +42,20 @@ def get_screen_size_inches():
 
     """
     import sys
-    from PyQt5.QtWidgets import QApplication, QDesktopWidget
+    from matplotlib.backends.qt_compat import QtWidgets
 
     # Note the check on QApplication already running and not executing the exit
     #  statement at the end.
-    app = QApplication.instance()
+    app = QtWidgets.QApplication.instance()
     if app is None:
-        app = QApplication(sys.argv)
+        app = QtWidgets.QApplication(sys.argv)
     else:
         logger.debug('Retrieving screen size for existing QApplication '
                      f'instance: {app}')
 
     # TODO: find out on which screen the focus is
 
-    w = QDesktopWidget()
+    w = QtWidgets.QDesktopWidget()
     s = w.screen()
     size_inches = [s.width() / s.physicalDpiX(), s.height() / s.physicalDpiY()]
     logger.info('Screen size is: {}', size_inches)
@@ -91,6 +98,7 @@ def guess_figsize(image, fill_factor=0.75, max_pixel_size=0.2,
 
     # Sizes reported by mpl figures seem about half the actual size on screen
     shape = np.array(np.shape(image)[::-1])
+    assert len(shape) == 2
     return _guess_figsize(shape, fill_factor, max_pixel_size, min_size_inches)
 
 
@@ -117,23 +125,44 @@ def _guess_figsize(image_shape, fill_factor=0.75, max_pixel_size=0.2,
     return size
 
 
-def get_clim(data, plims=(0.25, 99.75)):
-    """
-    Get colour scale limits for data.
-    """
-    from .utils import get_percentile_limits
+def _get_percentile_clim(data, plim):
+    from ..utils import get_percentiles
 
-    if np.all(np.ma.getmask(data)):
+    if np.all(np.ma.getmask(data)) or np.isnan(data).all():
         return None, None
 
-    clims = get_percentile_limits(_sanitize_data(data), plims)
+    # compute percentiles
+    clims = get_percentiles(_sanitize_data(data), plim)
 
-    bad_clims = (clims[0] == clims[1])
-    if bad_clims:
-        logger.warning('Ignoring bad colour interval: ({:.1f}, {:.1f}). ', *clims)
+    # check bad clims
+    if clims[0] == clims[1]:
+        logger.warning('Ignoring bad colour interval: ({:.1f}, {:.1f}) '
+                       'computed from percentiles ({:.1f}, {:.1f}).',
+                       *clims, *plim)
         return None, None
 
     return clims
+
+
+def resolve_clim(data=None, vmin=None, vmax=None, clim=None, plim=None, **_ignored):
+    """
+    Get colour scale limits for data.
+    """
+
+    if any(not_none(vmin, vmax)):
+        return vmin, vmax
+
+    if plim is not None:
+        assert data is not None
+        return _get_percentile_clim(data, plim)
+
+    if isinstance(clim, abc.Sized) and len(clim) == 2:
+        return clim
+
+    if clim is False or clim is None:
+        return (None, None)
+
+    raise ValueError(f'Invalid value for {clim = :!r}.')
 
 
 def set_clim_connected(x, y, artist, sliders):

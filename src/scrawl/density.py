@@ -1,22 +1,24 @@
 """
-Scatter plots with density inlays.
+Scatter plots with density inlays / Density maps with scatter for sparse areas
 """
 
 # std
-import matplotlib.pyplot as plt
+import itertools as itt
 import copy
 
 # third-party
 import numpy as np
-from matplotlib.figure import Figure
+import matplotlib.pyplot as plt
 
 # local
 from recipes.config import ConfigNode
+from recipes.oo.slots import _sanitize_locals
 from recipes.utils import duplicate_if_scalar
 
 # relative
-from .depth.prisms import PRISM_WORKERS
+from .image import Image3DBase
 from .utils import hexbin as _hexbin_helper
+from .depth.prisms import PRISM_WORKERS, Bar3D
 
 
 # ---------------------------------------------------------------------------- #
@@ -44,15 +46,16 @@ def _sanitize_data(data, allow_dim):
     return data
 
 
-def _api_update_kws(scatter_kws, density_kws, cmap, alpha=None):
-
+def _api_update_kws(default=None, user=None, **add_kws):
     # default arg
-    scatter_kws = {} if scatter_kws is None else scatter_kws
-    scatter_kws = {**CONFIG.style, **scatter_kws, 'cmap': cmap, 'alpha': alpha}
-    density_kws = {} if density_kws is None else density_kws
-    density_kws = {**density_kws, 'cmap': cmap, 'alpha': alpha}
+    user = {} if user is None else user
+    return {**(default or {}), **user, **add_kws}
 
-    return scatter_kws, density_kws
+
+# def _api_update_kws(*dicts, defaults=(), **add_kws):
+
+#     for kws, defaults in itt.zip_longest(dicts, defaults):
+#         yield _api_update_kws(defaults, kws, **add_kws)
 
 
 def scatter_map(ax, data,
@@ -61,7 +64,7 @@ def scatter_map(ax, data,
                 min_count=CONFIG.min_count,
                 tessellation=CONFIG.tessellation,
                 cmap=CONFIG.cmap, alpha=CONFIG.alpha,
-                scatter_kws=None, density_kws=None):
+                scatter_kws=None, density_kws=None, **kws):
     """
     Point cloud visualization combining a density map and scatter plot. Regions
     with high point density are plotted as a 2D histogram image using either
@@ -111,8 +114,10 @@ def scatter_map(ax, data,
         raise ValueError(f'Invalid tessellation {tessellation!r}: Valid '
                          f'choices are {MAP_WORKERS}')
 
-    # default arg
-    scatter_kws, density_kws = _api_update_kws(scatter_kws, density_kws, alpha, cmap)
+    # set default args
+    shared = dict(cmap=cmap, alpha=alpha)
+    scatter_kws = _api_update_kws(CONFIG.scatter, scatter_kws, **shared)
+    density_kws = _api_update_kws(CONFIG.density, density_kws, **shared, **kws)
 
     # do density plot
     art, hvals, xy_scatter = None, [], data
@@ -121,9 +126,9 @@ def scatter_map(ax, data,
 
     # plot scatter points
     # set colour of markers to match cmap
-    points, = ax.scatter(*xy_scatter.T,
-                         **scatter_kws,
-                         c=np.ones(xy_scatter.shape[0]))
+    points = ax.scatter(*xy_scatter.T,
+                        **scatter_kws,
+                        c=np.ones(xy_scatter.shape[0]))
 
     return hvals, art, points
 
@@ -143,7 +148,11 @@ def scatter_map(ax, data,
     # return returns
 
 
+# aliases
+map = density_map = map_scatter = scatter_map
+
 # ---------------------------------------------------------------------------- #
+
 
 def hist2d(ax, data, *args, **kws):
     return scatter_map(ax, data, *args, **kws, tessellation='rect')
@@ -267,10 +276,13 @@ def bar3d(ax, data,
           min_count=CONFIG.min_count,
           tessellation=CONFIG.tessellation,
           cmap=CONFIG.cmap, alpha=CONFIG.alpha,
-          scatter_kws=None, density_kws=None):
+          scatter_kws=None, density_kws=None, *kws):
 
-    # default arg
-    scatter_kws, density_kws = _api_update_kws(scatter_kws, density_kws, cmap, alpha)
+    # set default args
+    # set default args
+    shared = dict(cmap=cmap, alpha=alpha)
+    scatter_kws = _api_update_kws(CONFIG.scatter, scatter_kws, **shared)
+    density_kws = _api_update_kws(CONFIG.density, density_kws, **shared, **kws)
 
     if len(data) > max_points:
         if tessellation == 'hex':
@@ -296,17 +308,19 @@ def bar3d(ax, data,
                                               min_count)
 
         #
-        Bar3D = PRISM_WORKERS[tessellation]
-        bars = Bar3D(x, y, z, dxy=dxy, **density_kws)
+        Bar3dClass = PRISM_WORKERS[tessellation]
+        bars = Bar3dClass(x, y, z, dxy=dxy, **density_kws)
         ax.add_collection(bars)
 
         viewlim = np.array([(np.min(x), np.max(np.add(x, bars.dx))),
                             (np.min(y), np.max(np.add(y, bars.dy))),
                             (bars.z0, np.max(np.add(bars.z0, z)))])
-        viewlim[:2, 0] = viewlim[:2, 0] - np.array([bars.dx / 2, bars.dy / 2]).T
+        if tessellation == 'hex':
+            viewlim[:2, 0] = viewlim[:2, 0] - np.array([bars.dx, bars.dy] / 2).T
+
         ax.auto_scale_xyz(*viewlim, False)
 
-        scatter_kws['zorder'] = bars.get_zorder() - 0.1
+        scatter_kws['zorder'] = bars.get_zorder() + 1
 
     else:
         *xy_scatter, _ = data.T
@@ -327,15 +341,10 @@ def map23(data,
           cmap=CONFIG.cmap, alpha=CONFIG.alpha,
           scatter_kws=None, density_kws=None):
 
-    # r = tracker.get_coords_residual(feature='avg')
-
     # 2D
-    # fig = Figure()
     fig = plt.figure()
     ax = fig.add_subplot(121)
 
-    scatter_kws = scatter_kws = {**CONFIG.style, **(scatter_kws or {})}
-    density_kws = density_kws or {}
     # call below updates `scatter_kws` with the alpha value as well as default
     # colour of markers to match colormap
     z, art, points = scatter_map(ax, data, bins, range,
