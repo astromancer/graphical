@@ -51,11 +51,15 @@ def _api_update_kws(default=None, user=None, **add_kws):
     user = {} if user is None else user
     return {**(default or {}), **user, **add_kws}
 
+# ---------------------------------------------------------------------------- #
 
-# def _api_update_kws(*dicts, defaults=(), **add_kws):
 
-#     for kws, defaults in itt.zip_longest(dicts, defaults):
-#         yield _api_update_kws(defaults, kws, **add_kws)
+def hist2d(ax, data, *args, **kws):
+    return scatter_map(ax, data, *args, **kws, tessellation='rect')
+
+
+def hexbin(ax, data, *args, **kws):
+    return scatter_map(ax, data, *args, **kws, tessellation='hex')
 
 
 def scatter_map(ax, data,
@@ -154,10 +158,6 @@ map = density_map = map_scatter = scatter_map
 # ---------------------------------------------------------------------------- #
 
 
-def hist2d(ax, data, *args, **kws):
-    return scatter_map(ax, data, *args, **kws, tessellation='rect')
-
-
 def _hist2d(ax, data, bins, range, min_count, density_kws):
     bins = duplicate_if_scalar(bins)
 
@@ -167,38 +167,44 @@ def _hist2d(ax, data, bins, range, min_count, density_kws):
     return qmesh, hvals, xy_scatter
 
 
-def _remove_sparse_cells_qmesh(data, qmesh, min_count):
+def _remove_sparse_cells_qmesh(qmesh, data, min_count):
     # remove low density faces
-    x, y, z = xyz = *data.T, qmesh.get_array()
-    xy_scatter = _remove_sparse_cells(xyz,
-                                      (qmesh._coordinates[0, :, 0],
-                                       qmesh._coordinates[:, 0, 1]),
-                                      min_count)
-    fc = qmesh.get_facecolor()
-    fc[np.ravel(z < min_count)] = 0
-    qmesh.set_facecolor(fc)
+    z = qmesh.get_array()
+    xy_scatter = _get_sparse_points(data.T, z.T,
+                                    (qmesh._coordinates[0, :, 0],
+                                     qmesh._coordinates[:, 0, 1]),
+                                    min_count)
+
+    # set cmap under color transparent
+    _adapt_cmap(qmesh, min_count)
+
     return xy_scatter
 
 
-def _remove_sparse_cells(data, edges, min_count):
-    x, y, z = data.T
+def _get_sparse_points(points, bincounts, edges, min_count):
+    x, y = points
     x_edges, y_edges = edges
-
+    
     # select points within the range
-    bins = np.shape(data)[:2]
+    bins = bincounts.shape
     ix_x = np.digitize(x, x_edges)
     ix_y = np.digitize(y, y_edges)
     ind = ((ix_x > 0) & (ix_x <= bins[0]) &
            (ix_y > 0) & (ix_y <= bins[1]))
     # low density points
-    zsub = z[ix_x[ind] - 1, ix_y[ind] - 1]
-    return data[ind, zsub < min_count].T
+    counts = bincounts[ix_x[ind] - 1, ix_y[ind] - 1]
+    return points.T[ind][counts < min_count]
+
+
+def _adapt_cmap(art, min_count):
+    # copy the art (avoid deprecation warning for mpl 3.3)
+    cm = copy.copy(art.get_cmap())
+    # make the bins with few points invisible
+    cm.set_under(art.axes.get_fc(), alpha=0)
+    art.set(cmap=cm, clim=min_count)
+
 
 # ---------------------------------------------------------------------------- #
-
-
-def hexbin(ax, data, *args, **kws):
-    return scatter_map(ax, data, *args, **kws, tessellation='hex')
 
 
 def _hexbin(ax, data, bins, range, min_count, density_kws):
@@ -226,11 +232,8 @@ def _hexbin(ax, data, bins, range, min_count, density_kws):
 
     hvals = polygons.get_array()
 
-    # copy the colormap (avoid deprecation warning for mpl 3.3)
-    cm = copy.copy(polygons.get_cmap())
-    # make the bins with few points invisible
-    cm.set_under(ax.get_fc(), alpha=0)
-    polygons.set(cmap=cm, clim=min_count)
+    # set cmap under color transparent
+    _adapt_cmap(polygons, min_count)
 
     return polygons, hvals, data[sparse_point_indices]
 
