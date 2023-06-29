@@ -336,6 +336,34 @@ def bar3d(ax, data,
     return bars, points
 
 
+class Density3DCompare(Image3DBase):
+
+    def __init__(self, data, cmap=None, tessellation='rect',
+                 scatter_kws=None, bar3d_kws=None, **density_kws):
+
+        # set default args
+        shared = dict(cmap=cmap, tessellation=tessellation)
+        scatter_kws = _api_update_kws(CONFIG.scatter, scatter_kws, cmap=cmap)
+        density_kws = _api_update_kws(CONFIG.density, density_kws, **shared)
+        bar3d_kws = _api_update_kws((), bar3d_kws, **shared)
+
+        super().__init__(data, bar3d_kws=bar3d_kws, **density_kws)
+
+    def plot_image(self, image, **kws):
+        return scatter_map(self.axi, image, **kws)
+
+    def plot_bars(self, x, y, z, **kws):
+        return Bar3D(self.ax3, x, y, z, **kws)
+
+
+# @api.defaults(CONFIG)
+# def xxx(data, bins, range,
+#         max_points, min_count,
+#         tessellation,
+#         cmap, alpha,
+#         scatter_kws, density_kws):
+
+
 def map23(data,
           bins=CONFIG.bins, range=None,
           max_points=CONFIG.max_points,

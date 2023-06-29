@@ -101,12 +101,6 @@ HEXAGON = np.array([
 
 # ---------------------------------------------------------------------------- #
 
-# ---------------------------------------------------------------------------- #
-
-
-
-# ---------------------------------------------------------------------------- #
-
 
 class Bar3DCollection(Poly3DCollection):
     """
@@ -478,30 +472,38 @@ class Bar3D(CanvasBlitHelper):  # Bar3DGrid
     3D bar plot blit and cmap support.
     """
 
-    @classmethod
-    def from_image(cls, ax, image, dxy="", **kws):
-        origin = np.array(image.get_extent())[[0, 2]]
-        y, x = np.indices(image.shape) + origin[:, None, None]
-        cmap = image.get_cmap()
-        return cls(ax, x, y, image.get_array(), dxy,
-                   color=cmap(image.norm(image)),
-                   **kws)
+    # @classmethod
+    # def from_image(cls, ax, image, dxy=CONFIG.dxy, **kws):
+    #     # from matplotlib image
+    #     origin = np.array(image.get_extent())[[0, 2]]
+    #     y, x = np.indices(image.shape) + origin[:, None, None]
+    #     cmap = image.get_cmap()
+    #     return cls(ax, x, y, image.get_array(), dxy, cmap=cmap, **kws)
 
-    def __init__(self, ax, x, y, z, dxy='0.8', cmap=None, zaxis_cbar=False, **kws):
+    @classmethod
+    def hex(cls, ax,  x, y, z, dxy=CONFIG.dxy, **kws):
+        return cls(ax, x, y, z, dxy, tessellation='hex', **kws)
+
+    def __init__(self, ax, x, y, z, dxy=CONFIG.dxy, cmap=CONFIG.cmap,
+                 zaxis_cbar=False, tessellation='rect', **kws):
         #
         assert ax.name == '3d'
 
+        self.ax = self.axes = ax
         had_data = ax.has_data()
 
-        self.ax = self.axes = ax
+        # init Bar3DCollection
+        Bar3D = PRISM_WORKERS[tessellation]
+        self.bars = bars = Bar3D(x, y, z, dxy, cmap=cmap, **kws)
+        ax.add_collection(bars)
 
-        self.bars = Bar3DCollection(x, y, z, dxy, cmap=cmap, **kws)
-        ax.add_collection(self.bars)
+        viewlim = np.array([(np.min(x), np.max(np.add(x, bars.dx))),
+                            (np.min(y), np.max(np.add(y, bars.dy))),
+                            (bars.z0, np.max(np.add(bars.z0, z)))])
+        if tessellation == 'hex':
+            viewlim[:2, 0] = viewlim[:2, 0] - np.array([bars.dx, bars.dy] / 2).T
 
-        ax.auto_scale_xyz((x.min(), (x + x[0, :2].ptp()).max()),
-                          (y.min(), (y + y[:2, 0].ptp()).max()),
-                          (z.min(), z.max()),
-                          had_data)
+        ax.auto_scale_xyz(*viewlim, had_data)
 
         self.cbar = None
         if zaxis_cbar:
@@ -513,8 +515,8 @@ class Bar3D(CanvasBlitHelper):  # Bar3DGrid
 
             self.cbar = ZAxisCbar(self.axes, cmap, )
 
-        CanvasBlitHelper.__init__(self, (self.bars, getattr(self.cbar, 'line', None)),
-                                  connect=True)
+        super().__init__((self.bars, getattr(self.cbar, 'line', None)),
+                         connect=True)
 
         self.on_rotate = Observers()
 
@@ -556,4 +558,4 @@ class Bar3D(CanvasBlitHelper):  # Bar3DGrid
 
 
 # alias
-bar3d = Bar3d = Bar3D
+bar3d = Bar3d = Prisms = Bar3D
