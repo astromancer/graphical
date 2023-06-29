@@ -511,3 +511,79 @@ class Image3DBase(FigureSetup):
         ax3.set(facecolor='none')  # xlabel='$x$', ylabel='$y$'
 
         return fig, (axi, ax3)
+
+
+class Image3D(Image3DBase):
+
+    def plot_image(self, image, cmap, **kws):
+        return ImageDisplay(
+            image, ax=self.axi, cmap=cmap,
+            **{**dict(hist=False, sliders=False,
+                      cbar={'format': ticker.NullFormatter()}),
+               **kws}
+        )
+
+    def plot_bars(self, x, y, z, **kws):
+        return Bar3D(self.ax3, x, y, z, **kws)
+
+    def set_cmap(self, cmap):
+        # change cmap for all mappables
+        self.image.cbar.scroll.set_cmap(cmap)
+
+    def set_data(self, image, clim=None):
+
+        self.image.set_data(image)
+
+        clim = resolve_clim(image, plim=CONFIG.plim)
+        self.image.set_clim(*clim)
+
+        self.bars.set_z(image, clim)
+
+
+# from recipes.oo.property import cached_property
+
+
+class MouseOverEffect:
+    def __init__(self, ax):
+        self.ax = ax
+
+    def on_enter(self, event):
+        if self.event.axes != self.ax:
+            return
+
+
+class ZoomInset(LoggingMixin):
+    def __init__(self, ax, image, position=(0, 1.05), size=(0.2, 0.2),
+                 origin=(0, 0), shape=(16, 16), **kws):
+        self.ax = ax
+        self.image = image
+        self.origin = origin
+        self.shape = shape
+
+        ax_histx = ax.inset_axes([*position, *size], sharex=ax)
+        self.art = ax.imshow(self.sub, **kws)
+
+    @property
+    def origin(self):
+        return self._origin
+
+    @origin.setter
+    def origin(self, origin):
+        self._origin = np.array(origin, int)
+
+    @property
+    def shape(self):
+        return self._shape
+
+    @shape.setter
+    def shape(self, shape):
+        self._shape = np.array(shape, int)
+
+    # @cached_property(depends_on=(origin, shape))
+    @property
+    def segment(self):
+        return tuple(map(slice, self.origin, self.shape))
+
+    @property
+    def sub(self):
+        return self.image[self.segment]

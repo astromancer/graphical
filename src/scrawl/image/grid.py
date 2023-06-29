@@ -8,7 +8,7 @@ import matplotlib.pyplot as plt
 from matplotlib.gridspec import GridSpec
 
 # relative
-from .image import ImageDisplay
+from .display import ImageDisplay
 from .utils import set_clim_connected
 
 
