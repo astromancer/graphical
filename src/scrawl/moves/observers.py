@@ -1,12 +1,19 @@
 
 # std
+import sys
 import time
 import itertools as itt
 from collections import OrderedDict
 
+# third-party
+from better_exceptions import format_exception
+
 # local
 from recipes import pprint
 from recipes.logging import LoggingMixin
+
+# relative
+from .utils import art_summary, filter_non_artist
 
 
 class Observers(LoggingMixin):
@@ -149,6 +156,9 @@ class Observers(LoggingMixin):
                                       func.__name__)
 
             except Exception:
-                self.logger.exception('Observer error!')
+                self.logger.exception(
+                    '\n'.join(('Observer error!',
+                               *format_exception(*sys.exc_info())))
+                )
 
         return artists
