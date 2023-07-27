@@ -197,7 +197,7 @@ class ImageDisplay(CanvasBlitHelper, FigureSetup, LoggingMixin):
 
         self._cbar_hist_connectors = {}
         if self.cbar:
-            if hist and sliders:
+            if hist and sliders and CONFIG.cbar.pad:
                 self._cbar_hist_connectors = self.connect_cbar_hist()
                 # redraw connectors on scroll
                 self.cbar.scroll.add_art(self._cbar_hist_connectors.values())
