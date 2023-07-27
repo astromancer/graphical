@@ -29,12 +29,14 @@ from .utils import guess_figsize, resolve_clim
 # ---------------------------------------------------------------------------- #
 # module config
 CONFIG = ConfigNode.load_module(__file__)
+cbar_on, hist_on, sliders_on = (bool(CONFIG[_].pop('show', True))
+                                for _ in ('cbar', 'hist', 'sliders'))
 
 
 # ---------------------------------------------------------------------------- #
 class FigureSetup:
 
-    def __init__(self,  cbar=True, hist=True, sliders=True):
+    def __init__(self,  cbar=cbar_on, hist=hist_on, sliders=sliders_on):
 
         self.divider = None
         self.has_cbar = bool(cbar)
@@ -127,8 +129,8 @@ class ImageDisplay(CanvasBlitHelper, FigureSetup, LoggingMixin):
 
     sliderClass = RangeSliders
 
-    def __init__(self, image, *args, cbar=True, hist=True, sliders=True,
-                 use_blit=True, connect=True, **kws):
+    def __init__(self, image, *args, cbar=cbar_on, hist=hist_on, sliders=sliders_on,
+                 use_blit=CONFIG.blit, connect=True, **kws):
         """
 
         Parameters
@@ -183,14 +185,14 @@ class ImageDisplay(CanvasBlitHelper, FigureSetup, LoggingMixin):
         # create the colourbar / histogram / sliders
         self.cbar = None
         if self.has_cbar:
-            cbar_kws = {} if cbar is True else dict(cbar)
+            cbar_kws = {} if cbar in (1, True) else dict(cbar)
             self.cbar = self.colorbar(**cbar_kws)
 
         # init blit and callbacks
         CanvasBlitHelper.__init__(self, self.image, connect=False, active=use_blit)
 
         # create sliders and pixel histogram
-        hist = dict((CONFIG.hist if hist is True else hist) or {})
+        hist = dict((CONFIG.hist if hist in (True, 1) else hist) or {})
         self.sliders, self.histogram = self.make_sliders(use_blit, hist)
 
         self._cbar_hist_connectors = {}
