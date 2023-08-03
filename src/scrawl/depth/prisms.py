@@ -3,26 +3,25 @@
 """
 
 # std
-import math
 import warnings
 
 # third-party
 import numpy as np
 import more_itertools as mit
-import matplotlib.transforms as mtransforms
 from matplotlib.colors import LightSource
 from mpl_toolkits.mplot3d import proj3d
 from mpl_toolkits.mplot3d.art3d import (Poly3DCollection, PolyCollection,
                                         _generate_normals, _shade_colors)
 
 # local
+from recipes.config import ConfigNode
 from recipes.utils import duplicate_if_scalar
 
 # relative
 from ..moves.machinery import CanvasBlitHelper, Observers
 from . import camera
 from .zaxis_cbar import ZAxisCbar
-from recipes.config import ConfigNode
+
 
 # ---------------------------------------------------------------------------- #
 # module config

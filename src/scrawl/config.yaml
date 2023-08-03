@@ -26,9 +26,33 @@ image:
         ms:             [2, 1, 2]
         extra_markers:  ['>', s, <]
 
-    plims:          [0.25, 99.75]
+    plim:           [0.25, 99.75]
     origin:         lower
     interpolation:  none
+
+video:
+    clim_every:     off
+    
+    scroll:
+        wrap:       on
+        rate_limit: 10
+    
+    slider:
+        label:      frame
+        valfmt:     %d
+        position:   bottom
+        size:       0.1
+        pad:        0.3
+
+    features:
+        market_cycle:   XPoHd*s
+        s:              25
+        alpha:          1
+        linewidths:     0.7
+
+    apertures:
+        ec: m
+        lw: 1
 
 image3d:
     zaxis_cbar:     on

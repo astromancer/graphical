@@ -19,15 +19,19 @@ from ..moves import ScrollAction
 
 
 # ---------------------------------------------------------------------------- #
+CONFIG = ConfigNode.load_module(__file__)
+
+# ---------------------------------------------------------------------------- #
 
 
 class VideoDisplay(ImageDisplay, ScrollAction):
 
     # TODO: lock the sliders in place with doubleclick
 
-    _scroll_wrap = True  # scrolling past the end leads to the beginning
+    # scrolling past the end leads to the beginning
+    _scroll_wrap = CONFIG.scroll.wrap
 
-    def __init__(self, data, clim_every=0, **kws):
+    def __init__(self, data, clim_every=CONFIG.clim_every, **kws):
         """
         Image display for 3D data. Implements frame slider and image scroll.
 
@@ -51,7 +55,7 @@ class VideoDisplay(ImageDisplay, ScrollAction):
         self.clim_every = clim_every
 
         # Init scroll actions
-        ScrollAction.__init__(self, rate_limit=10)
+        ScrollAction.__init__(self, rate_limit=CONFIG.scroll.rate_limit)
         self.on_scroll.add(self._scroll_frame)  # enable frame scrolling
 
         # setup image display
@@ -63,8 +67,10 @@ class VideoDisplay(ImageDisplay, ScrollAction):
         self.data = data
 
         # make frame slider
-        fsax = self.divider.append_axes('bottom', size=0.1, pad=0.3)
-        self.frame_slider = fs = Slider(fsax, 'frame', n, self.nframes, valfmt='%d')
+        text = CONFIG.slider.pop('label')
+        valfmt = CONFIG.slider.pop('valfmt')
+        fsax = self.divider.append_axes(**CONFIG.slider)
+        self.frame_slider = fs = Slider(fsax, text, n, self.nframes, valfmt=valfmt)
         self.frame_slider.on_changed(self.update)
         # fsax.xaxis.set_major_locator(ticker.AutoLocator())
 
@@ -345,20 +351,13 @@ class VideoDisplay(ImageDisplay, ScrollAction):
     #         return 'x=%1.3f, y=%1.3f' % (x, y)
 
 
-DEFAULT_MARKER_CYCLE = cycler.cycler(marker=list('XPoHd*s'))
+MARKER_CYCLE = cycler.cycler(marker=list(CONFIG.features.pop('marker_cycle')))
 
 
 class VideoFeatureDisplay(VideoDisplay):
 
-    # config
-    default_marker_style = dict(
-        s=25,
-        alpha=1,
-        linewidths=0.75
-    )
-
     def __init__(self, data, coords=None,
-                 marker_cycle=DEFAULT_MARKER_CYCLE,
+                 marker_cycle=MARKER_CYCLE,
                  marker_style: dict = (),
                  **kws):
         """
@@ -388,7 +387,7 @@ class VideoFeatureDisplay(VideoDisplay):
         else:
             marker_cycle = cycler.cycler(marker_cycle)
 
-        marker_style = {**self.default_marker_style, **(marker_style or {})}
+        marker_style = {**CONFIG.features, **(marker_style or {})}
         self.marks = self.mark(first, marker_cycle, **marker_style)
 
         if self.cbar:
@@ -441,7 +440,7 @@ class VideoFeatureDisplay(VideoDisplay):
             xy = xy[None, ...]
 
         art = []
-        style = {**dict(style or self.default_marker_style),
+        style = {**dict(style or CONFIG.features),
                  'alpha': alpha}
 
         for points, kws in zip(xy, marker_cycle):
