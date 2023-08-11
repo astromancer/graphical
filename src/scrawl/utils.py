@@ -61,7 +61,7 @@ def percentile(data, p, axis=None):
     c = np.abs((p > 1).astype(float) - s * (a % 1)) * 100
 
     # remove masked points
-    if np.ma.is_masked(data):
+    if np.ma.isMA(data):
         if axis is not None:
             raise NotImplementedError
 
@@ -138,7 +138,7 @@ def get_data_pm_1sigma(x, e=()):
         return x, x
 
     # sourcery skip: assign-if-exp, reintroduce-else
-    if n == 2:  
+    if n == 2:
         return x - e[0], x + e[1]
 
     return x - e, x + e
