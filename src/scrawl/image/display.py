@@ -4,6 +4,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.colorbar as cbar
 from matplotlib import cm, ticker
+from loguru import logger
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 
 # local
@@ -55,22 +56,29 @@ class FigureSetup:
         if ax is None:
             if figsize == 'auto':
                 # automatically determine the figure size based on the data
-                figsize = self.guess_figsize(data)
-                # FIXME: the guessed size does not account for the colorbar
-                #  histogram
+                try:
+                    figsize = self.guess_figsize(data)
+                    # FIXME: the guessed size does not account for the colorbar
+                    #  histogram
+                except AttributeError as err:
+                    logger.warning('Could not guess figure size due to the '
+                                   'following exception: {}', err)
+                    figsize = None
 
             if fig is None:
                 fig = plt.figure()
 
             # axes
-            ax = fig.add_subplot(subplot, **(subplot_kws or {}))
+            ax = fig.add_subplot(subplot) #  **(subplot_kws or {})
             ax.tick_params('x', which='both', top=True)
-            fig.set_size_inches(figsize)
+            if figsize:
+                fig.set_size_inches(figsize)
+            fig.subplots_adjust(**(subplot_kws or {}))
 
         # axes = namedtuple('AxesContainer', ('image',))(ax)
         if self.has_cbar and (cax is None):
             self.divider = make_axes_locatable(ax)
-            cax = self.divider.append_axes('right', **CONFIG.cbar)
+            cax = self.divider.append_axes(**CONFIG.cbar)
 
         if self.has_hist and (hax is None):
             hax = self.divider.append_axes('right',
