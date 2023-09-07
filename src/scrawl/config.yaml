@@ -1,3 +1,4 @@
+# ---------------------------------------------------------------------------- #
 image:
     blit:   on
     fig:     
@@ -13,13 +14,15 @@ image:
 
     cbar:
         show:       True
+        position:   right
         size:       0.2
         pad:        0
     hist:
         show:       True
-        bins:       100
+        position:   right
         size:       0.6
         pad:        0
+        bins:       100
     sliders:
         show:           True
         color:          [r, g, b]
@@ -30,6 +33,7 @@ image:
     origin:         lower
     interpolation:  none
 
+# ---------------------------------------------------------------------------- #
 video:
     clim_every:     off
     
@@ -39,13 +43,13 @@ video:
     
     slider:
         label:      frame
-        valfmt:     %d
+        valfmt:     '%d'
         position:   bottom
         size:       0.1
         pad:        0.3
 
     features:
-        market_cycle:   XPoHd*s
+        marker_cycle:   XPoHd*s
         s:              25
         alpha:          1
         linewidths:     0.7
@@ -54,9 +58,11 @@ video:
         ec: m
         lw: 1
 
+# ---------------------------------------------------------------------------- #
 image3d:
     zaxis_cbar:     on
 
+# ---------------------------------------------------------------------------- #
 density:
     bins:           50
     max_points:     500
@@ -75,6 +81,7 @@ density:
         marker:     x
         ls:         ''
 
+# ---------------------------------------------------------------------------- #
 prisms:
     dxy:            '0.8'
     cmap:           null

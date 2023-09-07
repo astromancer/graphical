@@ -5,12 +5,17 @@ Efficient, scrollable image sequence visualisation.
 # std
 import time
 import warnings
+import contextlib as ctx
 from collections import abc
 
 # third-party
 import cycler
 import numpy as np
 from matplotlib.widgets import Slider
+
+# local
+from recipes.config import ConfigNode
+from recipes import dicts
 
 # relative
 from ..utils import embossed
@@ -67,10 +72,10 @@ class VideoDisplay(ImageDisplay, ScrollAction):
         self.data = data
 
         # make frame slider
-        text = CONFIG.slider.pop('label')
-        valfmt = CONFIG.slider.pop('valfmt')
-        fsax = self.divider.append_axes(**CONFIG.slider)
-        self.frame_slider = fs = Slider(fsax, text, n, self.nframes, valfmt=valfmt)
+        pos_kws, slide_kws = dicts.split(CONFIG.slider.copy(), 'label', 'valfmt')
+        label = slide_kws.pop('label')
+        fsax = self.divider.append_axes(**pos_kws)
+        self.frame_slider = fs = Slider(fsax, label, n, self.nframes, **slide_kws)
         self.frame_slider.on_changed(self.update)
         # fsax.xaxis.set_major_locator(ticker.AutoLocator())
 
@@ -351,7 +356,8 @@ class VideoDisplay(ImageDisplay, ScrollAction):
     #         return 'x=%1.3f, y=%1.3f' % (x, y)
 
 
-MARKER_CYCLE = cycler.cycler(marker=list(CONFIG.features.pop('marker_cycle')))
+with ctx.suppress(ValueError):
+    MARKER_CYCLE = cycler.cycler(marker=list(CONFIG.features.pop('marker_cycle')))
 
 
 class VideoFeatureDisplay(VideoDisplay):
@@ -376,7 +382,6 @@ class VideoFeatureDisplay(VideoDisplay):
         kws:
             passed to `VideoDisplay`
         """
-
         VideoDisplay.__init__(self, data, **kws)
 
         first = self.set_coords(coords)
@@ -449,6 +454,7 @@ class VideoFeatureDisplay(VideoDisplay):
                 kws['facecolor'] = 'none'
 
             #
+            print({**style, **kws})
             marks = self.ax.scatter(*points.T, **{**style, **kws})
 
             if emboss:

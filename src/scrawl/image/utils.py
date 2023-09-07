@@ -156,13 +156,16 @@ def resolve_clim(data=None, vmin=None, vmax=None, clim=None, plim=None, **_ignor
         assert data is not None
         return _get_percentile_clim(data, plim)
 
+    if clim is True:
+        return (None, None) # ????
+    
     if isinstance(clim, abc.Sized) and len(clim) == 2:
         return clim
 
     if clim is False or clim is None:
         return (None, None)
 
-    raise ValueError(f'Invalid value for {clim = :!r}.')
+    raise ValueError(f'Invalid value for {clim = !r}.')
 
 
 def set_clim_connected(x, y, artist, sliders):

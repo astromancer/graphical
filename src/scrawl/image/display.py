@@ -8,7 +8,7 @@ from loguru import logger
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 
 # local
-from recipes import dicts
+from recipes import api, dicts
 from recipes.pprint import describe
 from recipes.config import ConfigNode
 from recipes.logging import LoggingMixin
@@ -137,7 +137,9 @@ class ImageDisplay(CanvasBlitHelper, FigureSetup, LoggingMixin):
 
     sliderClass = RangeSliders
 
-    def __init__(self, image, *args, cbar=cbar_on, hist=hist_on, sliders=sliders_on,
+    @api.synonyms({'plims': 'plim'})
+    def __init__(self, image, *args,
+                 cbar=cbar_on, hist=hist_on, sliders=sliders_on,
                  use_blit=CONFIG.blit, connect=True, **kws):
         """
 
@@ -171,10 +173,18 @@ class ImageDisplay(CanvasBlitHelper, FigureSetup, LoggingMixin):
         self.ishape = self.data.shape
 
         # create the figure if needed
-        kws, figure_setup = dicts.split(kws, 'fig', 'ax', 'cax', 'hax', 'title', 'figsize')
+        kws, figure_setup = dicts.split(kws,
+                                        'fig', 'figsize', 'subplot_kws',
+                                        'title', 'ax', 'cax', 'hax')
         self.figure, axes = self.setup_figure(**figure_setup, data=image)
         self.ax, self.cax, self.hax = axes
         ax = self.ax
+
+        # set kw defaults
+        kws = {'plim': CONFIG.plim,
+               'origin': CONFIG.origin,
+               'interpolation': CONFIG.interpolation,
+               **kws}
 
         # get colour limits
         kws['vmin'], kws['vmax'] = resolve_clim(image, **kws)
@@ -182,10 +192,7 @@ class ImageDisplay(CanvasBlitHelper, FigureSetup, LoggingMixin):
         dicts.remove(kws, 'clim', 'plim')
 
         # use imshow to draw the image
-        self.image = ax.imshow(image, *args,
-                               **{**kws,
-                                  'origin': CONFIG.origin,
-                                  'interpolation': CONFIG.interpolation})
+        self.image = ax.imshow(image, *args, **kws)
         self.norm = self.image.norm
         self.get_clim = self.image.get_clim
         # self.image.set_clim(*clim)
