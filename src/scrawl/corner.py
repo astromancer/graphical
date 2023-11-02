@@ -25,7 +25,7 @@ DEFAULT_NBINS = 30
 
 
 def truncate_colormap(cmap, lo=0, hi=1, n=255):
-    cmap = colormaps[cmap]
+    cmap = colormaps.get_cmap(cmap)
     return LinearSegmentedColormap.from_list(
         f'{cmap.name}[{lo:.2f}, {lo:.2f}]',
         cmap(np.linspace(lo, hi, n)))
