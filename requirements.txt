@@ -3,7 +3,6 @@ cycler
 scipy
 astropy
 more_itertools
-six
 matplotlib
 PyQt5
-recipes
+git+https://github.com/astromancer/recipes

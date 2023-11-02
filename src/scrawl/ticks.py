@@ -1,22 +1,28 @@
 
 """
-Additional matplotlib axes tick formatters
+Additional matplotlib axes tick formatters.
 """
 
 
+# std
 import warnings
+import datetime
 
+# third-party
 import numpy as np
 from scipy.stats import mode
 from matplotlib import ticker
-from matplotlib.transforms import (Transform,
-                                   IdentityTransform,
-                                   ScaledTranslation)
+from matplotlib.transforms import IdentityTransform, Transform
 
+# local
 from recipes import pprint as ppr
 
+# relative
 from .transforms import ReciprocalTransform
 
+
+# ---------------------------------------------------------------------------- #
+SPD = 86_400
 
 # ---------------------------------------------------------------------------- #
 # Locators                                                                     #
@@ -24,6 +30,7 @@ from .transforms import ReciprocalTransform
 
 # TODO: NoOverlappingTicksFormatter.
 #  NOTE: Probably not necessary if you choose appropriate locators
+
 
 def locator_transform_factory(locator, transform):
     """
@@ -76,6 +83,7 @@ class OffsetLocator(ticker.MaxNLocator):
     Get the same tick locations as you would if plotting the variables with
     offset subtracted
     """
+
     def __call__(self):
         """Return the locations of the ticks."""
         # Note, these are untransformed coordinates
@@ -133,7 +141,7 @@ class SexagesimalFormatter(ticker.Formatter):
         self.unicode = unicode
 
     def __call__(self, x, pos=None):
-        return ppr.hms(x, self.precision, self.sep, self.base_unit,
+        return ppr.hms(x % SPD, self.precision, self.sep, self.base_unit,
                        self.short, self.unicode)
 
 
@@ -151,9 +159,9 @@ class InfiniteAwareness:
         if xs == 'inf':
             if self.latex:
                 return r'$\infty$'
-            if self.unicode:
-                return '∞'
-            return 'inf'
+
+            return '∞' if self.unicode else 'inf'
+
         return xs  #
 
 
@@ -195,10 +203,9 @@ class TransFormatter(ticker.ScalarFormatter):
         if abs(x) > self.inf:
             x = np.sign(x) * np.inf
 
-        if abs(x) == np.inf:
-            if self.useMathText:
-                sign = '-' * int(x < 0)
-                return r'{}$\infty$'.format(sign)
+        if (abs(x) == np.inf) and self.useMathText:
+            sign = '-' * int(x < 0)
+            return f'{sign}$\infty$'
 
         return ppr.decimal(x, self.precision)
 
@@ -262,23 +269,23 @@ class MetricFormatter(ticker.Formatter):
     # represented here by a TeX string
 
     # The SI metric prefixes  # TODO: this now in recipes.pprint
-    METRIC_PREFIXES = {-24: "y",
-                       -21: "z",
-                       -18: "a",
-                       -15: "f",
-                       -12: "p",
-                       -9: "n",
-                       -6: "$\mu$",
-                       -3: "m",
-                       0: "",
-                       3: "k",
-                       6: "M",
-                       9: "G",
-                       12: "T",
-                       15: "P",
-                       18: "E",
-                       21: "Z",
-                       24: "Y"}
+    METRIC_PREFIXES = {-24: 'y',
+                       -21: 'z',
+                       -18: 'a',
+                       -15: 'f',
+                       -12: 'p',
+                       -9: 'n',
+                       -6: '$\mu$',
+                       -3: 'm',
+                       0: '',
+                       3: 'k',
+                       6: 'M',
+                       9: 'G',
+                       12: 'T',
+                       15: 'P',
+                       18: 'E',
+                       21: 'Z',
+                       24: 'Y'}
 
     def __init__(self, unit="", precision=None, uselabel=True):
         self.baseunit = unit
@@ -320,7 +327,7 @@ class MetricFormatter(ticker.Formatter):
             if self.unit not in label:
                 ix = label.find('(') if '(' in label else None
                 label = label[:ix].strip()
-                self.axis.label.set_text('{} ({})'.format(label, self.unit))
+                self.axis.label.set_text(f'{label} ({self.unit})')
 
     def metric_format(self, num):
 
@@ -328,3 +335,118 @@ class MetricFormatter(ticker.Formatter):
         formatted = self.format_str.format(mant)
 
         return formatted.strip()
+
+
+# ---------------------------------------------------------------------------- #
+
+def _rotate_tick_labels(ax, angle, minor=False, pad=0):
+
+    ax.tick_params('x', pad=pad)
+    ticklabels = ax.xaxis.get_ticklabels(minor)
+    for label in ticklabels:
+        label.set(ha='left', va='bottom',
+                  rotation=angle)
+        #   rotation_mode='anchor')
+
+
+class DateTick(ticker.Formatter):
+
+    def __init__(self, date):
+        self.date = datetime.date(*map(int, date.split('-')))
+        self._ticks = {}
+
+    def set_locs(self, locs):
+        super().set_locs(locs)
+
+        if len(locs):
+            majloc = self.axis.major.locator()
+            i = np.array([0, *np.diff(majloc // SPD)], bool)
+            minor_interval = np.diff(locs).min()
+            dateloc = majloc[i] - minor_interval
+
+            x0 = self.axis.axes.get_xlim()[0]
+            maj0 = majloc[np.digitize(x0, majloc)] - minor_interval
+            min0 = locs[np.digitize(x0, locs)]
+            first = min(min0, maj0).item()
+
+            self._ticks = {t: str(self.date + datetime.timedelta(i))
+                           for i, t in enumerate((first, *dateloc))}
+
+    def __call__(self, x, pos=None):
+        return self._ticks.get(x, '')
+
+
+# ---------------------------------------------------------------------------- #
+
+def axis_add_custom_ticks(axis, ticks):
+    locator = axis.get_major_locator()
+    formatter = axis.get_major_formatter()
+    axis.set_major_locator(AdditionalTickLocator(locator, ticks.keys()))
+    axis.set_major_formatter(AdditionalTickFormatter(formatter, ticks))
+
+
+class AdditionalTickLocator(ticker.Locator):
+    '''This locator chains whatever locator given to it, and then add addition custom ticks to the result'''
+
+    def __init__(self, chain: ticker.Locator, ticks) -> None:
+        super().__init__()
+        assert chain is not None
+        self._chain = chain
+        self._additional_ticks = np.asarray(list(ticks))
+
+    def _add_locs(self, locs):
+        locs = np.unique(np.concatenate([
+            np.asarray(locs),
+            self._additional_ticks
+        ]))
+        return locs
+
+    def tick_values(self, vmin, vmax):
+        locs = self._chain.tick_values(vmin, vmax)
+        return self._add_locs(locs)
+
+    def __call__(self):
+        # this will call into chain's own tick_values,
+        # so we also add ours here
+        locs = self._chain.__call__()
+        return self._add_locs(locs)
+
+    def nonsingular(self, v0, v1):
+        return self._chain.nonsingular(v0, v1)
+
+    def set_params(self, **kwargs):
+        return self._chain.set_params(**kwargs)
+
+    def view_limits(self, vmin, vmax):
+        return self._chain.view_limits(vmin, vmax)
+
+
+class AdditionalTickFormatter(ticker.Formatter):
+    '''This formatter chains whatever formatter given to it, and
+    then does special formatting for those passed in custom ticks'''
+
+    def __init__(self, chain: ticker.Formatter, ticks) -> None:
+        super().__init__()
+        assert chain is not None
+        self._chain = chain
+        self._additional_ticks = ticks
+
+    def __call__(self, x, pos=None):
+        if x in self._additional_ticks:
+            return self._additional_ticks[x]
+        res = self._chain.__call__(x, pos)
+        return res
+
+    def format_data_short(self, value):
+        if value in self._additional_ticks:
+            return self.__call__(value)
+        return self._chain.format_data_short(value)
+
+    def get_offset(self):
+        return self._chain.get_offset()
+
+    def _set_locator(self, locator):
+        self._chain._set_locator(locator)
+
+    def set_locs(self, locs):
+        self._chain.set_locs(locs)

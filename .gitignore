@@ -4,6 +4,7 @@ dev/
 rainbow.py
 src/scrawl/interactive.py
 src/scrawl/axgrid.py
+tests/results/
 
 # Editor temporary/working/backup files #
 #########################################
@@ -90,3 +91,4 @@ lib/z.lib
 # Linters #
 ###########
 *.trunk
+

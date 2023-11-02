@@ -3,7 +3,7 @@ better corner plots
 """
 
 import itertools as itt
-from scrawl.scatter import scatter_density
+from scrawl import density
 
 from matplotlib import pyplot as plt
 from matplotlib.gridspec import GridSpec
@@ -20,6 +20,8 @@ from recipes.logging import get_module_logger
 
 # module level logger
 logger = get_module_logger()
+logging.basicConfig()
+logger.setLevel(logging.INFO)
 
 DEFAULT_NBINS = 30
 
@@ -228,7 +230,7 @@ def corner(samples, bins=DEFAULT_NBINS, plims=(0.5, 99.5),
 
         else:
             # plot scatter / density
-            hvals, poly_coll, points = scatter_density(
+            hvals, poly_coll, points = density.map_scatter(
                 ax, samples[:, [jj, ii]], (bins[jj], bins[ii]), None,
                 min_count_density, tessellation=tessellation,
                 scatter_kws=scatter_kws_, density_kws=density_kws_)

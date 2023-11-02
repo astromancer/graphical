@@ -1,0 +1,87 @@
+# ---------------------------------------------------------------------------- #
+image:
+    blit:   on
+    fig:     
+        size:           auto
+        fill:           0.75 # Max fraction of screen size allowed in any direction
+        max_pixel_size: 0.2  # Max pixel size allowed in inches
+    
+    subplot:
+        left:       0.05
+        right:      0.95
+        top:        0.98
+        bottom:     0.05
+
+    cbar:
+        show:       True
+        position:   right
+        size:       0.2
+        pad:        0
+    hist:
+        show:       True
+        position:   right
+        size:       0.6
+        pad:        0
+        bins:       100
+    sliders:
+        show:           True
+        color:          [r, g, b]
+        ms:             [2, 1, 2]
+        extra_markers:  ['>', s, <]
+
+    plim:           [0.25, 99.75]
+    origin:         lower
+    interpolation:  none
+
+# ---------------------------------------------------------------------------- #
+video:
+    clim_every:     off
+    
+    scroll:
+        wrap:       on
+        rate_limit: 10
+    
+    slider:
+        label:      frame
+        valfmt:     '%d'
+        position:   bottom
+        size:       0.1
+        pad:        0.3
+
+    features:
+        marker_cycle:   XPoHd*s
+        s:              25
+        alpha:          1
+        linewidths:     0.7
+
+    apertures:
+        ec: m
+        lw: 1
+
+# ---------------------------------------------------------------------------- #
+image3d:
+    zaxis_cbar:     on
+
+# ---------------------------------------------------------------------------- #
+density:
+    bins:           50
+    max_points:     500
+    min_count:      3
+    tessellation:   hex
+    cmap:           cmr.voltage_r
+    alpha:          1
+
+    density:
+        # parameters passed to the PolyCollection
+        linewidth:      0.25
+        # This is needed for the hexbins to be correct with large number of
+        #  bins:  see https://github.com/matplotlib/matplotlib/issues/26202
+
+    scatter:
+        marker:     x
+        ls:         ''
+
+# ---------------------------------------------------------------------------- #
+prisms:
+    dxy:            '0.8'
+    cmap:           null

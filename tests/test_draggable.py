@@ -10,13 +10,13 @@ if __name__ == '__main__':
     import numpy as np
     import pylab as plt
 
-    from scrawl.draggable.machinery import DragMachinery
+    from scrawl.moves.machinery import MotionManager
 
-    # from scrawl.draggable.errorbar import DraggableErrorbar
-    # from scrawl.draggable.lines import DragggableLine
+    # from scrawl.moves.errorbar import MovableErrorbar
+    # from scrawl.moves.lines import DragggableLine
 
     parser = argparse.ArgumentParser(
-            description='Tests for interactive draggable artists in matplotlib'
+            description='Tests for interactive movable artists in matplotlib'
     )
     parser.add_argument('--profile', action='store_true')
     parser.add_argument('--debug', action='store_true')
@@ -32,16 +32,16 @@ if __name__ == '__main__':
 
         profiler = HLineProfiler()
 
-        for name, method in inspect.getmembers(DragMachinery,
+        for name, method in inspect.getmembers(MotionManager,
                                                predicate=inspect.isfunction):
             profiler.add_function(method)
         profiler.enable_by_count()
 
     if args.debug:
-        from recipes.decor.utils import decorateAll
-        from recipes.decor import expose
+        from recipes.decorators.utils import decorateAll
+        from recipes.decorators import expose
 
-        DragMachinery = decorateAll(expose.args())(DragMachinery)
+        MotionManager = decorateAll(expose.args())(MotionManager)
 
     # from IPython import embed
     # embed()
@@ -54,7 +54,7 @@ if __name__ == '__main__':
     pl = ax.plot(x, y0, 'r>', clip_on=False)
     ax.set_xlim(0, 0.5)
 
-    d = DragMachinery(pl, use_blit=args.blit)
+    d = MotionManager(pl, use_blit=args.blit)
     d.connect()
     plt.show(block=True)
 
@@ -70,7 +70,7 @@ if __name__ == '__main__':
     # x2, y2 = np.arange(0,10), np.ones(10)
     # plots = ax.plot(x1, y1, 'r-', x2, y2, 'b-')
 
-    # machine = DragMachinery(plots, use_blit=args.blit)
+    # machine = MotionManager(plots, use_blit=args.blit)
     # machine.connect()
     # plt.show()      #if not is_interactive() ???
 
@@ -90,6 +90,6 @@ if __name__ == '__main__':
     # ax.errorbar( x, y3, y3err, x3err, fmt='r*', ms=25, mew=2,
     # mec='c', label='linked to baz' ) ]
 
-    # d = DraggableErrorbar( plots, linked=plots[-2:] )
+    # d = MovableErrorbar( plots, linked=plots[-2:] )
     # d.connect()
     # plt.show()

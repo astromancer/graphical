@@ -1,9 +1,13 @@
+# third-party
 import numpy as np
 import matplotlib.pyplot as plt
+
+# local
 from recipes.logging import LoggingMixin
 
-from scrawl.imagine import _sanitize_data
-from scrawl.utils import percentile
+# relative
+from .utils import percentile
+from .image import _sanitize_data
 
 
 def get_bins(data, bins, range=None):
@@ -28,11 +32,12 @@ class Histogram(LoggingMixin):
         self(data, bins, range, plims, **kws)
 
     def __call__(self, data, bins=bins, range=None, plims=None, **kws):
+
         # compute histogram
         data = _sanitize_data(data)
         if plims is not None:
             # choose range based on data percentile limits
-            range = percentile(data, plims)
+            range = percentile(data, plims)  # sourcery skip: avoid-builtin-shadow
 
         self.bin_edges = self.auto_bins(data, bins, range)
         self.counts, _ = np.histogram(data, self.bin_edges, range, **kws)
