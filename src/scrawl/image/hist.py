@@ -132,8 +132,7 @@ class PixelHistogram(LoggingMixin):  # PixelHistogram
     def _compute_cmap(self, cmap, outside_colour, outside_alpha):
         # setup colormap (copy)
         self.logger.debug('Adapting cmap {} for {}.', cmap, self)
-        if isinstance(cmap, str):
-            cmap = colormaps[cmap]
+        cmap = colormaps.get_cmap(cmap)
         cmap = ListedColormap(cmap(np.linspace(0, 1, 256)))
 
         # optionally gray out out-of-bounds values
