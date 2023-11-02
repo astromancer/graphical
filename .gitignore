@@ -5,8 +5,8 @@ rainbow.py
 src/scrawl/interactive.py
 src/scrawl/axgrid.py
 
-#########################################
 # Editor temporary/working/backup files #
+#########################################
 .#*
 [#]*#
 *~
@@ -61,13 +61,10 @@ ehthumbs.db
 Icon?
 Thumbs.db
 
-
-
 # Documentation generated files #
 #################################
 # sphinx build directory
 doc/_build
-
 
 # Pytest/Nose generated files #
 ###############################
@@ -78,6 +75,7 @@ doc/_build
 *.py,cover
 cover/
 .noseids
+.hypothesis/
 
 # Conda files #
 ###############
@@ -89,3 +87,6 @@ lib/z.lib
 #################
 .ipynb_checkpoints/
 
+# Linters #
+###########
+*.trunk
