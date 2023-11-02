@@ -1,8 +1,13 @@
+loguru
 numpy
-cycler
 scipy
 astropy
 more_itertools
 matplotlib
 PyQt5
+numpydoc
+docsplice
+decorator
+stdlib_list
+better_exceptions
 git+https://github.com/astromancer/recipes
