@@ -2,7 +2,6 @@
 # third-party
 import numpy as np
 import matplotlib.pyplot as plt
-import matplotlib.colorbar as cbar
 from matplotlib import cm, ticker
 from loguru import logger
 from mpl_toolkits.axes_grid1 import make_axes_locatable
@@ -12,7 +11,7 @@ from recipes import api, dicts
 from recipes.pprint import describe
 from recipes.config import ConfigNode
 from recipes.logging import LoggingMixin
-from recipes.functionals import ignore_params, ignore_returns
+from recipes.decorators import ignore_params, ignore_returns
 
 # relative
 from ..depth.prisms import Bar3D
@@ -32,6 +31,29 @@ from .utils import guess_figsize, resolve_clim
 CONFIG = ConfigNode.load_module(__file__)
 cbar_on, hist_on, sliders_on = (bool(CONFIG[_].pop('show', True))
                                 for _ in ('cbar', 'hist', 'sliders'))
+
+
+# ---------------------------------------------------------------------------- #
+def image_with_marginals(image, func=np.mean, dx=1, **kws):
+
+    fig, ax = plt.subplots()
+    ax.set_aspect('equal')
+
+    div = make_axes_locatable(ax)
+    axx = div.append_axes('top', '30%', pad='2%', sharex=ax)
+    axy = div.append_axes('right', '30%', pad='2%', sharey=ax)
+    axx.xaxis.tick_top()
+    axy.yaxis.tick_right()
+
+    imd = ImageDisplay(image, ax=ax, sliders=False, hist=False, cbar=False, **kws)
+    cmap = imd.image.get_cmap()
+
+    xm = func(image, 0)
+    ym = func(image, 1)
+    barx = axx.bar(np.arange(len(xm)), xm, dx, color=cmap(imd.image.norm(xm)))
+    bary = axy.barh(np.arange(len(ym)), ym, dx, color=cmap(imd.image.norm(xm)))
+
+    return imd, barx, bary
 
 
 # ---------------------------------------------------------------------------- #
@@ -81,7 +103,7 @@ class FigureSetup:
             cax = self.divider.append_axes(**CONFIG.cbar)
 
         if self.has_hist and (hax is None):
-            hax = self.divider.append_axes('right',
+            hax = self.divider.append_axes(CONFIG.hist.position,
                                            size=CONFIG.hist.size,
                                            pad=CONFIG.hist.pad)
 
@@ -123,7 +145,6 @@ class FigureSetup:
             kws = {**dict(ticks=[], format=ticker.NullFormatter()), **kws}
 
         return Colorbar(self.cax, self.image, **kws)
-
 
 class ImageDisplay(CanvasBlitHelper, FigureSetup, LoggingMixin):
 

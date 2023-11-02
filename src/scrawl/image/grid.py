@@ -44,8 +44,8 @@ def auto_grid_layout(n):
     return x, y
 
 
-def plot_image_grid(images, layout=(), titles=(), title_kws=None, figsize=None,
-                    plims=None, clim_all=False, **kws):
+def plot_image_grid(images, layout=(), titles=(), title_kws=None, fig=None,
+                    plim=None, clim_all=False, **kws):
     """
 
     Parameters
@@ -75,7 +75,8 @@ def plot_image_grid(images, layout=(), titles=(), title_kws=None, figsize=None,
     n_rows, n_cols = resolve_layout(layout, n)
 
     # create figure
-    fig = plt.figure(figsize=figsize)
+    if fig is None:
+        fig = plt.figure()
 
     # ticks
     tick_par = dict(color='w', direction='in',
@@ -94,7 +95,7 @@ def plot_image_grid(images, layout=(), titles=(), title_kws=None, figsize=None,
     kws = {**dict(origin='lower',
                   cbar=False, sliders=False, hist=False,
                   clim=not clim_all,
-                  plims=plims),
+                  plim=plim),
            **kws}
     title_kws = {**TITLE_STYLE, **(title_kws or {})}
 
@@ -145,7 +146,7 @@ def plot_image_grid(images, layout=(), titles=(), title_kws=None, figsize=None,
     # fig.colorbar(imd.image, cax)
     img = ImageGrid(fig, axes, imd)
     if clim_all:
-        img._clim_all(images, plims)
+        img._clim_all(images, plim)
 
     return img
 
@@ -201,7 +202,7 @@ class ImageGrid:
     def images(self):
         return [ax.images[0].get_array() for ax in self.figure.axes]
 
-    def _clim_all(self, art, imd, images, plims):
+    def _clim_all(self, art, imd, images, plim):
         # connect all image clims to the sliders.
         for image in art:
             # noinspection PyUnboundLocalVariable
@@ -237,7 +238,7 @@ class ImageGrid:
             pixels.extend(im.compressed() if np.ma.isMA(im) else im.ravel())
         pixels = np.array(pixels)
 
-        clim = self.imd.clim_from_data(pixels, plims=plims)
+        clim = self.imd.clim_from_data(pixels, plim=plim)
         self.imd.sliders.set_positions(clim, draw_on=False)  # no canvas yet!
 
         # Update histogram with data from all images

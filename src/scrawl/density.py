@@ -3,7 +3,6 @@ Scatter plots with density inlays / Density maps with scatter for sparse areas
 """
 
 # std
-import itertools as itt
 import copy
 
 # third-party
@@ -12,7 +11,6 @@ import matplotlib.pyplot as plt
 
 # local
 from recipes.config import ConfigNode
-from recipes.oo.slots import _sanitize_locals
 from recipes.utils import duplicate_if_scalar
 
 # relative
@@ -164,18 +162,20 @@ def _hist2d(ax, data, bins, range, min_count, density_kws):
     # plot density map # x_edges, y_edges
     hvals, *_, qmesh = ax.hist2d(*data.T, bins, range, **density_kws)
     xy_scatter = _remove_sparse_cells_qmesh(qmesh, data, min_count)
+
     return qmesh, hvals, xy_scatter
 
 
 def _remove_sparse_cells_qmesh(qmesh, data, min_count):
     # remove low density faces
-    z = qmesh.get_array()
+    xye = qmesh._coordinates
+    z = qmesh.get_array().reshape(np.subtract(xye.shape[:2], 1))
     xy_scatter = _get_sparse_points(data.T, z.T,
-                                    (qmesh._coordinates[0, :, 0],
-                                     qmesh._coordinates[:, 0, 1]),
+                                    (xye[0, :, 0],
+                                     xye[:, 0, 1]),
                                     min_count)
 
-    # set cmap under color transparent
+    # set cmap under color to axes facecolor and make transparent
     _adapt_cmap(qmesh, min_count)
 
     return xy_scatter
@@ -184,9 +184,9 @@ def _remove_sparse_cells_qmesh(qmesh, data, min_count):
 def _get_sparse_points(points, bincounts, edges, min_count):
     x, y = points
     x_edges, y_edges = edges
-    
+
     # select points within the range
-    bins = bincounts.shape
+    bins = (len(x_edges) - 1, len(y_edges) - 1)
     ix_x = np.digitize(x, x_edges)
     ix_y = np.digitize(y, y_edges)
     ind = ((ix_x > 0) & (ix_x <= bins[0]) &
