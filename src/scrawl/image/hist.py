@@ -9,7 +9,7 @@ from types import MappingProxyType
 # third-party
 import numpy as np
 from matplotlib import ticker
-from matplotlib.cm import get_cmap
+from matplotlib import colormaps
 from matplotlib.colors import ListedColormap
 from matplotlib.collections import PolyCollection
 
@@ -132,7 +132,8 @@ class PixelHistogram(LoggingMixin):  # PixelHistogram
     def _compute_cmap(self, cmap, outside_colour, outside_alpha):
         # setup colormap (copy)
         self.logger.debug('Adapting cmap {} for {}.', cmap, self)
-        cmap = get_cmap(cmap)
+        if isinstance(cmap, str):
+            cmap = colormaps[cmap]
         cmap = ListedColormap(cmap(np.linspace(0, 1, 256)))
 
         # optionally gray out out-of-bounds values

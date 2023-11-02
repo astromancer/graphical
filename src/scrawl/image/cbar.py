@@ -104,7 +104,7 @@ class CMapScroll(ScrollAction, TrackAxesUnderMouse, LoggingMixin):
     def mappable(self):
         return self.colorbar.mappable
 
-    # def get_cmap(self):
+    # def colormaps[self]:
     #     return remove_prefix(self.mappable.get_cmap().name, 'cmr.')
 
     def set_cmap(self, cmap):

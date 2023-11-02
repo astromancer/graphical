@@ -2,32 +2,30 @@
 better corner plots
 """
 
-import itertools as itt
-from scrawl import density
-
-from matplotlib import pyplot as plt
-from matplotlib.gridspec import GridSpec
-from matplotlib.colors import LinearSegmentedColormap
-import numpy as np
-import warnings
+# std
 import numbers
-from .hist import Histogram, get_bins
+import warnings
+import itertools as itt
+
+# third-party
+import numpy as np
+from loguru import logger
+from matplotlib.gridspec import GridSpec
+from matplotlib import colormaps, pyplot as plt
+from matplotlib.colors import LinearSegmentedColormap
+
+# relative
+from . import density
 from .utils import percentile
-
-import logging
-from recipes.logging import get_module_logger
+from .hist import Histogram, get_bins
 
 
-# module level logger
-logger = get_module_logger()
-logging.basicConfig()
-logger.setLevel(logging.INFO)
-
+# ---------------------------------------------------------------------------- #
 DEFAULT_NBINS = 30
 
 
 def truncate_colormap(cmap, lo=0, hi=1, n=255):
-    cmap = plt.get_cmap(cmap)
+    cmap = colormaps[cmap]
     return LinearSegmentedColormap.from_list(
         f'{cmap.name}[{lo:.2f}, {lo:.2f}]',
         cmap(np.linspace(lo, hi, n)))

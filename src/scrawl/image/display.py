@@ -2,7 +2,7 @@
 # third-party
 import numpy as np
 import matplotlib.pyplot as plt
-from matplotlib import cm, ticker
+from matplotlib import colormaps, ticker
 from loguru import logger
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 
@@ -59,7 +59,7 @@ def image_with_marginals(image, func=np.mean, dx=1, **kws):
 # ---------------------------------------------------------------------------- #
 class FigureSetup:
 
-    def __init__(self,  cbar=cbar_on, hist=hist_on, sliders=sliders_on):
+    def __init__(self, cbar=cbar_on, hist=hist_on, sliders=sliders_on):
 
         self.divider = None
         self.has_cbar = bool(cbar)
@@ -91,9 +91,9 @@ class FigureSetup:
                 fig = plt.figure()
 
             # axes
-            ax = fig.add_subplot(subplot) #  **(subplot_kws or {})
+            ax = fig.add_subplot(subplot)  # **(subplot_kws or {})
             ax.tick_params('x', which='both', top=True)
-            if figsize:
+            if figsize is not None:
                 fig.set_size_inches(figsize)
             fig.subplots_adjust(**(subplot_kws or {}))
 
@@ -145,6 +145,7 @@ class FigureSetup:
             kws = {**dict(ticks=[], format=ticker.NullFormatter()), **kws}
 
         return Colorbar(self.cax, self.image, **kws)
+
 
 class ImageDisplay(CanvasBlitHelper, FigureSetup, LoggingMixin):
 
@@ -502,6 +503,7 @@ class Image3DBase(FigureSetup):
                  cmap=None, figure=None,
                  bar3d_kws=None, **image_kws):
 
+        super().__init__(False, False, False)
         self.figure, (axi, ax3) = self.setup_figure(figure, data=image)
         self.axi, self.ax3 = axi, ax3
 
@@ -509,7 +511,7 @@ class Image3DBase(FigureSetup):
         y1, x1 = origin + image.shape
         y, x = np.indices(image.shape) + origin[:, None, None]
 
-        cmap = cm.get_cmap(cmap)
+        # cmap = cm.get_cmap(cmap)
         self.image = im = self.plot_image(image, cmap, **image_kws,
                                           extent=(x0, x1, y0, y1))
 

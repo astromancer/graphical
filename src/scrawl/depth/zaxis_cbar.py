@@ -1,7 +1,7 @@
 
 # third-party
 import numpy as np
-from matplotlib.cm import get_cmap
+from matplotlib import colormaps
 from mpl_toolkits.mplot3d.art3d import Line3DCollection
 
 # local
@@ -26,7 +26,7 @@ class ZAxisCbar(CallbackManager):
         xyz[2] = np.linspace(*(zrange or ax.get_zlim()), nseg)
 
         self.line = Line3DCollection(fold.fold(xyz.T, 2, 1, pad=False),
-                                     cmap=get_cmap(cmap),
+                                     cmap=cmap,
                                      array=xyz[2],
                                      **{**dict(zorder=10,
                                                lw=3),
