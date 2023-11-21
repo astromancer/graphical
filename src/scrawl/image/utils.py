@@ -58,7 +58,7 @@ def get_screen_size_inches():
     w = QtWidgets.QDesktopWidget()
     s = w.screen()
     size_inches = [s.width() / s.physicalDpiX(), s.height() / s.physicalDpiY()]
-    logger.info('Screen size is: {}', size_inches)
+    logger.info('Screen size is: {}.', size_inches)
     w.close()
     return size_inches
 
@@ -121,7 +121,7 @@ def _guess_figsize(image_shape, fill_factor=0.75, max_pixel_size=0.2,
     # enlarge =
     size *= max(np.max(min_size / size), 1)
 
-    logger.debug('Guessed figure size: ({:.1f}, {:.1f})', *size)
+    logger.debug('Guessed figure size: ({:.1f}, {:.1f}).', *size)
     return size
 
 

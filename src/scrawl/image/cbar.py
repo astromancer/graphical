@@ -125,7 +125,7 @@ class CMapScroll(ScrollAction, TrackAxesUnderMouse, LoggingMixin):
     def _scroll_cmap(self, event):
         # called during scroll callback
         current = self.mappable.get_cmap().name
-        self.logger.debug('Current cmap: {}', current)
+        self.logger.debug('Current cmap: {}.', current)
         if '.' in current:
             _, current = current.split('.')
 
@@ -135,7 +135,7 @@ class CMapScroll(ScrollAction, TrackAxesUnderMouse, LoggingMixin):
         new = f'{avail[(idx + inc) % len(avail)]}'
         new = f'{self.prefixes[new]}{new}'
 
-        self.logger.info('Scrolling cmap: {} -> {}', current, new)
+        self.logger.info('Scrolling cmap: {} -> {}.', current, new)
         self.set_cmap(new)
 
         cb = self.colorbar
@@ -149,7 +149,7 @@ class CMapScroll(ScrollAction, TrackAxesUnderMouse, LoggingMixin):
             return
 
         if event.key not in self._letter_index:
-            self.logger.debug('No cmaps starting with letter {!r}', event.key)
+            self.logger.debug('No cmaps starting with letter {!r}.', event.key)
             return
 
         current = self.mappable.get_cmap().name
@@ -159,7 +159,7 @@ class CMapScroll(ScrollAction, TrackAxesUnderMouse, LoggingMixin):
         i = self._letter_index.index(event.key)
         new = self.available[i]
         new = f'{self.prefixes[new]}{new}'
-        self.logger.info('Scrolling cmap: {} -> {}', current, new)
+        self.logger.info('Scrolling cmap: {} -> {}.', current, new)
         self.set_cmap(new)
 
         cb = self.colorbar

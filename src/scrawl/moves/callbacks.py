@@ -49,7 +49,7 @@ class CallbackDecorator(MethodTagger):
     def __wrapper__(self, func, *args, **kws):
         now = time.time()
         if (elapsed := now - self.previous_call_time) < self.timeout:
-            self.logger.debug('Function {.__name__!r} is rate limited at {:.3f}'
+            self.logger.debug('Function {.__name__!r} is rate limited at {:.3f}.'
                               ' Hz. Time elapsed since previous call: {:.3f} s.',
                               func, 1. / self.timeout, elapsed)
             return
@@ -113,7 +113,7 @@ class CallbackManager(LoggingMixin, TagManagerBase,
                 ' callback.'
             )
 
-        self.logger.debug('Adding {} callback with id {!r}',
+        self.logger.debug('Adding {} callback with id {!r}.',
                           pp.describe(method), identifier)
         self.cid_proxies[identifier] = self.callbacks.connect(signal, method)
 
@@ -147,7 +147,7 @@ class CallbackManager(LoggingMixin, TagManagerBase,
         self._check()
         [*map(self.callbacks.disconnect, self.cid_proxies.values())]
         self.cid_proxies = {}
-        self.logger.debug('Disconnected from figure {!s}', self.canvas)
+        self.logger.debug('Disconnected from figure {!s}.', self.canvas)
 
 
 # decorator

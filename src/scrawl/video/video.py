@@ -128,7 +128,7 @@ class VideoDisplay(ImageDisplay, ScrollAction):
         size = super().guess_figsize(data, fill_factor, max_pixel_size)
         # create a bit more space below the figure for the frame nr indicator
         size[1] += 0.5
-        self.logger.debug('Guessed figure size: ({:.1f}, {:.1f})', *size)
+        self.logger.debug('Guessed figure size: ({:.1f}, {:.1f}).', *size)
         return size
 
     @property
@@ -263,7 +263,7 @@ class VideoDisplay(ImageDisplay, ScrollAction):
             #             _sanitize_data(image))
 
             # else:
-            #     self.logger.debug('Auto clims: ({:.1f}, {:.1f})', vmin, vmax)
+            #     self.logger.debug('Auto clims: ({:.1f}, {:.1f}).', vmin, vmax)
         return draw_list
 
     def play(self, start=None, stop=None, pause=0):
@@ -424,7 +424,7 @@ class VideoFeatureDisplay(VideoDisplay):
 
         if n != m and nd in {2, 3}:
             # use as initializing coordinates for first frame
-            self.logger.info('Using coordinates as initializer: {}', coords)
+            self.logger.info('Using coordinates as initializer: {}.', coords)
             self.coords = None
             return coords
 
@@ -487,17 +487,17 @@ class VideoFeatureDisplay(VideoDisplay):
 
         # Try get feature coordinates
         coords = self.get_coords(i)
-        self.logger.debug('Coords: {}\n{}', coords.shape, coords)
+        self.logger.debug('Coords: {}\n{}.', coords.shape, coords)
 
         if coords is None:
-            self.logger.debug('Not updating marks since coords is {}', coords)
+            self.logger.debug('Not updating marks since coords is {}.', coords)
             return draw_list
 
         # update markers
         if coords.ndim == 2:
             coords = coords[None]
 
-        self.logger.debug('Updating coords: {}', coords)
+        self.logger.debug('Updating coords: {}.', coords)
         for coo, marks in zip(coords, self.marks):
             marks.set_offsets(coo)
             marks.set_visible(True)

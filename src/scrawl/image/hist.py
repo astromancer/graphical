@@ -245,5 +245,5 @@ class PixelHistogram(LoggingMixin):  # PixelHistogram
         if self.orientation.startswith('v'):
             xlim, ylim = ylim, xlim
 
-        # self.logger.debug('Ax lims: ({:.1f}, {:.1f})', *lim)
+        # self.logger.debug('Ax lims: ({:.1f}, {:.1f}).', *lim)
         self.ax.set(xlim=xlim, ylim=ylim)
