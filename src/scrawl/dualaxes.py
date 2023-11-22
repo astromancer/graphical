@@ -94,7 +94,7 @@ class DualAxes(SubplotHost):
         # self.xtrans =  kws.pop( 'xtrans', IdentityTransform() )
         # self.ytrans =  kws.pop( 'ytrans', IdentityTransform() )
         # btf(IdentityTransform(), IdentityTransform()
-        aux_trans = kws.pop('aux_trans', Affine2D.identity())
+        aux_trans = kws.pop('aux_trans', Affine2D())
         super().__init__(*args, **kws)  # self.__class__, self
 
         # Initialize the parasite axis
