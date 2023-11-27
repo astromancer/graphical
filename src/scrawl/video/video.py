@@ -14,8 +14,8 @@ import numpy as np
 from matplotlib.widgets import Slider
 
 # local
-from recipes.config import ConfigNode
 from recipes import dicts
+from recipes.config import ConfigNode
 
 # relative
 from ..utils import embossed

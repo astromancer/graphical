@@ -5,11 +5,10 @@ The main machinery enabling interactive artist movement.
 # std
 import time
 from warnings import warn
-from collections import abc, defaultdict
 
 # third-party
 import numpy as np
-import more_itertools as mit
+import more_itertools
 from loguru import logger
 from matplotlib.lines import Line2D
 from matplotlib.artist import Artist
@@ -17,13 +16,13 @@ from matplotlib.container import ErrorbarContainer
 from matplotlib.transforms import Affine2D, blended_transform_factory as btf
 
 # local
-from recipes import op, pprint
+from recipes import op
 from recipes.logging import LoggingMixin
 from recipes.dicts import IndexableOrderedDict
 
 # relative
 from .observers import Observers
-from .utils import filter_non_artist, art_summary
+from .utils import filter_non_artist
 from .callbacks import CallbackManager, mpl_connect
 
 

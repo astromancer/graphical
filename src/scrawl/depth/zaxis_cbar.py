@@ -1,12 +1,13 @@
 
 # third-party
 import numpy as np
-from matplotlib import colormaps
 from mpl_toolkits.mplot3d.art3d import Line3DCollection
 
 # local
 from recipes.array import fold
-from scrawl.moves.callbacks import CallbackManager, mpl_connect
+
+# relative
+from ..moves.callbacks import CallbackManager, mpl_connect
 
 
 class ZAxisCbar(CallbackManager):

@@ -2,7 +2,7 @@
 # third-party
 import numpy as np
 import matplotlib.pyplot as plt
-from matplotlib import colormaps, ticker
+from matplotlib import ticker
 from loguru import logger
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 
@@ -27,7 +27,7 @@ from .utils import guess_figsize, resolve_clim
 # TODO: maybe display things like contrast ratio ??
 
 # ---------------------------------------------------------------------------- #
-# module config
+# Module config
 CONFIG = ConfigNode.load_module(__file__)
 cbar_on, hist_on, sliders_on = (bool(CONFIG[_].pop('show', True))
                                 for _ in ('cbar', 'hist', 'sliders'))

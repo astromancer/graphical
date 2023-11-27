@@ -1,38 +1,37 @@
+"""
+Visualise complex functions.
+"""
 
 import numpy as np
 import matplotlib.pyplot as plt
-from matplotlib.ticker import ScalarFormatter, AutoMinorLocator
+from matplotlib.ticker import AutoMinorLocator, ScalarFormatter
 from mpl_toolkits.mplot3d import Axes3D
 from mpl_toolkits.axes_grid1 import AxesGrid
 
-# matplotlib <1.5
-# import colormaps as cmaps
-# plt.register_cmap(name='viridis', cmap=cmaps.viridis)
 
-#****************************************************************************************************
 class ImaginaryScalarFormatter(ScalarFormatter):
     def __call__(self, x, pos=None):
         s = ScalarFormatter.__call__(self, x, pos)
         return s+'$i$'
 
-#TODO: modular surfaces
 
-#****************************************************************************************************
 class Jvis():
-    #TODO: 3D axes spines
-    #TODO: auto redraw of 3D axes to display correctly....
-    #TODO: matched rotation between 3D axes!!!!
-    #FIXME / BUGREPORT: zooming shifts all 3 axes???????
-    #TODO: arg(z) colors
-    #TODO: function box intersection
+    '''
+    Visualise a complex values function.
+    '''
 
-    '''visualise a complex values function'''
-    #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    # TODO: modular surfaces
+    # TODO: 3D axes spines
+    # TODO: auto redraw of 3D axes to display correctly....
+    # TODO: matched rotation between 3D axes!!!!
+    # FIXME / BUGREPORT: zooming shifts all 3 axes???????
+    # TODO: arg(z) colors
+    # TODO: function box intersection
+
     def __init__(self, func):
-        #TODO: check if callable
+        # TODO: check if callable
         self.func = func
 
-    #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     def setup(self):
         '''setup figure for plotting - create axes etc.'''
         # Create 3D axes grid
@@ -75,7 +74,6 @@ class Jvis():
 
         return fig
 
-    #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     def plot3(self, extent=None, maxz=None, **kws):
 
         fig = self.setup()
@@ -113,7 +111,7 @@ class Jvis():
                             cstride=1)
         surface_opts.update(kws)
 
-        #plot the data
+        # plot the data
         for i, z in enumerate(data):
             ax = self.grid_3D[i]
             ax.plot_surface(X, Y, z, **surface_opts)
@@ -121,28 +119,13 @@ class Jvis():
             axi = self.grid_images[i]
             im = axi.imshow(z,
                             cmap=surface_opts['cmap'],
-                            #interpolation='cubic',
+                            # interpolation='cubic',
                             origin='llc',
-                            extent=[x0,x1,y0,y1])
+                            extent=[x0, x1, y0, y1])
             ax.view_init(30, 135)
 
         self.grid_images.cbar_axes[0].colorbar(im)
 
-        #fig.tight_layout()
+        # fig.tight_layout()
 
         return fig
-
-    #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-    # def
-
-
-
-
-# jvis = Jvis()
-
-
-if __name__ =='__main__':
-    jvis(np.cos)
-    plt.show()
-
-

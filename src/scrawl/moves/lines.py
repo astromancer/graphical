@@ -1,7 +1,6 @@
 
 
-from matplotlib.transforms import blended_transform_factory as btf
-from matplotlib.transforms import Affine2D
+from matplotlib.transforms import Affine2D, blended_transform_factory as btf
 
 
 def line_picker(artist, event):

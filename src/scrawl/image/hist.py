@@ -8,8 +8,7 @@ from types import MappingProxyType
 
 # third-party
 import numpy as np
-from matplotlib import ticker
-from matplotlib import colormaps
+from matplotlib import colormaps, ticker
 from matplotlib.colors import ListedColormap
 from matplotlib.collections import PolyCollection
 

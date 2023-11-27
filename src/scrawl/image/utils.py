@@ -12,8 +12,12 @@ from loguru import logger
 # relative
 from ..utils import not_none
 
+
+# ---------------------------------------------------------------------------- #
 FIGSIZE_MIN_INCHES = (5, 5)
 
+
+# ---------------------------------------------------------------------------- #
 
 def _sanitize_data(data):
     """
@@ -157,8 +161,8 @@ def resolve_clim(data=None, vmin=None, vmax=None, clim=None, plim=None, **_ignor
         return _get_percentile_clim(data, plim)
 
     if clim is True:
-        return (None, None) # ????
-    
+        return (None, None)  # ????
+
     if isinstance(clim, abc.Sized) and len(clim) == 2:
         return clim
 

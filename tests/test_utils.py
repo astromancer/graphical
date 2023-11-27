@@ -2,8 +2,8 @@
 import numpy as np
 
 # local
-from recipes.testing import expected
 from scrawl.utils import percentile
+from recipes.testing import expected
 
 
 # ---------------------------------------------------------------------------- #

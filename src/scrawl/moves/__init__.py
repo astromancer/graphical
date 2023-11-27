@@ -2,8 +2,8 @@
 Movable artists.
 """
 
-from .errorbars import *
 from .callbacks import *
+from .errorbars import *
 from .machinery import CanvasBlitHelper, Observers
 
 

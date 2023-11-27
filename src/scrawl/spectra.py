@@ -1,18 +1,12 @@
-# import numpy as np
-# import matplotlib.pyplot as plt
 
-# from matplotlib import scale as mscale
-# from matplotlib import ticker
-#
-# from .ticks import locator_transform_factory, SwitchLogFormatter
 from .dualaxes import TimeFreqDualAxes2 as PeriodFrequencyDual
+from .ts import TWIN_AXES_CLASSES, TimeSeriesPlot, default_opts, defaults
+
+# ---------------------------------------------------------------------------- #
 # NOTE: Major rework of this class needed
-from .ts import TimeSeriesPlot, defaults, default_opts, TWIN_AXES_CLASSES
-
-# from IPython import embed
-
 # TODO: loglog + all the fancy ticks
-# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+# ---------------------------------------------------------------------------- #
 defaults = defaults.copy()
 default_opts = default_opts.copy()
 
@@ -22,8 +16,9 @@ default_opts.errorbar = dict(fmt='-',
                              capsize=0)
 
 TWIN_AXES_CLASSES['period'] = PeriodFrequencyDual
-# FIXME: rename PeriodFrequencyDual
 
+
+# ---------------------------------------------------------------------------- #
 
 class PeriodogramPlot(TimeSeriesPlot):
 
@@ -37,7 +32,6 @@ class PeriodogramPlot(TimeSeriesPlot):
     #     kws.setdefault('yscale', 'log')
     #     return self.plot_ts(*data, **kws)
 
-
         # ax = kws.get(ax, )
         #
         # # WARNING: this will change the parasite axes scale, locators, etc..
@@ -50,8 +44,6 @@ class PeriodogramPlot(TimeSeriesPlot):
         # OR these should be overwritten in TimeFreqDualAxes2????
         # ax.xaxis._scale = mscale.scale_factory('log', ax.xaxis)
         # ax.yaxis._scale = mscale.scale_factory('log', ax.yaxis)
-
-
 
         # # x axis
         # fmt = SwitchLogFormatter(3, '\cdot')
@@ -70,8 +62,6 @@ class PeriodogramPlot(TimeSeriesPlot):
         #
         # return res
 
-
-    # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     # def _set_labels(self, ax, title, xlabels, ylabel):
     # '''axis title + labels'''
 
@@ -81,5 +71,7 @@ class PeriodogramPlot(TimeSeriesPlot):
     # ax.set_ylabel( r'$\Theta^{-1}$' )
 
 
+# ---------------------------------------------------------------------------- #
+# aliases
 plot = PeriodogramPlot.plot
 loglog = PeriodogramPlot.loglog
