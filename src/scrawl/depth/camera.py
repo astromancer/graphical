@@ -4,7 +4,7 @@
 import numpy as np
 
 # local
-from recipes.transforms import sph2cart
+from recipes.math.transforms import sph2cart
 
 
 def sphview(ax):
