@@ -4,9 +4,7 @@ description = "Machinery for interactive plots 📊✨🎨"
 authors = [
     {name = "Hannes Breytenbach", email = "hannes@saao.ac.za"}
 ]
-dynamic = ["version", "readme"]
 license = {text = "MIT"}
-requires-python = ">=3.8"
 classifiers = [
     "Development Status :: 4 - Beta",
     "Intended Audience :: Science/Research",
@@ -15,13 +13,28 @@ classifiers = [
     "License :: OSI Approved :: MIT License",
     "Operating System :: POSIX :: Linux"
 ]
+dynamic = ["version", "readme"]
+requires-python = ">=3.8"
+dependencies = [
+    "loguru",
+    "decorator",
+    "more_itertools",
+    "better_exceptions",
+    
+    "numpy",
+    "scipy",
+    "astropy",
+
+    "matplotlib",
+
+    "PyQt5",
+
+    "recipes"
+]
 
 [project.urls]
 "Homepage" = "https://github.com/astromancer/scrawl"
 "Bug Tracker" = "https://github.com/astromancer/scrawl/issues"
-
-[project.optional-dependencies]
-tests = ["pytest"]
 
 [build-system]
 build-backend = "setuptools.build_meta"
@@ -37,8 +50,10 @@ requires = [
 where = ["src"]
 
 [tool.setuptools.dynamic]
-readme = {file = "README.md", content-type = "text/markdown"}
 version = {attr = "scrawl._version.version"}
+readme = {file = "README.md", content-type = "text/markdown"}
+optional-dependencies.test = { file = ["requirements-dev.txt"] }
+
 
 [tool.setuptools_scm]
 write_to = "src/scrawl/_version.py"
