@@ -552,7 +552,7 @@ class Bar3D(CanvasBlitHelper):  # Bar3DGrid
     #             (self.ax.button_pressed not in self.ax._rotate_btn)):
     #         return
 
-    #     logger.debug('Rotating axes: {}', self.ax)
+    #     logger.debug('Rotating axes: {}.', self.ax)
     #     self.on_rotate(event.x, event.y)
 
 

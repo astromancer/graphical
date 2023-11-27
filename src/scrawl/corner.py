@@ -150,7 +150,7 @@ def corner(samples, bins=DEFAULT_NBINS, plims=(0.5, 99.5),
     if not np.any(plims):
         plims = (0, 100)
     lims = percentile(samples, plims, 0).T
-    logger.debug('Ranges: %s', lims)
+    logger.debug('Ranges: %s.', lims)
 
     # get bins
     if tessellation == 'hex':
@@ -172,7 +172,7 @@ def corner(samples, bins=DEFAULT_NBINS, plims=(0.5, 99.5),
         # ii, jj the row-, column indices from upper left corner of figure
         ii, jj = dof - i - 1, dof - j - 1
         label = labels[jj]
-        logger.debug('plotting %i %i', i, j)
+        logger.debug('plotting %i %i.', i, j)
 
         ax = axes[ii, jj] = fig.add_subplot(gs[ii:ii + 1, jj:jj + 1])
         # ax.text(0.5, 0.5, f'{ii}, {jj}', transform=ax.transAxes)
@@ -186,7 +186,7 @@ def corner(samples, bins=DEFAULT_NBINS, plims=(0.5, 99.5),
         xlims, ylims = lims[[jj, ii]]
         if ii == jj:
             # marginal density plot
-            logger.debug('Plotting marginal histogram %i' % ii)
+            logger.debug('Plotting marginal histogram %i.' % ii)
             h = Histogram(samples[:, ii], bins[ii], range=xlims, density=True)
             bars = h.plot(ax, **hist_kws)
 

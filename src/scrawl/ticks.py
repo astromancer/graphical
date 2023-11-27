@@ -133,15 +133,18 @@ class DegreeFormatter(ticker.Formatter):
 class SexagesimalFormatter(ticker.Formatter):
 
     def __init__(self, precision=None, sep='hms', base_unit='h', short=False,
-                 unicode=False):
+                 unicode=False, wrap24=True):
         self.precision = precision
         self.sep = sep
         self.base_unit = base_unit
         self.short = short
         self.unicode = unicode
+        self.wrap24 = bool(wrap24)
 
     def __call__(self, x, pos=None):
-        return ppr.hms(x % SPD, self.precision, self.sep, self.base_unit,
+        if self.wrap24:
+            x %= SPD
+        return ppr.hms(x, self.precision, self.sep, self.base_unit,
                        self.short, self.unicode)
 
 

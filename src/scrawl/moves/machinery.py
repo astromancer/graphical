@@ -59,14 +59,14 @@ def fpicker(artist, event):
     an artist picker that works for clicks outside the axes. ie. artist
     that are not clipped
     """
-    logger.debug('fpicker: {}', artist)
+    logger.debug('fpicker: {}.', artist)
 
     if event.button != 1:  # otherwise intended reset will select
         logger.debug('wrong button!')
         return False, {}
 
     tf = artist.contains(event)
-    logger.debug('fpicker: artist.contains(event) {}', tf)
+    logger.debug('fpicker: artist.contains(event) {}.', tf)
     return tf
     #
     # transformed_path = artist._get_transformed_path()
@@ -370,7 +370,7 @@ class MotionInterfaceArtist(LoggingMixin):
 
         ylim = ymin, ymax = self.ylim
         if not np.isnan(ylim).all():
-            self.logger.debug('clipping {}: y [{:.2f}, {:.2f}]', self, ymin, ymax)
+            self.logger.debug('clipping {}: y [{:.2f}, {:.2f}].', self, ymin, ymax)
             y = np.clip(y, ymin, ymax)
             if y in ylim:
                 self.clipped = True
@@ -396,9 +396,9 @@ class MotionInterfaceArtist(LoggingMixin):
         x, y = self.clip(x, y)
         offset = np.subtract((x, y), self.origin)
 
-        self.logger.trace('moving {} to ({:.3f}, {:.3f})', self, x, y)
+        self.logger.trace('moving {} to ({:.3f}, {:.3f}).', self, x, y)
         self.move_by(offset)
-        self.logger.trace('offset {} is ({:.3f}, {:.3f})', self, *self.offset)
+        self.logger.trace('offset {} is ({:.3f}, {:.3f}).', self, *self.offset)
 
         return self.artist
 
@@ -416,7 +416,7 @@ class MotionInterfaceArtist(LoggingMixin):
         """
 
         self.offset = offset  # will adhere to positional locks
-        self.logger.trace('moving {} by {}', self, offset)
+        self.logger.trace('moving {} by {}.', self, offset)
 
         # add the offset with transform
         offset_trans = Affine2D().translate(*self.offset)
@@ -424,7 +424,7 @@ class MotionInterfaceArtist(LoggingMixin):
         self.artist.set_transform(trans)
 
     def update(self, x, y):
-        self.logger.trace('update: {!r}', self)
+        self.logger.trace('update: {!r}.', self)
 
         # Artists that need to be drawn (from observers)
         pos = self.position
@@ -432,7 +432,7 @@ class MotionInterfaceArtist(LoggingMixin):
 
         # get the actual delta (respecting position locks etc)
         delta = self.position - pos
-        self.logger.trace('DELTA {}', delta)
+        self.logger.trace('DELTA {}.', delta)
 
         # if propagate:
         for tied in self.tied:
@@ -447,7 +447,7 @@ class MotionInterfaceArtist(LoggingMixin):
 
     def update_offset(self, offset):
         xy = self.position + offset  # new position
-        # self.logger.debug('update_offset {} to ({:.3f}, {:.3f})', tied, x, y)
+        # self.logger.debug('update_offset {} to ({:.3f}, {:.3f}).', tied, x, y)
         return self.update(*xy)
 
     # def set_axes_lim(self):
@@ -594,7 +594,7 @@ class CanvasBlitHelper(CallbackManager):
 
         canvas = self.canvas
 
-        self.logger.debug('Blit setup received: {!r}', artists)
+        self.logger.debug('Blit setup received: {!r}.', artists)
         artists = sorted(set(filter_non_artist(
             self.artists if artists is None else artists)),
             key=Artist.get_zorder
@@ -611,7 +611,7 @@ class CanvasBlitHelper(CallbackManager):
         with canvas.callbacks.blocked(signal='draw_event'):
             # block recursive invocations from `_on_first_draw` that does
             # `save_background` which triggers a draw.
-            self.logger.debug('Drawing background', len(artists))
+            self.logger.debug('Drawing background.', len(artists))
             canvas.draw()
 
         # Save background region without animated artists
@@ -650,7 +650,7 @@ class CanvasBlitHelper(CallbackManager):
     @mpl_connect('draw_event')
     def _on_draw(self, event):
         # connect on_draw for debugging
-        self.logger.debug('Draw {}: {}', self._draw_count, self)
+        self.logger.debug('Draw {}: {}.', self._draw_count, self)
         self._draw_count += 1
 
     def draw(self, artists=None):
@@ -663,7 +663,7 @@ class CanvasBlitHelper(CallbackManager):
     def draw_blit(self, artists):
 
         # Restore background
-        self.logger.debug('blit {}', self._blit_count)
+        self.logger.debug('blit {}.', self._blit_count)
         self.canvas.restore_region(self.background)
 
         # Draw the animated artists
@@ -679,7 +679,7 @@ class CanvasBlitHelper(CallbackManager):
         # check for uniqueness to prevent unnecessary duplicate draw
         for i, art in enumerate(sorted(set(filter_non_artist(artists)),
                                        key=Artist.get_zorder), 1):
-            self.logger.trace('Drawing: {}', art)
+            self.logger.trace('Drawing: {}.', art)
             art.draw(self.canvas.renderer)
 
         self.logger.debug('Drew {} artists in {} sec:\n', i, time.time() - t0)
@@ -893,7 +893,7 @@ class MotionManager(CanvasBlitHelper):
         y
 
         """
-        self.logger.debug('limit {}, {}', x, y)
+        self.logger.debug('limit {}, {}.', x, y)
         for mv in self.movable.values():
             mv.limit(x, y)
 
@@ -913,7 +913,7 @@ class MotionManager(CanvasBlitHelper):
     @mpl_connect('button_press_event')
     def on_click(self, event):
         """Reset plot on middle mouse."""
-        self.logger.debug('Received mouse click button {}', event.button)
+        self.logger.debug('Received mouse click button {}.', event.button)
         if event.button == 2:
             self.reset()
 
@@ -931,7 +931,7 @@ class MotionManager(CanvasBlitHelper):
         # #TODO more intelligence
         if self.selection:
             #  prefer the artist with closest proximity to mouse event
-            self.logger.debug('Multiple artist picks! Ignoring: {}', event.artist)
+            self.logger.debug('Multiple artist picks! Ignoring: {}.', event.artist)
             return True
 
         return False
@@ -943,7 +943,7 @@ class MotionManager(CanvasBlitHelper):
         if self._ignore_pick(event):
             return
 
-        self.logger.debug('picked: {!r}: {}', event.artist, vars(event))
+        self.logger.debug('picked: {!r}: {}.', event.artist, vars(event))
 
         # get data coordinates of pick
         self.selection = art = event.artist
@@ -1007,7 +1007,7 @@ class MotionManager(CanvasBlitHelper):
         if self.selection is None:
             return
 
-        self.logger.debug('moving: {}', self.selection)
+        self.logger.debug('moving: {}.', self.selection)
         movable = self.movable[self.selection]
 
         xy_disp = event.x, event.y
@@ -1019,7 +1019,7 @@ class MotionManager(CanvasBlitHelper):
         self.delta = delta = xy_data - self.origin
 
         # difference between current position and previous offset position
-        self.logger.debug('delta {}; origin {}', delta, self.origin)
+        self.logger.debug('delta {}; origin {}.', delta, self.origin)
 
         # move this artist and all its dependants
         # pos = movable.position
@@ -1055,7 +1055,7 @@ class MotionManager(CanvasBlitHelper):
         if self.selection is None:
             return
 
-        self.logger.debug('on_release: {!r}', self.selection)
+        self.logger.debug('on_release: {!r}.', self.selection)
         # Remove motion method for selected artist
         self.remove_callback('motion_notify_event')
 
@@ -1066,14 +1066,14 @@ class MotionManager(CanvasBlitHelper):
         # active even when mouse moves outside the axes.
 
         # xy_data = self.delta + self.origin
-        self.logger.debug('on_release: delta {}', self.delta)
+        self.logger.debug('on_release: delta {}.', self.delta)
 
         movable = self.movable[self.selection]
         draw_list = movable.on_release(x, y)
         self.selection = None
 
         # self.logger.debug(('release', draw_list)
-        self.logger.debug('on_release: offset {} {}', movable,
+        self.logger.debug('on_release: offset {} {}.', movable,
                           movable.offset)
 
         if not self.use_blit:

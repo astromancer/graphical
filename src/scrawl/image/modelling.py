@@ -202,7 +202,7 @@ class ImageModelPlot3D(CallbackManager):
         # image colour limits
         rlims = [res_img.min(), res_img.max()]
         clims = self.get_clim(data)
-        logger.info('clim {}', clims)
+        logger.info('clim {}.', clims)
         for im, clim in zip(self.images, (clims, clims, rlims)):
             im.set_clim(clim)
             im.set_extent(np.r_[xlims, ylims])

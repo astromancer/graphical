@@ -142,7 +142,7 @@ class Observers(LoggingMixin):
                 continue
 
             try:
-                self.logger.debug('Calling observer function: {!r}', func.__name__)
+                self.logger.debug('Calling observer function: {!r}.', func.__name__)
                 art = func(*args, *static_args, *static_kws, **kws)
                 art = list(filter_non_artist(art))
                 artists.extend(art)

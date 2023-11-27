@@ -220,7 +220,7 @@ class AxisSliders(MotionManager):
             return
 
         self.upper.ymin = y + self.min_span
-        self.logger.debug('upper ymin: {:.2f}, {:.2f}', self.upper.ymin, y)
+        self.logger.debug('upper ymin: {:.2f}, {:.2f}.', self.upper.ymin, y)
 
     def set_lower_ymax(self, x, y):
 
@@ -228,7 +228,7 @@ class AxisSliders(MotionManager):
             return
 
         self.lower.ymax = y - self.min_span
-        self.logger.debug('lower ymax: {:.2f}, {:.2f}', self.lower.ymax, y)
+        self.logger.debug('lower ymax: {:.2f}, {:.2f}.', self.lower.ymax, y)
 
     # def reset(self):
     #     return super().reset()
@@ -314,12 +314,12 @@ class RangeSliders(AxisSliders):
     def set_centre_min(self, x, y):
         """set minimum position of the central slider"""
         self.centre.ymin = self.lower.ymin + self.min_span / 2
-        self.logger.debug('centre min: {:.2f}, {:.2f}', self.centre.ymin, y)
+        self.logger.debug('centre min: {:.2f}, {:.2f}.', self.centre.ymin, y)
 
     def set_centre_max(self, x, y):
         """set maximum position of the central slider"""
         self.centre.ymax = self.upper.ymax + self.min_span / 2
-        self.logger.debug('centre ymax: {:.2f}, {:.2f}', self.centre.ymax, y)
+        self.logger.debug('centre ymax: {:.2f}, {:.2f}.', self.centre.ymax, y)
 
     # def _animate(self, b):
     #     for drg in self.movable.values():
