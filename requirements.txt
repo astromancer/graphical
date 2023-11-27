@@ -1,4 +1,2 @@
--e file:///home/hannes/work/recipes
-# git+https://github.com/astromancer/recipes#egg=recipes
-# --no-index --find-links file:///home/hannes/work/
-# recipes
+# -e ../recipes
+-e https://github.com/astromancer/recipes#egg=recipes
