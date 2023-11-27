@@ -64,7 +64,7 @@ class CallbackManager(LoggingMixin, TagManagerBase,
     Mixin for managing canvas / artist callbacks as decorated methods.
     """
 
-    def __init__(self, object=None, connect=False):
+    def __init__(self, obj=None, connect=False):
         """ """
         # `TagManagerMeta` collects the functions tagged by `@mpl_connect(*args)`
         # and sets the `_callbacks` attribute which maps the (bound) methods to
@@ -74,15 +74,18 @@ class CallbackManager(LoggingMixin, TagManagerBase,
         # connection id proxies
         self.cid_proxies = {}
 
-        if object is None:
+        if obj is None:
             callbacks = None
-        elif isinstance(object, CallbackRegistry):
-            callbacks = object
-        elif not isinstance((callbacks := getattr(object, 'callbacks')),
-                            CallbackRegistry):
-            raise TypeError(f'Cannot not instantiate {type(self)!r} from '
-                            f'object of type {type(object)}.')
+        else:
+            original = obj
+            attrs = iter(('canvas', 'callbacks', ''))
+            while not isinstance(obj, CallbackRegistry):
+                if not (attr := next(attrs, None)):
+                    raise TypeError(f'Cannot not instantiate {type(self)!r} from '
+                                    f'object of type {type(original)}.')
 
+                obj = getattr(obj, attr, None)
+            callbacks = obj
         #
         self.callbacks = callbacks
 
