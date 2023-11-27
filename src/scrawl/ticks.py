@@ -208,7 +208,7 @@ class TransFormatter(ticker.ScalarFormatter):
 
         if (abs(x) == np.inf) and self.useMathText:
             sign = '-' * int(x < 0)
-            return f'{sign}$\infty$'
+            return rf'{sign}$\infty$'
 
         return ppr.decimal(x, self.precision)
 
@@ -278,7 +278,7 @@ class MetricFormatter(ticker.Formatter):
                        -15: 'f',
                        -12: 'p',
                        -9: 'n',
-                       -6: '$\mu$',
+                       -6: r'$\mu$',
                        -3: 'm',
                        0: '',
                        3: 'k',
