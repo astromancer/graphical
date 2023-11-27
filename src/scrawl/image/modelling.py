@@ -1,4 +1,6 @@
-
+"""
+Plot image models.
+"""
 
 # third-party
 import numpy as np
@@ -15,10 +17,11 @@ from recipes.array.neighbours import neighbours
 
 # relative
 from ..depth.bar3d import bar3d
-from ..moves.callbacks import CallbackManager, mpl_connect
 from ..video import VideoDisplay
+from ..moves.callbacks import CallbackManager, mpl_connect
 
 
+# ---------------------------------------------------------------------------- #
 DEFAULT_TITLES = ('Data', 'Fit', 'Residual')
 
 
