@@ -16,6 +16,7 @@ from mpl_toolkits.mplot3d.art3d import (Poly3DCollection, PolyCollection,
 # local
 from recipes.config import ConfigNode
 from recipes.utils import duplicate_if_scalar
+from recipes.functionals import is_none
 
 # relative
 from ..moves.machinery import CanvasBlitHelper, Observers
@@ -110,8 +111,8 @@ class Bar3DCollection(Poly3DCollection):
 
     _n_faces = 6
 
-    def __init__(self, x, y, z, dxy=CONFIG.dxy, z0=0, shade=True, lightsource=None,
-                 cmap=CONFIG.cmap, **kws):
+    def __init__(self, x, y, z, dxy=CONFIG.dxy, z0=0, 
+                 shade=True, lightsource=None, cmap=CONFIG.cmap, **kws):
         #
         x, y, z, z0 = np.ma.atleast_1d(x, y, z, z0)
         assert x.shape == y.shape == z.shape
@@ -204,7 +205,7 @@ class Bar3DCollection(Poly3DCollection):
 
     def set_data(self, x=None, y=None, z=None, z0=None, clim=None):
         # self._xyz = np.atleast_3d(xyz)
-        assert not all(is_none(x, y, z, z0))
+        assert not all(map(is_none, (x, y, z, z0)))
 
         if (x is not None) or (y is not None):
             self._resolve_dx_dy(self.dxy)
@@ -525,7 +526,7 @@ class Bar3D(CanvasBlitHelper):  # Bar3DGrid
 
     def set_z(self, z, clim=None, zlim=None):
 
-        self.bars.set_z(z, clim)
+        self.bars.set_z(z, clim=clim)
 
         if zlim is False:
             return

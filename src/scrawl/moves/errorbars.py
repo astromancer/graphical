@@ -463,7 +463,7 @@ class MovableErrorbarContainer(NamedErrorbarContainer):
             txt.set_transform(offset_trans + self.text_trans)
             txt.set_text(self.annotation_format % offset)
 
-    def draw(self, renderer, *args, **kwargs):
+    def draw(self, renderer, *args, **kws):
 
         for art in self.get_children():
             art.draw(renderer)

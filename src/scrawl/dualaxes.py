@@ -24,7 +24,7 @@ class ReciprocalScale(mscale.ScaleBase):  # FIXME
     """
     name = 'reciprocal'
 
-    def __init__(self, axis, **kwargs):
+    def __init__(self, axis, **kws):
         """
         Any keyword arguments passed to ``set_xscale`` and
         ``set_yscale`` will be passed along to the scale's

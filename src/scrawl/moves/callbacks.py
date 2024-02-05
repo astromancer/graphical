@@ -83,9 +83,10 @@ class CallbackManager(LoggingMixin, TagManagerBase,
                 if not (attr := next(attrs, None)):
                     raise TypeError(f'Cannot not instantiate {type(self)!r} from '
                                     f'object of type {type(original)}.')
-
-                obj = getattr(obj, attr, None)
+                if new := getattr(obj, attr, None):
+                    obj = new
             callbacks = obj
+
         #
         self.callbacks = callbacks
 

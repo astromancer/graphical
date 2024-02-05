@@ -134,6 +134,7 @@ class SexagesimalFormatter(ticker.Formatter):
 
     def __init__(self, precision=None, sep='hms', base_unit='h', short=False,
                  unicode=False, wrap24=True):
+
         self.precision = precision
         self.sep = sep
         self.base_unit = base_unit
@@ -142,8 +143,10 @@ class SexagesimalFormatter(ticker.Formatter):
         self.wrap24 = bool(wrap24)
 
     def __call__(self, x, pos=None):
+
         if self.wrap24:
             x %= SPD
+
         return ppr.hms(x, self.precision, self.sep, self.base_unit,
                        self.short, self.unicode)
 
@@ -219,6 +222,7 @@ class TransFormatter(ticker.ScalarFormatter):
 
 
 class LinearScaleTransform(Transform):
+
     input_dims = 1
     output_dims = 1
     is_separable = False
@@ -233,6 +237,7 @@ class LinearScaleTransform(Transform):
 
 
 class LinearRescaleFormatter(TransFormatter):
+
     def __init__(self, scale=1., infinite=1e15, useOffset=None,
                  useMathText=True, useLocale=None):
 
@@ -417,8 +422,8 @@ class AdditionalTickLocator(ticker.Locator):
     def nonsingular(self, v0, v1):
         return self._chain.nonsingular(v0, v1)
 
-    def set_params(self, **kwargs):
-        return self._chain.set_params(**kwargs)
+    def set_params(self, **kws):
+        return self._chain.set_params(**kws)
 
     def view_limits(self, vmin, vmax):
         return self._chain.view_limits(vmin, vmax)

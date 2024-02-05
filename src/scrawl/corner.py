@@ -46,7 +46,7 @@ def corner(samples, bins=DEFAULT_NBINS, plims=(0.5, 99.5),
 
     # show_titles=False,
     # title_fmt='.2f',
-    # title_kwargs=None,
+    # title_kws=None,
 
     # scale_hist=False,
     # quantiles=None,
@@ -55,8 +55,8 @@ def corner(samples, bins=DEFAULT_NBINS, plims=(0.5, 99.5),
     # max_n_ticks=5,
     # top_ticks=False,
     # use_math_text=False,
-    # hist_kwargs=None,
-    # **hist2d_kwargs,
+    # hist_kws=None,
+    # **hist2d_kws,
     """
     WIP
     Better corner plots.

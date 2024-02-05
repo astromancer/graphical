@@ -4,6 +4,9 @@ from astropy.visualization.stretch import BaseStretch
 from astropy.visualization.interval import BaseInterval
 from astropy.visualization.mpl_normalize import ImageNormalize
 
+# local
+from recipes.oo.utils import subclasses
+
 # relative
 from .utils import _sanitize_data
 
@@ -51,7 +54,7 @@ class FromNameMixin:
             raise TypeError('method should be a string.')
 
         allowed_names = set()
-        for sub in itr.subclasses(cls.__bases__[0]):
+        for sub in subclasses(cls.__bases__[0]):
             name = sub.__name__
             if name.lower().startswith(method.lower()):
                 break

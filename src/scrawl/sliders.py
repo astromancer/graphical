@@ -273,7 +273,7 @@ class RangeSliders(AxisSliders):
         annotate
         haunted
         use_blit
-        kwargs
+        props
         """
 
         positions = np.hstack([positions, np.mean(positions)])
