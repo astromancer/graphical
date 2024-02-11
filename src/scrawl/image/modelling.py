@@ -16,9 +16,10 @@ from recipes.dicts import AttrReadItem
 from recipes.array.neighbours import neighbours
 
 # relative
-from ..depth.bar3d import bar3d
+from ..depth.prisms import Bar3D
 from ..video import VideoDisplay
 from ..moves.callbacks import CallbackManager, mpl_connect
+from .utils import resolve_clim
 
 
 # ---------------------------------------------------------------------------- #
@@ -166,9 +167,6 @@ class ImageModelPlot3D(CallbackManager):
                   ha='center',
                   va='center')
 
-    def get_clim(self, data):
-        return get_clim(data)
-
     def update_images(self, *data, **kws):
         # data, model, residual
         # NOTE: mask shape changes, which breaks things below.
@@ -195,14 +193,16 @@ class ImageModelPlot3D(CallbackManager):
         # plims = 0.25, 99.75                       #percentiles
         # clims = np.percentile( data, plims )      #colour limits for data
         # rlims = np.percentile( res, plims )       #colour limits for residuals
-        xlims = x[0, [0, -1]]
-        ylims = y[[0, -1], 0]
+
+        xlims = xlims if (xlims := x[0, [0, -1]]).ptp() else x[[0, -1], 1]
+        ylims = ylims if (ylims := y[0, [0, -1]]).ptp() else y[[0, -1], 1]
         zlims = [z.min(), z.max()]
 
         # image colour limits
         rlims = [res_img.min(), res_img.max()]
-        clims = self.get_clim(data)
+        clims = resolve_clim(data, plim=(0, 100))
         logger.info('clim {}.', clims)
+
         for im, clim in zip(self.images, (clims, clims, rlims)):
             im.set_clim(clim)
             im.set_extent(np.r_[xlims, ylims])
@@ -262,15 +262,21 @@ class ImageModelWireframe(ImageModelPlot3D):
 
 class ImageModelBar3D(ImageModelPlot3D):
 
-    def update_3d(self, x, y, z, data, residual, **kws):
+    def __init__(self, *args, dxy=0.8, **kws):
+        self.dxy = dxy
+        super().__init__(*args, **kws)
+
+    def update_3d(self, x, y, z, data, residual, dxy=0.8, **kws):
         """update plots with new data."""
         # TODO: will be much faster to update the  Poly3DCollection verts
+
         for bars in self.art3d:
             for bar in bars.ravel():
                 bar.remove()
 
+        # print(kws)
         for ax, zz in zip(self.axes_3d, (z, data, abs(residual))):
-            bars = bar3d(ax, x, y, zz, **kws)
+            bars = Bar3D(ax, x, y, zz, dxy, **kws)
             self.art3d.append(bars)
 
 
@@ -303,6 +309,7 @@ class ImageModelContour3D(ImageModelPlot3D):
         for i, pl in enumerate(plots):
             ax = pl.axes
             ax.set_zlim(zlims if (i + 1) % 3 else rlims)
+
         ax.set_xlim([X[0, 0], X[0, -1]])
         ax.set_ylim([Y[0, 0], Y[-1, 0]])
 

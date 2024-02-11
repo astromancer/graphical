@@ -10,7 +10,7 @@ import numpy as np
 from loguru import logger
 
 # relative
-from ..utils import not_none
+from ..utils import get_percentiles, not_none
 
 
 # ---------------------------------------------------------------------------- #
@@ -130,44 +130,43 @@ def _guess_figsize(image_shape, fill_factor=0.75, max_pixel_size=0.2,
 
 
 def _get_percentile_clim(data, plim):
-    from ..utils import get_percentiles
+    # need data to compute percentiles
+    assert data is not None
 
-    if np.all(np.ma.getmask(data)) or np.isnan(data).all():
+    data = _sanitize_data(data)
+
+    # no data / all masked / nans
+    if not np.size(data) or np.all(np.ma.getmask(data)) or np.isnan(data).all():
         return None, None
 
     # compute percentiles
-    clims = get_percentiles(_sanitize_data(data), plim)
+    clim = get_percentiles(data, plim)
 
     # check bad clims
-    if clims[0] == clims[1]:
+    if clim[0] == clim[1]:
         logger.warning('Ignoring bad colour interval: ({:.1f}, {:.1f}) '
                        'computed from percentiles ({:.1f}, {:.1f}).',
-                       *clims, *plim)
+                       *clim, *plim)
         return None, None
 
-    return clims
+    return clim
 
 
 def resolve_clim(data=None, vmin=None, vmax=None, clim=None, plim=None, **_ignored):
     """
     Get colour scale limits for data.
     """
-
     if any(not_none(vmin, vmax)):
         return vmin, vmax
 
     if plim is not None:
-        assert data is not None
         return _get_percentile_clim(data, plim)
 
-    if clim is True:
-        return (None, None)  # ????
+    if (clim is False) or (clim is None):
+        return (None, None)
 
     if isinstance(clim, abc.Sized) and len(clim) == 2:
         return clim
-
-    if clim is False or clim is None:
-        return (None, None)
 
     raise ValueError(f'Invalid value for {clim = !r}.')
 
