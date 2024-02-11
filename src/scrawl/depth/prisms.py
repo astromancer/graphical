@@ -111,7 +111,7 @@ class Bar3DCollection(Poly3DCollection):
 
     _n_faces = 6
 
-    def __init__(self, x, y, z, dxy=CONFIG.dxy, z0=0, 
+    def __init__(self, x, y, z, dxy=CONFIG.dxy, z0=0,
                  shade=True, lightsource=None, cmap=CONFIG.cmap, **kws):
         #
         x, y, z, z0 = np.ma.atleast_1d(x, y, z, z0)
@@ -242,8 +242,8 @@ class Bar3DCollection(Poly3DCollection):
         xyz = np.expand_dims(np.moveaxis([x, y, z], 0, -1), (-2, -3))
         dxyz = np.empty_like(xyz)
         dxyz[..., :2] = np.array([[[self.dx]], [[self.dy]]]).T
-        dxyz[..., 2] = np.array([[self.z - self.z0]]).T
-        polys = xyz + dxyz * CUBOID[None, :]  # (n, 6, 4, 3)
+        dxyz[..., 2] = np.array(self.z - self.z0)[..., np.newaxis, np.newaxis]
+        polys = xyz + dxyz * CUBOID[np.newaxis, :]  # (n, 6, 4, 3)
 
         # collapse the first two axes
         return polys.reshape((-1, 4, 3))  # *polys.shape[-2:]
@@ -352,11 +352,11 @@ class HexBar3DCollection(Bar3DCollection):
     _n_faces = 8
 
     def _compute_verts(self):
-
+        new = np.newaxis
         # scale the base hexagon
         hexagon = np.array([self.dx, self.dy]).T * HEXAGON
         xy_pairs = np.moveaxis([hexagon, np.roll(hexagon, -1, 0)], 0, 1)
-        xy_sides = xy_pairs[np.newaxis] + self.xy[:, None, None].T  # (n,6,2,2)
+        xy_sides = xy_pairs[np.newaxis] + self.xy[:, new, new].T  # (n,6,2,2)
 
         # sides (rectangle faces)
         # Array of vertices of the faces composing the prism moving counter
@@ -374,9 +374,9 @@ class HexBar3DCollection(Bar3DCollection):
             axis=-2)  # (n, [m ...], 6, 4, 3)
 
         # endcaps (hexagons) # (n, [m ...], 6, 3)
-        xy_ends = (self.xy[..., None] + hexagon.T[:, None])
+        xy_ends = (self.xy[..., new] + hexagon.T[:, new])
         z0 = self.z0 * np.ones((1, *data_shape, 6))
-        z1 = z0 + self.z[None, ..., None]
+        z1 = z0 + self.z[new, ..., new]
         base = np.moveaxis(np.vstack([xy_ends, z0]), 0, -1)
         top = np.moveaxis(np.vstack([xy_ends, z1]), 0, -1)
 
