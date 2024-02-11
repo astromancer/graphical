@@ -57,7 +57,7 @@ def percentile(data, p, axis=None):
     # p = np.divide(p, 100)
     a = np.abs(p)
     s = signum[(p > 0).astype(int)]
-    #_, q = np.divmod(a, 1)
+    # _, q = np.divmod(a, 1)
     c = np.abs((p > 1).astype(float) - s * (a % 1)) * 100
 
     # remove masked points
@@ -101,7 +101,7 @@ def get_percentiles(data, plims=(-5, 105), errorbars=(), axis=None):
     axis :  int, tuple
         axis along which to compute percentile
     """
-    if np.ptp(plims) == 0:
+    if np.ma.ptp(plims) == 0:
         raise ValueError('Percentile values for colour limits must differ. '
                          f'Received: {plims}.')
 
@@ -160,10 +160,11 @@ embossed = emboss
 # ---------------------------------------------------------------------------- #
 
 
-def _check_log_scalable(x):
+def _check_log_scalable(x, name):
     if np.any(x <= 0.0):
         raise ValueError(
-            f'{name} contains non-positive values, so cannot be log-scaled')
+            f'{name} contains non-positive values, so cannot be log-scaled.'
+        )
 
 
 def hexbin(x, y, C=None, gridsize=100,
