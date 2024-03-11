@@ -15,8 +15,8 @@ from mpl_toolkits.mplot3d.art3d import (Poly3DCollection, PolyCollection,
 
 # local
 from recipes.config import ConfigNode
-from recipes.utils import duplicate_if_scalar
 from recipes.functionals import is_none
+from recipes.containers import duplicate_if_scalar
 
 # relative
 from ..moves.machinery import CanvasBlitHelper, Observers

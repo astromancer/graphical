@@ -1,7 +1,6 @@
 
 # third-party
 import numpy as np
-from loguru import logger
 
 # local
 from scrawl.video import VideoDisplay

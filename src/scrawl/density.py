@@ -11,7 +11,7 @@ import matplotlib.pyplot as plt
 
 # local
 from recipes.config import ConfigNode
-from recipes.utils import duplicate_if_scalar
+from recipes.containers import duplicate_if_scalar
 
 # relative
 from .image import Image3DBase

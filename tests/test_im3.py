@@ -1,11 +1,11 @@
 # third-party
 import numpy as np
-import matplotlib.pyplot as plt
 from loguru import logger
 from scipy.stats import multivariate_normal
 
 # local
 from scrawl.image import Image3D
+
 
 # ---------------------------------------------------------------------------- #
 logger.enable('recipes.oo.meta.tagger')

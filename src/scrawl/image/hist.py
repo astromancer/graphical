@@ -14,7 +14,7 @@ from matplotlib.collections import PolyCollection
 
 # local
 from recipes.logging import LoggingMixin
-from recipes.utils import duplicate_if_scalar
+from recipes.containers import duplicate_if_scalar
 
 # relative
 from .utils import _sanitize_data

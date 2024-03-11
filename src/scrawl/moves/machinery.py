@@ -8,7 +8,6 @@ from warnings import warn
 
 # third-party
 import numpy as np
-import more_itertools
 from loguru import logger
 from matplotlib.lines import Line2D
 from matplotlib.artist import Artist
@@ -18,7 +17,7 @@ from matplotlib.transforms import Affine2D, blended_transform_factory as btf
 # local
 from recipes import op
 from recipes.logging import LoggingMixin
-from recipes.dicts import IndexableOrderedDict
+from recipes.containers.dicts import IndexableOrderedDict
 
 # relative
 from .observers import Observers

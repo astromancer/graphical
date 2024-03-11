@@ -12,8 +12,8 @@ from mpl_toolkits.axes_grid1 import AxesGrid
 
 # local
 from recipes.functionals import echo0
-from recipes.dicts import AttrReadItem
 from recipes.array.neighbours import neighbours
+from recipes.containers.dicts import AttrReadItem
 
 # relative
 from ..depth.prisms import Bar3D
