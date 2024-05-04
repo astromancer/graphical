@@ -14,7 +14,7 @@ from matplotlib.legend_handler import HandlerErrorbar
 from matplotlib.transforms import Affine2D, blended_transform_factory as btf
 
 # local
-from recipes.containers.lists import flatten
+from recipes.containers import flatten
 
 # relative
 from .callbacks import CallbackManager, mpl_connect
