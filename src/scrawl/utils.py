@@ -1,12 +1,17 @@
 
 # std
 import math
+from pathlib import Path
 
 # third-party
 import numpy as np
 import matplotlib.transforms as mtransforms
 from matplotlib.colors import to_rgba
 from matplotlib import patheffects as path_effects
+from loguru import logger
+
+# local
+from recipes.containers import ensure
 
 
 def is_none(*args):
@@ -261,3 +266,38 @@ def hexbin(x, y, C=None, gridsize=100,
     accum = accum[good_idxs]
 
     return (*offsets.T, accum), (xmin, xmax), (ymin, ymax), nxy
+
+
+def save_figure(fig, filenames=(), overwrite=False, **kws):
+
+    filenames = list(filenames)
+    if fn := kws.pop('filename', ()):
+        filenames.append(fn)
+    filenames = ensure.tuple(filenames, Path)
+    saved = 0
+
+    if not filenames:
+        logger.debug(
+            'Not saving figure {}: Could not resolve any filenames from {!r}.',
+            fig, filenames
+        )
+        return saved
+
+    for filename in filenames:
+        if filename.exists():
+            if overwrite:
+                logger.info('Overwriting image: {!s}.', filename)
+            else:
+                logger.info('Not overwriting: {!s}', filename)
+                continue
+        else:
+            logger.info('Saving image: {!s}.', filename)
+
+        fig.savefig(filename, **kws)
+        saved += 1
+
+    return saved
+
+
+# alias
+save_fig = save_figure
