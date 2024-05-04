@@ -23,10 +23,9 @@ from .utils import resolve_clim
 
 
 # ---------------------------------------------------------------------------- #
-DEFAULT_TITLES = ('Data', 'Fit', 'Residual')
+# ---------------------------------------------------------------------------- #
 
-
-class ImageModelPlot3D(CallbackManager):
+class ImageModel3DPlot(CallbackManager):
     """
     Base class for plotting image data, model and residual for comparison.
     """
@@ -35,43 +34,17 @@ class ImageModelPlot3D(CallbackManager):
     # TODO: blit for view angle change...
     # TODO: optionally Include info as text in figure??????
 
-    images_axes_kws = dict(nrows_ncols=(1, 3),
-                           axes_pad=0.1,
-                           label_mode='L',  # THIS DOESN'T WORK!
-                           # share_all = True,
-                           cbar_location='right',
-                           cbar_mode='each',
-                           cbar_size='12%',
-                           cbar_pad='0%')
-
-    _3d_axes_kws = dict(azim=-125, elev=30)
-
-    colorbar_ticks = AttrReadItem(
-        major=(major := dict(axis='y',
-                             which='major',
-                             colors='orangered',
-                             direction='in',
-                             labelsize=10,
-                             pad=-11,
-                             length=4)),
-        minor={**major,
-               **dict(which='minor',
-                      length=2)},
-        right={**major,
-               **dict(pad=10,
-                      direction='inout')}
-    )
-
     # @profile()
 
     def __init__(self, x=(), y=(), z=(), data=(),
-                 fig=None, titles=DEFAULT_TITLES,
+                 fig=None, titles=CONFIG.axes.titles, title_kws=(),
                  image_kws=(), art3d_kws=(), residual_funcs=(),
                  **kws):
 
         self.art3d = []
         self.images = []
         self.titles = list(titles)
+        self.title_kws = dict(title_kws)
         self.fig = self.setup_figure(fig, **kws)
 
         self.residual_funcs = dict(residual_funcs)
@@ -119,8 +92,7 @@ class ImageModelPlot3D(CallbackManager):
         # axes_3d = AxesGrid(fig, 212, **self._3d_axes_kws)
         axes_3d = []
         for i in range(4, 7):
-            ax = fig.add_subplot(2, 3, i, projection='3d',
-                                 **self._3d_axes_kws)
+            ax = fig.add_subplot(2, 3, i, projection='3d', **CONFIG.axes['3d'])
             ax.set_facecolor('None')
             # ax.patch.set_linewidth( 1 )
             # ax.patch.set_edgecolor( 'k' )
@@ -130,7 +102,10 @@ class ImageModelPlot3D(CallbackManager):
 
     def setup_image_axes(self, fig):
         # Create the plot grid for the images
-        self.axes_images = axes = AxesGrid(fig, 211, **self.images_axes_kws)
+        kws, cbar = CONFIG.axes.image.split('cbar')
+        kws = cbar.filter('ticks').transform('_'.join)
+
+        self.axes_images = axes = AxesGrid(fig, 211, nrows_ncols=(1, 3), **kws)
 
         for i, (ax, cax) in enumerate(zip(axes, axes.cbar_axes)):
             # image
@@ -138,7 +113,7 @@ class ImageModelPlot3D(CallbackManager):
             self.images.append(im)
 
             # title above image
-            ax.set_title(self.titles[i], {'weight': 'bold'},  y=1)
+            ax.set_title(self.titles[i], **self.title_kws)
 
             # colorbar
             cbar = cax.colorbar(im)
@@ -146,26 +121,23 @@ class ImageModelPlot3D(CallbackManager):
 
         return axes
 
-    def setup_cbar_ticks(self, cbar, cax):
+    def setup_cbar_ticks(self, cbar, cax, **config):
         # make the colorbar ticks look nice
-
+        config = CBAR_TICKS.merge(config)
         rightmost = cax is self.axes_images.cbar_axes[-1]
-        params = self.colorbar_ticks['right' if rightmost else 'major']
-        cax.axes.tick_params(**params)
-        cax.axes.tick_params(**self.colorbar_ticks.minor)
+        cax.axes.tick_params(**config['right' if rightmost else 'major'])
+        cax.axes.tick_params(**config.minor)
 
         # make the colorbar spine invisible
         cbar.outline.set_visible(False)
         #
         for w in ('top', 'bottom', 'right'):
             cax.spines[w].set_visible(True)
-            cax.spines[w].set_color(self.colorbar_ticks.major['colors'])
+            cax.spines[w].set_color(config.major['colors'])
         cax.minorticks_on()
 
         for t in cax.axes.yaxis.get_ticklabels():
-            t.set(weight='bold',
-                  ha='center',
-                  va='center')
+            t.set(**CONFIG.axes.image.cbar.ticks.labels)
 
     def update_images(self, *data, **kws):
         # data, model, residual
@@ -200,7 +172,7 @@ class ImageModelPlot3D(CallbackManager):
 
         # image colour limits
         rlims = [res_img.min(), res_img.max()]
-        clims = resolve_clim(data, plim=(0, 100))
+        clims = resolve_clim(data, plim=CONFIG.image.plim)
         logger.info('clim {}.', clims)
 
         for im, clim in zip(self.images, (clims, clims, rlims)):
@@ -230,10 +202,10 @@ class ImageModelPlot3D(CallbackManager):
             other.elev = ax.elev
 
 
-class ImageModelWireframe(ImageModelPlot3D):
+class ImageModelWireframe(ImageModel3DPlot):
 
     def __init__(self, x=(), y=(), z=(), data=(),
-                 fig=None, titles=DEFAULT_TITLES,
+                 fig=None, titles=CONFIG.axes.titles,
                  image_kws=(), art3d_kws=(), **kws):
 
         super().__init__(fig=fig, titles=titles)
@@ -260,7 +232,7 @@ class ImageModelWireframe(ImageModelPlot3D):
             self.art3d[i].set_segments(self.make_segments(x, y, zz))
 
 
-class ImageModelBar3D(ImageModelPlot3D):
+class ImageModelBar3D(ImageModel3DPlot):
 
     def __init__(self, *args, dxy=0.8, **kws):
         self.dxy = dxy
@@ -279,8 +251,15 @@ class ImageModelBar3D(ImageModelPlot3D):
             bars = Bar3D(ax, x, y, zz, dxy, **kws)
             self.art3d.append(bars)
 
+    def set_clim(self, clim):
+        for im in self.images[:-1]:
+            im.set_clim(clim)
 
-class ImageModelContour3D(ImageModelPlot3D):
+        for bars in self.art3d[:-1]:
+            bars.bars.set_clim(clim)
+
+
+class ImageModelContour3D(ImageModel3DPlot):
     def setup_image_axes(self, fig):
         # Create the plot grid for the contour plots
         self.grid_contours = AxesGrid(fig, 212,  # similar to subplot(211)
@@ -325,42 +304,42 @@ class ImageModelContour3D(ImageModelPlot3D):
 # from recipes.array import ndgrid
 
 
-class PSFPlotter(ImageModelPlot3D, VideoDisplay):
-    def __init__(self, filename, model, params, coords, window, **kws):
-        self.model = model
-        self.params = params
-        self.coords = coords
-        self.window = w = int(window)
-        self.grid = np.mgrid[:w, :w]
-        extent = np.array([0, w, 0, w]) - 0.5  # l, r, b, t
+# class PSFPlotter(ImageModel3DPlot, VideoDisplay):
+#     def __init__(self, filename, model, params, coords, window, **kws):
+#         self.model = model
+#         self.params = params
+#         self.coords = coords
+#         self.window = w = int(window)
+#         self.grid = np.mgrid[:w, :w]
+#         extent = np.array([0, w, 0, w]) - 0.5  # l, r, b, t
 
-        ImageModelPlot3D.__init__(self)
-        axData = self.axes_images[0]
+#         ImageModel3DPlot.__init__(self)
+#         axData = self.axes_images[0]
 
-        FitsCubeDisplay.__init__(self, filename, ax=axData, extent=extent,
-                                 sidebar=False, figsize=None)
-        self.update(0)  # FIXME: full frame drawn instead of zoom
-        # have to draw here for some bizarre reason
-        # self.axes_images[0].draw(self.fig._cachedRenderer)
+#         FitsCubeDisplay.__init__(self, filename, ax=axData, extent=extent,
+#                                  sidebar=False, figsize=None)
+#         self.update(0)  # FIXME: full frame drawn instead of zoom
+#         # have to draw here for some bizarre reason
+#         # self.axes_images[0].draw(self.fig._cachedRenderer)
 
-    def get_image_data(self, i):
-        # coo = self.coords[i]
-        data = neighbours(self[i], self.coords[i], self.window)
-        return data
+#     def get_image_data(self, i):
+#         # coo = self.coords[i]
+#         data = neighbours(self[i], self.coords[i], self.window)
+#         return data
 
-    def update(self, i, draw=False):
-        """Set frame data. draw if requested """
-        i %= len(self)  # wrap around! (eg. scroll past end ==> go to beginning)
-        i = int(round(i, 0))  # make sure we have an int
-        self._frame = i  # store current frame
+#     def update(self, i, draw=False):
+#         """Set frame data. draw if requested """
+#         i %= len(self)  # wrap around! (eg. scroll past end ==> go to beginning)
+#         i = int(round(i, 0))  # make sure we have an int
+#         self._frame = i  # store current frame
 
-        image = self.get_image_data(i)
-        p = self.params[i]
-        Z = self.model(p, self.grid)
-        Y, X = self.grid
-        self.update(X, Y, Z, image)
+#         image = self.get_image_data(i)
+#         p = self.params[i]
+#         Z = self.model(p, self.grid)
+#         Y, X = self.grid
+#         self.update(X, Y, Z, image)
 
-        if draw:
-            self.fig.canvas.draw()
+#         if draw:
+#             self.fig.canvas.draw()
 
-        return i
+#         return i

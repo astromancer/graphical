@@ -1,16 +1,21 @@
 # ---------------------------------------------------------------------------- #
 image:
+
+    plim:           [0.25, 99.75]
+    origin:         lower
+    interpolation:  none
     blit:   on
-    fig:     
+
+    figure:
         size:           auto
         fill:           0.75 # Max fraction of screen size allowed in any direction
         max_pixel_size: 0.2  # Max pixel size allowed in inches
     
-    subplot:
-        left:       0.05
-        right:      0.95
-        top:        0.98
-        bottom:     0.05
+        margins:
+            left:       0.05
+            right:      0.95
+            top:        0.98
+            bottom:     0.05
 
     cbar:
         show:       True
@@ -29,9 +34,67 @@ image:
         ms:             [2, 1, 2]
         extra_markers:  ['>', s, <]
 
-    plim:           [0.25, 99.75]
-    origin:         lower
-    interpolation:  none
+
+    modelling:
+        image:
+            plim:       [0, 100]
+            cmap:       cmr.seasons
+
+        bars:
+            ec:             "0.6"
+            lw:             0.2
+            lightsource:    [90, 45]
+
+        image_bar_plot:
+            figure:
+                size: [8.45, 3.78]
+                margins:
+                    top: 1.0
+                    bottom: 0.05
+                    left: 0.05
+                    right: 0.95
+                    wspace: 0.2
+            axes:
+                position: [0.35, 0.0, 0.8, 1.1]
+                azim: -125
+                elev: 30
+                zlim: [0, 100]
+
+
+
+        axes:
+            titles:     [Data, Model, Residual]
+            image:
+                pad:            0.1
+                label_mode:     L
+                cbar:
+                    mode:       each
+                    size:       10%
+                    pad:        0%
+                    location:   right
+
+                    ticks:
+                        major:
+                            colors:     orangered
+                            direction:  in
+                            labelsize:  10
+                            pad:        -11
+                            length:     4
+                        minor:
+                            length:     2
+                        right:
+                            pad:        10
+                            direction:  inout
+                        labels:
+                            weight:     bold
+                            ha:         center
+                            va:         center
+
+            3d:
+                azim:       -125
+                elev:       30
+
+
 
 # ---------------------------------------------------------------------------- #
 video:

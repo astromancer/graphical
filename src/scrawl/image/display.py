@@ -68,7 +68,7 @@ class FigureSetup:
 
     def setup_figure(self, fig=None,
                      ax=None, cax=None, hax=None,
-                     title=None, figsize=CONFIG.fig.size, data=None,
+                     title=None, figsize=CONFIG.figure.size, data=None,
                      subplot=111, subplot_kws=None):
         """
         Create the figure and add the axes.
@@ -113,8 +113,8 @@ class FigureSetup:
 
         return ax.figure, (ax, cax, hax)
 
-    def guess_figsize(self, data, fill_factor=CONFIG.fig.fill,
-                      max_pixel_size=CONFIG.fig.max_pixel_size):
+    def guess_figsize(self, data, fill_factor=CONFIG.figure.fill,
+                      max_pixel_size=CONFIG.figure.max_pixel_size):
         """
         Make an educated guess of the size of the figure needed to display the
         image data.
@@ -285,8 +285,8 @@ class ImageDisplay(CanvasBlitHelper, FigureSetup, LoggingMixin):
     #     ax.format_coord = self.format_coord
     #     ax.grid(False)
 
-    def guess_figsize(self, data, fill_factor=CONFIG.fig.fill,
-                      max_pixel_size=CONFIG.fig.max_pixel_size):
+    def guess_figsize(self, data, fill_factor=CONFIG.figure.fill,
+                      max_pixel_size=CONFIG.figure.max_pixel_size):
 
         image = self.data[0] if data is None else data
         return super().guess_figsize(image, fill_factor, max_pixel_size)
