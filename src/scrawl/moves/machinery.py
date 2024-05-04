@@ -643,7 +643,8 @@ class CanvasBlitHelper(CallbackManager):
         self.remove_callback('draw_event', 0)
 
         # At this point save the background (without animated artists)
-        self.save_background()
+        if self.use_blit:
+            self.save_background()
 
     @mpl_connect('draw_event')
     def _on_draw(self, event):
