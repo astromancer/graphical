@@ -2,27 +2,94 @@
 Plot image models.
 """
 
+# std
+from collections import abc
+
 # third-party
 import numpy as np
-import matplotlib.pylab as plt
+import matplotlib.pyplot as plt
 from matplotlib.figure import Figure
+from matplotlib.colors import LightSource
 from loguru import logger
 from mpl_toolkits.mplot3d import art3d
 from mpl_toolkits.axes_grid1 import AxesGrid
 
 # local
+from recipes.config import ConfigNode
 from recipes.functionals import echo0
-from recipes.array.neighbours import neighbours
-from recipes.containers.dicts import AttrReadItem
 
 # relative
 from ..depth.prisms import Bar3D
-from ..video import VideoDisplay
 from ..moves.callbacks import CallbackManager, mpl_connect
+from . import ImageDisplay
 from .utils import resolve_clim
 
 
 # ---------------------------------------------------------------------------- #
+# Load config
+CONFIG = ConfigNode.load_module(__file__)
+
+cbt = CONFIG.axes.image.cbar.ticks
+CBAR_TICKS = ConfigNode(
+    major=(major := {'which': 'major', 'axis': 'y', **cbt.major}),
+    minor={'which': 'minor', **major, **cbt.minor},
+    right={**major, **cbt.right}
+)
+del cbt
+
+
+# ---------------------------------------------------------------------------- #
+
+class ImageBar3D(CallbackManager):
+
+    def __init__(self, data, fig=None, image_kws=(), **kws):
+
+        self.fig, self.axes = self.setup_figure(fig, **kws)
+        ax1, ax2 = self.axes
+
+        # image
+        self.image = ImageDisplay(data, ax=ax1, **CONFIG.image.merge(image_kws),
+                                  hist=False, sliders=False, use_blit=False)
+
+        # bars
+        nrows, ncols = data.shape
+        y, x = np.mgrid[:nrows, :ncols]
+        self.bars = Bar3D(ax2, x, y, data,
+                          **CONFIG.bars.merge(kws, cmap=CONFIG.image.cmap).coerce(
+                              lightsource=LightSource, unpack=True))
+
+        # axes setup
+        altaz = CONFIG.axes['3d']
+        ax2.set(xlim=(-0.5, nrows), ylim=(-0.5, ncols), **kws)
+        ax2.azim, ax2.elev = altaz.azim, altaz.elev
+        
+        ax2.tick_params(pad=-1)
+
+        # color limits
+        # p = CONFIG.psf.params
+        # ylim = (p.amplitude + p.background)
+
+    def setup_figure(self, fig=None, **kws):
+
+        if isinstance(fig, abc.MutableMapping):
+            kws = {**fig, **kws}
+            fig = None
+
+        if fig is None:
+            fig = plt.figure(figsize=CONFIG.image_bar_plot.figure.size, **kws)
+            ax1 = fig.add_subplot(1, 2, 1)
+            ax2 = fig.add_subplot(1, 2, 2, projection='3d')
+
+        fig.subplots_adjust(**CONFIG.image_bar_plot.figure.margins)
+
+        return fig, (ax1, ax2)
+
+    def set_clim(self, clim):
+        self.image.set_clim(clim)
+        self.bars.bars.set_clim(clim)
+        # self.image.cax.set_ylim(0, ylim)
+
+
 # ---------------------------------------------------------------------------- #
 
 class ImageModel3DPlot(CallbackManager):
