@@ -1,5 +1,6 @@
 # Things specific to this project #
 ###################################
+dep-graph.svg
 dev/
 rainbow.py
 src/scrawl/interactive.py

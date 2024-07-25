@@ -13,7 +13,7 @@ classifiers = [
     "License :: OSI Approved :: MIT License",
     "Operating System :: POSIX :: Linux"
 ]
-dynamic = ["version", "readme"]
+dynamic = ["version", "readme", "optional-dependencies" ]
 requires-python = ">=3.8"
 dependencies = [
     "loguru",
