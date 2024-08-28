@@ -7,7 +7,7 @@ from recipes.logging import LoggingMixin
 
 # relative
 from .utils import percentile
-from .image import _sanitize_data
+from .image.utils import _sanitize_data
 
 
 def get_bins(data, bins, range=None):

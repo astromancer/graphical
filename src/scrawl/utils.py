@@ -66,7 +66,7 @@ def percentile(data, p, axis=None):
     c = np.abs((p > 1).astype(float) - s * (a % 1)) * 100
 
     # remove masked points
-    if np.ma.isMA(data):
+    if np.ma.is_masked(data):
         if axis is not None:
             raise NotImplementedError
 
@@ -75,7 +75,7 @@ def percentile(data, p, axis=None):
     # create output array
     d = np.zeros((len(p),
                   *(np.take(data.shape, np.delete(np.arange(data.ndim), axis))
-                    if axis else ())))
+                    if axis is not None else ())))
     d[c > 0] = np.percentile(data, c[c > 0], axis)
 
     # sourcery skip: flip-comparison
@@ -270,31 +270,44 @@ def hexbin(x, y, C=None, gridsize=100,
 
 def save_figure(fig, filenames=(), overwrite=False, **kws):
 
-    filenames = list(filenames)
+    filenames = ensure.list(filenames)
     if fn := kws.pop('filename', ()):
         filenames.append(fn)
     filenames = ensure.tuple(filenames, Path)
-    saved = 0
 
     if not filenames:
         logger.debug(
             'Not saving figure {}: Could not resolve any filenames from {!r}.',
             fig, filenames
         )
-        return saved
+        return 0
 
+    if not fig:
+        logger.warning('No figure {!r} for filenames: {}', fig, filenames)
+        return 0
+
+    if not fig.axes:
+        logger.warning("Not saving figure {} at {} since it's empty.",
+                       fig, filenames)
+        return 0
+
+    saved = 0
     for filename in filenames:
         if filename.exists():
             if overwrite:
-                logger.info('Overwriting image: {!s}.', filename)
+                logger.info('Overwriting figure: {!s}.', filename)
             else:
                 logger.info('Not overwriting: {!s}', filename)
                 continue
         else:
-            logger.info('Saving image: {!s}.', filename)
+            logger.info('Saving figure: {!s}.', filename)
 
-        fig.savefig(filename, **kws)
-        saved += 1
+        try:
+            fig.savefig(filename, **kws)
+            saved += 1
+        except Exception as err:
+            logger.warning('Could not save figure at filename {} due to: {}',
+                           filename, err)
 
     return saved
 

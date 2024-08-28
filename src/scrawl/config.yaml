@@ -42,7 +42,7 @@ image:
 
         bars:
             ec:             "0.6"
-            lw:             0.2
+            lw:             0.1
             lightsource:    [90, 45]
 
         image_bar_plot:
@@ -65,7 +65,7 @@ image:
         axes:
             titles:     [Data, Model, Residual]
             image:
-                pad:            0.1
+                axes_pad:       0.1
                 label_mode:     L
                 cbar:
                     mode:       each
@@ -74,21 +74,24 @@ image:
                     location:   right
 
                     ticks:
-                        major:
-                            colors:     orangered
-                            direction:  in
-                            labelsize:  10
-                            pad:        -11
-                            length:     4
-                        minor:
-                            length:     2
-                        right:
-                            pad:        10
-                            direction:  inout
                         labels:
                             weight:     bold
                             ha:         center
                             va:         center
+                            # emboss:     [0.5, orangered]
+
+                        major:
+                            colors:     orangered
+                            direction:  in
+                            labelsize:  12
+                            pad:        -13
+                            length:     4
+                        minor:
+                            length:     2
+                        right:
+                            pad:        8
+                            direction:  inout
+                        
 
             3d:
                 azim:       -125
@@ -149,3 +152,39 @@ depth:
     prisms:
         dxy:            '0.8'
         cmap:           null
+
+# ---------------------------------------------------------------------------- #
+corner:
+    
+    nbins:      30
+    plims:      [0., 100]
+    cmap:       cmr.voltage_r
+
+    priors:
+        ls:     --
+        color:  grey
+
+    scatter:
+        marker: .
+        # size:   1
+        alpha:  0.75
+
+    density:
+        alpha:      0.75
+        edgecolors: none
+
+    figure:
+        margins:
+            hspace: 0.05
+            wspace: 0.05
+
+    ticks:
+        labelrotation:  45
+        pad:            0
+        length:         2
+
+    labels:
+        labelpad:       15
+        rotation:       0
+        va:             center
+        rotation_mode:  null

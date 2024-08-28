@@ -366,7 +366,7 @@ class DateTick(ticker.Formatter):
     def set_locs(self, locs):
         super().set_locs(locs)
 
-        if len(locs):
+        if len(locs) > 1:
             majloc = self.axis.major.locator()
             i = np.array([0, *np.diff(majloc // SPD)], bool)
             minor_interval = np.diff(locs).min()

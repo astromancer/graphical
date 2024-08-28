@@ -106,10 +106,10 @@ def scatter_map(ax, data,
     data = _sanitize_data(data, 2)
 
     # plot only scatter if small amount of data
-    if max_points is None and min_count == 0:
-        raise ValueError()
-
-    if len(data) < max_points:
+    if max_points is None:
+        if min_count == 0:
+            raise ValueError()
+    elif len(data) < max_points:
         min_count = None
 
     if (worker := MAP_WORKERS.get(tessellation.lower())) is None:
@@ -118,6 +118,9 @@ def scatter_map(ax, data,
 
     # set default args
     shared = dict(cmap=cmap, alpha=alpha)
+    # print('.!!!!!!!!!\n', shared)
+    # from IPython import embed
+    # embed(header="Embedded interpreter at 'src/scrawl/density.py':121")
     scatter_kws = _api_update_kws(CONFIG.scatter, scatter_kws, **shared)
     density_kws = _api_update_kws(CONFIG.density, density_kws, **shared, **kws)
 
