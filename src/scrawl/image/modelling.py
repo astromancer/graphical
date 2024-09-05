@@ -19,23 +19,18 @@ from recipes.config import ConfigNode
 from recipes.functionals import echo0
 
 # relative
+from ..utils import emboss
 from ..depth.prisms import Bar3D
 from ..moves.callbacks import CallbackManager, mpl_connect
 from . import ImageDisplay
 from .utils import resolve_clim
-
+from recipes.decorators import update_defaults
 
 # ---------------------------------------------------------------------------- #
 # Load config
 CONFIG = ConfigNode.load_module(__file__)
 
-cbt = CONFIG.axes.image.cbar.ticks
-CBAR_TICKS = ConfigNode(
-    major=(major := {'which': 'major', 'axis': 'y', **cbt.major}),
-    minor={'which': 'minor', **major, **cbt.minor},
-    right={**major, **cbt.right}
-)
-del cbt
+
 
 
 # ---------------------------------------------------------------------------- #
@@ -62,7 +57,7 @@ class ImageBar3D(CallbackManager):
         altaz = CONFIG.axes['3d']
         ax2.set(xlim=(-0.5, nrows), ylim=(-0.5, ncols), **kws)
         ax2.azim, ax2.elev = altaz.azim, altaz.elev
-        
+
         ax2.tick_params(pad=-1)
 
         # color limits
@@ -134,7 +129,7 @@ class ImageModel3DPlot(CallbackManager):
 
     # @unhookPyQt
 
-    def setup_figure(self, fig=None, **kws):
+    def setup_figure(self, fig=None, axes_image=(), axes_3d=(), **kws):
         """
         Initialize grid of 2x3 subplots. Top 3 are colour images, bottom 3 are
         3D wireframe plots of data, fit and residual.
@@ -142,24 +137,23 @@ class ImageModel3DPlot(CallbackManager):
 
         # Plots for current fit
         fig = fig or plt.figure(**kws)
-        # gridpec_kw=dict(left=0.05, right=0.95,
-        #                 top=0.98, bottom=0.01))
+
         if not isinstance(fig, Figure):
             raise TypeError(f'Expected Figure, received {type(fig)}')
 
-        self.axes_images = self.setup_image_axes(fig)
-        self.axes_3d = self.setup_3d_axes(fig)
-
-        # fig.suptitle('PSF Fitting')
+        axes_image = CONFIG.axes.image.merge(axes_image)
+        self.axes_images = self.setup_image_axes(fig, **axes_image)
+        axes_3d = CONFIG.axes['3d'].merge(axes_3d)
+        self.axes_3d = self.setup_3d_axes(fig, **axes_3d)
 
         return fig
 
-    def setup_3d_axes(self, fig):
+    def setup_3d_axes(self, fig, **kws):
         # Create the plot grid for the 3D plots
         # axes_3d = AxesGrid(fig, 212, **self._3d_axes_kws)
         axes_3d = []
         for i in range(4, 7):
-            ax = fig.add_subplot(2, 3, i, projection='3d', **CONFIG.axes['3d'])
+            ax = fig.add_subplot(2, 3, i, projection='3d', **kws)
             ax.set_facecolor('None')
             # ax.patch.set_linewidth( 1 )
             # ax.patch.set_edgecolor( 'k' )
@@ -167,10 +161,13 @@ class ImageModel3DPlot(CallbackManager):
 
         return axes_3d
 
-    def setup_image_axes(self, fig):
+    # @update_defaults(config=)
+    def setup_image_axes(self, fig, **config):
         # Create the plot grid for the images
-        kws, cbar = CONFIG.axes.image.split('cbar')
-        kws = cbar.filter('ticks').transform('_'.join)
+        
+        kws, cbar = ConfigNode(config).split('cbar')
+        ticks = cbar.pop(('cbar', 'ticks'), ())
+        kws.update(cbar.transform('_'.join))
 
         self.axes_images = axes = AxesGrid(fig, 211, nrows_ncols=(1, 3), **kws)
 
@@ -184,13 +181,20 @@ class ImageModel3DPlot(CallbackManager):
 
             # colorbar
             cbar = cax.colorbar(im)
-            self.setup_cbar_ticks(cbar, cax)
+            self.setup_cbar_ticks(cbar, cax, **ticks)
 
         return axes
 
     def setup_cbar_ticks(self, cbar, cax, **config):
         # make the colorbar ticks look nice
-        config = CBAR_TICKS.merge(config)
+            
+        config = CONFIG.axes.image.cbar.ticks.merge(config)
+        config = ConfigNode(
+            major=(major := {'which': 'major', 'axis': 'y', **config.major}),
+            minor={**major, **config.minor, 'which': 'minor'},
+            right={**major, **config.right}
+        )
+        
         rightmost = cax is self.axes_images.cbar_axes[-1]
         cax.axes.tick_params(**config['right' if rightmost else 'major'])
         cax.axes.tick_params(**config.minor)
@@ -198,13 +202,17 @@ class ImageModel3DPlot(CallbackManager):
         # make the colorbar spine invisible
         cbar.outline.set_visible(False)
         #
-        for w in ('top', 'bottom', 'right'):
+        for w in ('top', 'bottom', 'right')[(2 * (not rightmost)):]:
             cax.spines[w].set_visible(True)
-            cax.spines[w].set_color(config.major['colors'])
+            cax.spines[w].set_color(config.major.colors)
         cax.minorticks_on()
 
+        labels = dict(CONFIG.axes.image.cbar.ticks.labels)
+        embossed = labels.pop('emboss', None)
         for t in cax.axes.yaxis.get_ticklabels():
-            t.set(**CONFIG.axes.image.cbar.ticks.labels)
+            t.set(**labels)
+            if embossed:
+                emboss(t, *embossed)
 
     def update_images(self, *data, **kws):
         # data, model, residual
