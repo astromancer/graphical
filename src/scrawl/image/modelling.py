@@ -241,8 +241,8 @@ class ImageModel3DPlot(CallbackManager):
         # clims = np.percentile( data, plims )      #colour limits for data
         # rlims = np.percentile( res, plims )       #colour limits for residuals
 
-        xlims = xlims if (xlims := x[0, [0, -1]]).ptp() else x[[0, -1], 1]
-        ylims = ylims if (ylims := y[0, [0, -1]]).ptp() else y[[0, -1], 1]
+        xlims = xlims if np.ptp(xlims := x[0, [0, -1]]) else x[[0, -1], 1]
+        ylims = ylims if np.ptp(ylims := y[0, [0, -1]]) else y[[0, -1], 1]
         zlims = [z.min(), z.max()]
 
         # image colour limits
@@ -255,7 +255,7 @@ class ImageModel3DPlot(CallbackManager):
             im.set_extent(np.r_[xlims, ylims])
 
         # 3D limits
-        xr, yr = xlims.ptp(), ylims.ptp()
+        xr, yr = np.ptpt(xlims), np.ptp(ylims)
         rlims = [res_3d.min(), res_3d.max()]
         for ax, zlim in zip(self.axes_3d, (zlims, zlims, rlims)):
             ax.set_zlim(zlim)

@@ -38,7 +38,7 @@ def plot_chains_ts(samples, names=None, truths=None, truth_color='k',
         ax.grid()
         # y limits
         q = np.percentile(dat, (2, 98))
-        ylim = q + np.multiply((-1, 1), q.ptp())
+        ylim = q + np.multiply((-1, 1), np.ptp(q))
         ax.set_ylim(ylim)
 
     # label bottom axis

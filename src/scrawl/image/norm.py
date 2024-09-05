@@ -1,5 +1,6 @@
 
 # third-party
+import numpy as np
 from astropy.visualization.stretch import BaseStretch
 from astropy.visualization.interval import BaseInterval
 from astropy.visualization.mpl_normalize import ImageNormalize
@@ -25,7 +26,7 @@ def get_norm(image, interval, stretch):
 
     """
     # choose colour interval algorithm based on data type
-    if image.dtype.kind == 'i' and image.ptp() < 1000:   # integer array
+    if image.dtype.kind == 'i' and np.ptp(image) < 1000:   # integer array
         interval = 'minmax'
 
     # determine colour transform from `interval` and `stretch`

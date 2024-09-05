@@ -207,7 +207,7 @@ class AxisSliders(MotionManager):
 
         self._min_span = float(min_span)
         pos = self.positions
-        if (δ := min_span - pos.ptp()) > 0:
+        if (δ := min_span - np.ptp(pos)) > 0:
             pos += [-δ / 2, δ / 2]
             self.set_positions(pos)
 

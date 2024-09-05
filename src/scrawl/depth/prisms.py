@@ -336,7 +336,7 @@ class Bar3DCollection(Poly3DCollection):
     def _compute_zorder(self):
         # sort by depth (furthest drawn first)
         zorder = camera.distance(self.axes, *self.xy)
-        zorder = (zorder - zorder.min()) / (zorder.ptp() or 1)
+        zorder = (zorder - zorder.min()) / (np.ptp(zorder) or 1)
         zorder = zorder.ravel() * len(zorder)
         face_zorder = get_prism_face_zorder(self.axes,
                                             self._original_alpha == 1,
