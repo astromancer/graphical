@@ -208,7 +208,7 @@ class Bar3DCollection(Poly3DCollection):
         assert not all(map(is_none, (x, y, z, z0)))
 
         if (x is not None) or (y is not None):
-            self._resolve_dx_dy(self.dxy)
+            self.dx, self.dy = self._resolve_dx_dy(self.dxy)
 
         for i, p in enumerate((x, y, z)):
             if p is not None:
