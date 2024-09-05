@@ -41,7 +41,7 @@ def truncate_colormap(cmap, lo=0, hi=1, n=255):
 
 
 def corner(samples, bins=CONFIG.nbins, plims=(0.5, 99.5),
-           labels=None, label_kws=None, tessellation='hex', cmap=CONFIG.cmap,
+           labels=None, label_kws=None, tessellation='rect', cmap=CONFIG.cmap,
            min_count_density=3, scatter_kws=None, density_kws=None,
            truths=None, truth_kws=None, hist_kws=None, priors=None,
            prior_kws=None):
