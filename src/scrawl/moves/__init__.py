@@ -2,9 +2,14 @@
 Movable artists.
 """
 
-from .callbacks import *
-from .errorbars import *
 from .machinery import CanvasBlitHelper, Observers
+from .callbacks import (CallbackDecorator, CallbackFactory, CallbackManager,
+                        mpl_connect)
+from .errorbars import (
+    DynamicLegend, ErrorbarPicker, MovableErrorbar,
+    MovableErrorbarContainer, MovableErrorbars, NamedErrorbarContainer,
+    ReorderedErrorbarHandler
+)
 
 
 class TrackAxesUnderMouse(CallbackManager):
