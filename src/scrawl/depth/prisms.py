@@ -111,8 +111,8 @@ class Bar3DCollection(Poly3DCollection):
 
     _n_faces = 6
 
-    def __init__(self, x, y, z, dxy=CONFIG.dxy, z0=0,
-                 shade=True, lightsource=None, cmap=CONFIG.cmap, **kws):
+    def __init__(self, x, y, z, dxy='0.8', z0=0, shade=True, lightsource=None,
+                 cmap=None, **kws):
         #
         x, y, z, z0 = np.ma.atleast_1d(x, y, z, z0)
         assert x.shape == y.shape == z.shape
@@ -133,6 +133,7 @@ class Bar3DCollection(Poly3DCollection):
         # Shade faces by angle to light source
         self._original_alpha = kws.pop('alpha', 1)
         self._shade = bool(shade)
+        # resolve light source
         if lightsource is None:
             # chosen for backwards-compatibility
             lightsource = CLASSIC_LIGHTSOURCE
@@ -140,8 +141,9 @@ class Bar3DCollection(Poly3DCollection):
             assert isinstance(lightsource, LightSource)
         self._lightsource = lightsource
 
-        COLOR_KWS = {'color', 'facecolor', 'facecolors'}
+        # resolve cmap
         if cmap is not None:
+            COLOR_KWS = {'color', 'facecolor', 'facecolors'}
             if (ckw := COLOR_KWS.intersection(kws)):
                 warnings.warn(f'Ignoring cmap since {ckw!r} provided.')
             else:
@@ -347,7 +349,7 @@ class Bar3DCollection(Poly3DCollection):
 class HexBar3DCollection(Bar3DCollection):
     """
     Hexagonal prisms with uniform cross section, bases located on z-plane at *z0*,
-    aranged in a regular grid at *x*, *y* locations and height *z - z0*.
+    arranged in a regular grid at *x*, *y* locations and height *z - z0*.
     """
     _n_faces = 8
 
@@ -362,8 +364,8 @@ class HexBar3DCollection(Bar3DCollection):
         # Array of vertices of the faces composing the prism moving counter
         # clockwise when looking from above starting at west (-x) facing panel.
         # Vertex sequence is counter-clockwise when viewed from outside.
-        # shape:     (n, [m ...], 6,    4,      3)
-        # indexed by [bars ... ,  face, vertex, axis]
+        # shape:     (n, [...], 6,    4,      3)
+        # indexed by [bars...,  face, vertex, axis]
         data_shape = np.shape(self.z)
         shape = (*data_shape, 6, 2, 1)
         z0 = np.full(shape, self.z0)
@@ -371,9 +373,9 @@ class HexBar3DCollection(Bar3DCollection):
         sides = np.concatenate(
             [np.concatenate([xy_sides, z0], -1),
              np.concatenate([xy_sides, z1], -1)[..., ::-1, :]],
-            axis=-2)  # (n, [m ...], 6, 4, 3)
+            axis=-2)  # (n, [...], 6, 4, 3)
 
-        # endcaps (hexagons) # (n, [m ...], 6, 3)
+        # endcaps (hexagons) # (n, [...], 6, 3)
         xy_ends = (self.xy[..., new] + hexagon.T[:, new])
         z0 = self.z0 * np.ones((1, *data_shape, 6))
         z1 = z0 + self.z[new, ..., new]
@@ -390,11 +392,14 @@ class HexBar3DCollection(Bar3DCollection):
 
 # ---------------------------------------------------------------------------- #
 def _get_grid_step(x, axis=0):
+    # for data arrange in a regular grid, get the size of the data step by
+    # looking for the first non-zero step along an axis.
+    # If axis is singular, return 1
 
     # deal with singular dimension (this ignores axis param)
     if x.ndim == 1:
         if d := next(filter(None, map(np.diff, mit.pairwise(x))), None):
-            return d
+            return d.item()
 
     if x.shape[axis % x.ndim] == 1:
         return 1
