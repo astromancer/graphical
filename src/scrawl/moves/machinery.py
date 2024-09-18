@@ -511,7 +511,7 @@ class CanvasBlitHelper(CallbackManager):
         self._canvas = None
         self.background = None
         self.use_blit = active
-        
+
         self._draw_count = 0
         self._blit_count = 0
         self._resize_count = 0
@@ -634,7 +634,7 @@ class CanvasBlitHelper(CallbackManager):
         self.logger.debug('First draw callback.')
 
         if self._draw_count > 0:
-            warn(f'Draw count is {self._draw_count = } > 0. Do not call this'
+            warn(f'Draw count is {self._draw_count=} > 0. Do not call this'
                  ' method directly. If you did not do so the first draw'
                  ' callback did not disconnect!')
             return
@@ -812,7 +812,7 @@ class MotionManager(CanvasBlitHelper):
 
     @property
     def offsets(self):
-        return np.array([drag.offset for drag in self])
+        return np.array([drag.offset for drag in self.movable.values()])
 
     def add_artist(self, artist, offset=(0, 0), annotate=True, haunted=False,
                    **kws):
